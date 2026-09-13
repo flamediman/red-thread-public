@@ -65,7 +65,8 @@ function onJoin(name: string, ink: number, photo: string | null, photoChanged: b
         <span class="me__text"><b>{{ myRole.title }}</b><small>{{ you.name }} · способность</small></span>
         <span class="me__more">?</span>
       </button>
-      <PadPlan v-if="screen === 'plan'" :you="you" :state="state" :seconds-left="seconds" @send="send" />
+      <PadTutorial v-if="screen === 'tutorial'" :you="you" :state="state" />
+      <PadPlan v-else-if="screen === 'plan'" :you="you" :state="state" :seconds-left="seconds" @send="send" />
       <PadVote v-else-if="screen === 'accuse'" :you="you" :state="state" :seconds-left="seconds" @send="send" />
       <PadFinal v-else-if="screen === 'final'" :you="you" :state="state" />
       <PadWait v-else :you="you" :state="state" :seconds-left="seconds" @send="send" />

@@ -5,8 +5,9 @@ import { randomInt } from 'node:crypto'
 import { CASES, DEFAULT_CASE, SETTINGS, catalog, type CaseEntry } from '../scenario'
 import type { GameStore } from './store'
 import { INKS } from '../../shared/inks'
+import { TUTORIAL_STEPS } from '../../shared/tutorial'
 import type {
-  Beat, BoardCard, BoardLink, CaseInfo, ClientMessage, DetectiveRole, Fact, GameRecord, Item, Location, LocationOptions, PlanAction, PlanSummary,
+  Beat, BoardCard, BoardLink, CaseInfo, ClientMessage, DetectiveRole, Fact, GameRecord, Item, Location, LocationOptions, PlanAction, PlanSummary, Presentation,
   PublicState, Question, Scenario, Screen, Spot, Verdict, Witness, YouState
 } from '../../shared/types'
 
@@ -35,11 +36,21 @@ interface PlayerRecord {
   locationId: string
   usesLeft: number | null
   plan: { locationId: string; action: PlanAction } | null
+  /** способность со счётчиком, выбранная сверх хода */
+  bonus: PlanAction | null
 }
 
 interface BoardEntry { by: string; round: number; witnessId?: string; locationId?: string; verdict?: { lie: boolean; by: string } }
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+/** тип недостающей карточки — как на фильтрах доски */
+const KIND_HINT: Record<string, string> = { physical: 'следы и предметы', testimony: 'показания', timeline: 'время', background: 'прошлое' }
+
+/** Способности со счётчиком — действие сверх хода: какой тип действия у какой роли */
+const BONUS_OF: Record<string, PlanAction['type']> = {
+  drone: 'drone', patrol: 'ask', reporter: 'reporter', intern: 'intern', fixer: 'fixer', archivist: 'archivist', tracker: 'verify', coroner: 'coroner'
+}
+const BONUS_TYPES = new Set<string>(['drone', 'reporter', 'intern', 'fixer', 'archivist', 'verify', 'coroner'])
 
 function uid(n = 10) {
   const abc = 'abcdefghijkmnpqrstuvwxyz23456789'
@@ -61,11 +72,13 @@ interface Bundle {
   info: CaseInfo; S: Scenario
   DET: Map<string, DetectiveRole>; LOC: Map<string, Location>; WIT: Map<string, Witness>; SPOT: Map<string, Spot>
   ITEM: Map<string, Item>; Q: Map<string, Question>; FACT: Map<string, Fact>
+  /** чьи слова кладут карточку: вопрос или предъявление по id факта */
+  SRC: Map<string, Question | Presentation>
   night: number
 }
 function bundle(entry: CaseEntry): Bundle {
   const S = entry.scenario
-  return { info: entry.info, S, DET: byId(S.detectives), LOC: byId(S.locations), WIT: byId(S.witnesses), SPOT: byId(S.spots), ITEM: byId(S.items), Q: byId(S.questions), FACT: byId(S.facts), night: nightMinutes(S) }
+  return { info: entry.info, S, DET: byId(S.detectives), LOC: byId(S.locations), WIT: byId(S.witnesses), SPOT: byId(S.spots), ITEM: byId(S.items), Q: byId(S.questions), FACT: byId(S.facts), SRC: new Map([...S.questions, ...S.presentations].filter(x => x.factId).map(x => [x.factId!, x])), night: nightMinutes(S) }
 }
 const shuffle = <T>(arr: T[]) => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j]!, a[i]!] } return a }
 
@@ -91,7 +104,8 @@ export class Game {
   deadline: number | null = null
   paused = false
   pauseLeft = 0
-  settings: PublicState['settings'] = { hints: 'soft', stepping: 'manual', roles: 'pick', timers: 'on' }
+  settings: PublicState['settings'] = { hints: 'soft', stepping: 'manual', roles: 'pick', timers: 'on', tutorial: 'on' }
+  tutorialStep = 0
 
   board = new Map<string, BoardEntry>()
   /** карточки, которые команда отметила как важные */
@@ -107,6 +121,8 @@ export class Game {
   unlocked = new Set<string>()
   greeted = new Set<string>()
   lieMarks = new Map<string, Record<string, boolean>>()
+  /** кого каким противоречием уже уличали: «свидетель:противоречие» */
+  confronted = new Set<string>()
 
   private _beats: Beat[] = []
   /** какая реплика сейчас на экране — ведущий сообщает, чтобы после перезагрузки продолжить с неё */
@@ -157,7 +173,7 @@ export class Game {
     const player: PlayerRecord = {
       id, token: token && TOKEN.test(token) ? token : uid(16), name: name || 'Сыщик', ink: chosen, photo: null,
       connected: true, ready: false, order: this.players.size,
-      detectiveId: null, locationId: this.startLoc(), usesLeft: null, plan: null
+      detectiveId: null, locationId: this.startLoc(), usesLeft: null, plan: null, bonus: null
     }
     this.players.set(id, player)
     this.emit()
@@ -222,12 +238,32 @@ export class Game {
     return p.detectiveId ? this.b.DET.get(p.detectiveId) ?? null : null
   }
 
+  /** Способность сверх хода: только своя, только пока остались использования */
+  private setBonus(p: PlayerRecord, action: PlanAction) {
+    const kind = this.roleOf(p)?.ability.kind
+    if (!kind || (p.usesLeft ?? 0) <= 0) return
+    const fits = kind === 'patrol' ? action.type === 'ask' || action.type === 'present' : BONUS_OF[kind] === action.type
+    if (!fits) return
+    p.bonus = action.type === 'ask' || action.type === 'present' ? { ...action, remote: true } as PlanAction : action
+    this.emit()
+  }
+
   /* ── ведущий ────────────────────────────────────────────────── */
 
   handleHost(msg: ClientMessage) {
     switch (msg.type) {
-      case 'settings':
-        this.settings = { ...this.settings, ...msg.settings }
+      case 'settings': {
+        const allowed: Record<string, string[]> = { hints: ['soft', 'off'], stepping: ['manual', 'auto'], roles: ['pick', 'random'], timers: ['on', 'off'], tutorial: ['on', 'off'] }
+        const next = { ...this.settings } as Record<string, string>
+        for (const [k, v] of Object.entries(msg.settings ?? {})) if (allowed[k]?.includes(v as string)) next[k] = v as string
+        this.settings = next as PublicState['settings']
+        this.emit()
+        break
+      }
+      case 'tutorial':
+        if (this.screen !== 'tutorial' || typeof msg.step !== 'number') break
+        if (msg.step >= TUTORIAL_STEPS) { this.beginPrologue(); break }
+        this.tutorialStep = Math.max(0, Math.floor(msg.step))
         this.emit()
         break
       case 'start': this.start(); break
@@ -247,7 +283,9 @@ export class Game {
         this.beatIndex = msg.index
         // экран дошёл до этой реплики — сдвигаем резервный таймер, чтобы сервер не оборвал сцену на полуслове
         if (!this.paused && this.deadline !== null && ['prologue', 'resolve', 'verdict', 'epilogue'].includes(this.screen)) this.deadline = Date.now() + estimateBeatsMs(this.beats.slice(this.beatIndex))
-        this.persist()
+        // телефоны открывают карточки доски вместе с репликой на экране — им нужна позиция
+        if (this.beats[msg.index]?.facts?.length || this.beats[msg.index]?.links?.length) this.emit()
+        else this.persist()
         break
       case 'beatsDone':
         if (this.screen === 'prologue' || this.screen === 'resolve' || this.screen === 'verdict' || this.screen === 'epilogue') this.onDeadline(true)
@@ -268,7 +306,7 @@ export class Game {
 
   private reset() {
     for (const p of this.players.values()) {
-      p.ready = false; p.detectiveId = null; p.usesLeft = null; p.plan = null; p.locationId = this.startLoc()
+      p.ready = false; p.detectiveId = null; p.usesLeft = null; p.plan = null; p.bonus = null; p.locationId = this.startLoc()
     }
     this.screen = 'lobby'
     this.round = 0
@@ -276,7 +314,7 @@ export class Game {
     this.paused = false
     this.board.clear(); this.pins.clear(); this.links.clear(); this.items.clear()
     this.searched.clear(); this.hiddenDone.clear(); this.memoryDone.clear(); this.asked.clear(); this.presented.clear()
-    this.unlocked.clear(); this.greeted.clear(); this.lieMarks.clear()
+    this.unlocked.clear(); this.greeted.clear(); this.lieMarks.clear(); this.confronted.clear(); this.tutorialStep = 0
     this.beats = []; this.proceedVotes.clear(); this.accusation = null; this.verdict = null
     this.attemptsLeft = 2; this.hintsUsed = 0; this.hintsFired.clear(); this.eventsFired.clear(); this.outcome = null
     this.emit()
@@ -291,12 +329,26 @@ export class Game {
     const free = (this.settings.roles === 'random' ? shuffle(this.S.detectives) : this.S.detectives).filter(d => !roster.some(p => p.detectiveId === d.id))
     for (const p of roster) {
       if (!p.detectiveId) { const d = free.shift(); if (d) { p.detectiveId = d.id; p.usesLeft = d.ability.uses } }
-      p.ready = false; p.plan = null; p.locationId = this.startLoc()
+      p.ready = false; p.plan = null; p.bonus = null; p.locationId = this.startLoc()
     }
     this.brigade = roster.length
     this.startedAt = Date.now()
     this.roundsTotal = roundsFor(roster.length)
     this.round = 0
+    if (this.settings.tutorial === 'on') {
+      // обучение ведёт ведущий кнопкой «Дальше»: сервер не торопит
+      this.screen = 'tutorial'
+      this.tutorialStep = 0
+      this.beats = []
+      this.phaseMs = null
+      this.deadline = null
+      this.emit()
+      return
+    }
+    this.beginPrologue()
+  }
+
+  private beginPrologue() {
     this.screen = 'prologue'
     this.beats = this.S.prologue
     this.phaseMs = null
@@ -313,6 +365,11 @@ export class Game {
 
   private onDeadline(forced: boolean) {
     switch (this.screen) {
+      case 'tutorial':
+        if (!forced) break
+        if (this.tutorialStep + 1 >= TUTORIAL_STEPS) this.beginPrologue()
+        else { this.tutorialStep++; this.emit() }
+        break
       case 'prologue': this.beginPlan(); break
       case 'plan': this.resolve(); break
       case 'resolve': this.beginDiscuss(); break
@@ -326,7 +383,7 @@ export class Game {
 
   private beginPlan() {
     this.screen = 'plan'
-    for (const p of this.players.values()) p.plan = null
+    for (const p of this.players.values()) { p.plan = null; p.bonus = null }
     this.proceedVotes.clear()
     this.beats = []
     // без таймеров фаза ждёт, пока все выберут ход (или ведущий нажмёт «Дальше»)
@@ -394,21 +451,35 @@ export class Game {
       case 'setName': this.rename(pid, msg.name, msg.ink); break
       case 'ready': this.setReady(pid, msg.ready); break
       case 'pickDetective': this.pickDetective(pid, msg.detectiveId); break
-      case 'plan':
+      case 'plan': {
         if (this.screen !== 'plan' || this.paused) return
-        if (!this.b.LOC.has(msg.locationId)) return
-        p.plan = { locationId: msg.locationId, action: msg.action }
+        if (!this.b.LOC.has(msg.locationId) || !msg.action || typeof msg.action !== 'object') return
+        // способность со счётчиком ходом не считается — это действие сверх хода
+        if (BONUS_TYPES.has(msg.action.type)) { this.setBonus(p, msg.action); return }
+        const action = { ...msg.action } as PlanAction
+        if ('remote' in action) delete (action as { remote?: boolean }).remote
+        p.plan = { locationId: msg.locationId, action }
         this.emit()
         if ([...this.players.values()].filter(o => o.connected).every(o => o.plan)) {
           const soon = Date.now() + 2000
           if (!this.deadline || this.deadline > soon) this.deadline = soon
         }
         break
+      }
       case 'unplan':
         if (this.screen !== 'plan') return
         p.plan = null; this.emit(); break
+      case 'bonus':
+        if (this.screen !== 'plan' || this.paused || !msg.action) return
+        this.setBonus(p, msg.action)
+        break
+      case 'unbonus':
+        if (this.screen !== 'plan') return
+        p.bonus = null; this.emit(); break
       case 'proceed':
         if (this.screen !== 'discuss' && this.screen !== 'plan') return
+        // повторное нажатие снимает голос
+        if (this.proceedVotes.has(pid)) { this.proceedVotes.delete(pid); this.emit(); break }
         this.proceedVotes.add(pid)
         if (this.proceedVotes.size * 2 > [...this.players.values()].filter(o => o.connected).length) {
           const soon = Date.now() + 1500
@@ -453,11 +524,14 @@ export class Game {
     return (r?.items ?? []).every(i => this.items.has(i)) && (r?.facts ?? []).every(f => this.board.has(f))
   }
 
-  private reqText(r?: { items?: string[]; facts?: string[] }): string | null {
+  /** Что нужно, чтобы открылся вопрос или ответ на улику, — без названий: сами названия ненайденного были подсказкой */
+  private reqHint(r?: { items?: string[]; facts?: string[] }): string | null {
     const parts: string[] = []
-    for (const i of r?.items ?? []) if (!this.items.has(i)) parts.push(this.b.ITEM.get(i)?.name ?? i)
-    for (const f of r?.facts ?? []) if (!this.board.has(f)) parts.push('факт: ' + (this.b.FACT.get(f)?.title ?? f))
-    return parts.length ? 'нужно — ' + parts.join('; ') : null
+    const items = (r?.items ?? []).filter(i => !this.items.has(i)).length
+    if (items) parts.push(items === 1 ? 'улика' : `улики (${items})`)
+    const kinds = new Set((r?.facts ?? []).filter(f => !this.board.has(f)).map(f => this.b.FACT.get(f)?.kind).filter(Boolean) as string[])
+    for (const k of kinds) parts.push(`карточка «${KIND_HINT[k] ?? 'факт'}»`)
+    return parts.length ? `откроется, когда будет: ${parts.join(' и ')}` : null
   }
 
   private addFact(id: string | undefined, by: string, from: { witnessId?: string; locationId?: string } = {}) {
@@ -481,13 +555,27 @@ export class Game {
     const beats: Beat[] = []
     const order = [...this.players.values()].sort((a, b) => a.order - b.order)
 
+    /** реплики действия + карточки, которые оно положило на доску (открываются с последней репликой) */
+    const withFacts = (make: () => Beat[], at: string, pid: string) => {
+      const before = new Set(this.board.keys())
+      const out = make().map(b => ({ ...b, locationId: b.locationId ?? at, playerId: pid }))
+      const fresh = [...this.board.keys()].filter(k => !before.has(k))
+      if (fresh.length && out.length) out[out.length - 1] = { ...out[out.length - 1]!, facts: [...(out[out.length - 1]!.facts ?? []), ...fresh] }
+      return out
+    }
+
     for (const p of order) {
       const plan = p.plan
-      if (!plan || plan.action.type === 'wait') continue
-      // дрон осматривает чужую локацию — сыщик остаётся на месте
-      if (plan.action.type !== 'drone') p.locationId = plan.locationId
-      // реплики хода помечаются локацией и игроком — экран показывает фото места и чей это ход
-      beats.push(...this.actBeats(p, plan).map(b => ({ ...b, locationId: b.locationId ?? plan.locationId, playerId: p.id })))
+      if (plan && plan.action.type !== 'wait') {
+        p.locationId = plan.locationId
+        // реплики хода помечаются локацией и игроком — экран показывает фото места и чей это ход
+        beats.push(...withFacts(() => this.actBeats(p, plan), plan.locationId, p.id))
+      } else if (plan) p.locationId = plan.locationId
+      // способность сверх хода: дрон летит в своё место, вызванный свидетель приходит туда, где сыщик
+      if (p.bonus) {
+        const bonus = { locationId: p.locationId, action: p.bonus }
+        beats.push(...withFacts(() => this.actBeats(p, bonus), p.locationId, p.id))
+      }
     }
 
     // события ночи: происходят в свой раунд независимо от ходов
@@ -495,9 +583,9 @@ export class Game {
       if (this.eventsFired.has(i) || Math.round(ev.round * this.roundsTotal / 12) !== this.round) continue
       this.eventsFired.add(i)
       if (ev.itemId) this.items.add(ev.itemId)
-      this.addFact(ev.factId, 'событие')
+      const fresh = this.addFact(ev.factId, 'событие')
       const item = ev.itemId ? this.b.ITEM.get(ev.itemId) : null
-      beats.unshift({ ...ev.beat, itemId: item?.id, itemName: item?.name })
+      beats.unshift({ ...ev.beat, itemId: item?.id, itemName: item?.name, facts: fresh && ev.factId ? [ev.factId] : undefined })
     }
 
     // противоречия
@@ -506,7 +594,7 @@ export class Game {
       this.links.add(c.id)
       const fresh = this.addFact(c.yieldsFactId, 'доска')
       const yielded = c.yieldsFactId ? this.b.FACT.get(c.yieldsFactId) : null
-      beats.push(this.narrate(`link_${c.id}`, `Противоречие. ${c.text}${fresh && yielded ? ` Вывод: ${yielded.title}.` : ''}`, ['rumble'], 900))
+      beats.push({ ...this.narrate(`link_${c.id}`, `Противоречие. ${c.text}${fresh && yielded ? ` Вывод: ${yielded.title}.` : ''}`, ['rumble'], 900), links: [c.id], facts: fresh && c.yieldsFactId ? [c.yieldsFactId] : undefined })
     }
 
     // подсказка инспектора
@@ -525,7 +613,7 @@ export class Game {
     this.beats = beats
     this.phaseMs = null
     this.deadline = this.settings.stepping === 'manual' ? null : Date.now() + estimateBeatsMs(beats)
-    for (const p of this.players.values()) p.plan = null
+    for (const p of this.players.values()) { p.plan = null; p.bonus = null }
     this.emit()
   }
 
@@ -552,6 +640,7 @@ export class Game {
       if (summon === null) return []
       return [...summon, ...this.doPresent(p, a.witnessId, a.itemId)]
     }
+    if (a.type === 'confront') return this.doConfront(p, a.witnessId, a.linkId, plan.locationId, kind)
     if (a.type === 'reporter' && kind === 'reporter' && (p.usesLeft ?? 0) > 0) {
       const bg = this.S.backgrounds[a.witnessId]
       if (!bg) return []
@@ -613,6 +702,48 @@ export class Game {
     return []
   }
 
+  /** Чьи это слова: вопрос или предъявление, которые кладут карточку на доску */
+  private sourceOf(factId: string) {
+    return this.b.SRC.get(factId) ?? null
+  }
+
+  /** Противоречия на доске, в которых замешаны слова свидетеля */
+  private linksOf(witnessId: string) {
+    return this.S.contradictions.filter(c => this.links.has(c.id) && c.facts.some(f => this.sourceOf(f)?.witnessId === witnessId))
+  }
+
+  /** Уличить во лжи: солгал — не выдерживает (открывается то, что он скрывал), сказал правду — стоит на своём */
+  private doConfront(p: PlayerRecord, witnessId: string, linkId: string, at: string, kind: string | undefined): Beat[] {
+    const w = this.b.WIT.get(witnessId), c = this.S.contradictions.find(x => x.id === linkId)
+    if (!w || !c || !this.links.has(c.id)) return []
+    if (this.witnessAt(w.id) !== at) return [this.narrate(`cf_${p.id}_${this.round}`, `${p.name} ищет ${w.name}, но здесь уже никого нет.`)]
+    const key = `${w.id}:${c.id}`
+    if (this.confronted.has(key)) return [this.narrate(`cf_${p.id}_${this.round}`, `${w.name} уже слышал(а) это противоречие и больше ничего не скажет.`)]
+    this.confronted.add(key)
+    const out: Beat[] = []
+    if (!this.greeted.has(w.id)) { this.greeted.add(w.id); out.push(w.greeting) }
+    const mine = c.facts.map(f => ({ factId: f, src: this.sourceOf(f) })).filter(x => x.src?.witnessId === w.id)
+    out.push(this.narrate(`cf_${p.id}_${this.round}`, `${p.name} кладёт перед ${w.name} две карточки. ${c.text}`, ['drawer', 'suspense-04'], 700))
+    const lie = mine.find(x => x.src!.answer.lie)
+    const by = 'очная ставка'
+    if (lie) {
+      const e = this.board.get(lie.factId)
+      if (e) e.verdict = { lie: true, by }
+      // припёртый к стене отвечает на вопрос, который ждал именно этих карточек
+      const related = new Set([...c.facts, ...(c.yieldsFactId ? [c.yieldsFactId] : [])])
+      const q = this.S.questions.find(x => x.witnessId === w.id && !this.asked.has(x.id) && (x.initial || this.unlocked.has(x.id))
+        && (x.requires?.facts ?? []).some(f => related.has(f)) && this.reqOk(x.requires))
+      out.push(this.narrate(`cf_${p.id}_${this.round}_lie`, `${w.name} не выдерживает: карточка «${this.b.FACT.get(lie.factId)?.title ?? ''}» — ложь.`, ['suspense-06'], 600))
+      if (q) out.push(...this.doAsk(p, w.id, q.id, kind, false).filter(b => b !== w.greeting))
+      return out
+    }
+    for (const x of mine) { const e = this.board.get(x.factId); if (e) e.verdict = { lie: false, by } }
+    out.push(this.narrate(`cf_${p.id}_${this.round}_true`, mine.length
+      ? `${w.name} спокойно повторяет свои слова, и они сходятся. Похоже, неправда — во второй карточке.`
+      : `${w.name} пожимает плечами: к этому противоречию он(а) отношения не имеет.`, ['clock-tick-slow'], 600))
+    return out
+  }
+
   /** Свидетель здесь — пустой список. Нет — патрульный вызывает его на допрос (реплика), остальным — null. */
   private summon(p: PlayerRecord, witnessId: string, at: string, kind: string | undefined, remote: boolean): Beat[] | null {
     if (this.witnessAt(witnessId) === at) return []
@@ -653,12 +784,17 @@ export class Game {
 
   private doSearch(p: PlayerRecord, spot: Spot, kind: string | undefined, force: boolean): Beat[] {
     const out: Beat[] = []
-    const where = `${p.name} — ${this.b.LOC.get(spot.locationId)!.name}, ${spot.name.toLowerCase()}.`
+    // «Коридор, корзина с бельём. Корзина с бельём стоит у ниши» — если находка начинается с того же, название места не повторяем
+    const stems = (t: string) => t.toLowerCase().replace(/[^а-яёa-z\s-]/g, ' ').split(/[\s-]+/).filter(w => w.length >= 4).map(w => w.slice(0, 5))
+    const nameStems = new Set(stems(spot.name))
+    const room = this.b.LOC.get(spot.locationId)!.name
+    const where = `${p.name} — ${room}, ${spot.name.toLowerCase()}.`
+    const whereFor = (text: string) => stems(text.split(/[.!?]/)[0] ?? '').slice(0, 6).some(w => nameStems.has(w)) ? `${p.name} — ${room}.` : where
     if (spot.locked && !this.searched.has(spot.id)) {
       const hasKey = !!spot.locked.keyItemId && this.items.has(spot.locked.keyItemId)
       const canForce = force && this.canForceLock(spot, kind) && (p.usesLeft ?? 0) > 0
       if (!hasKey && !canForce) {
-        out.push(this.narrate(`s_${p.id}_${this.round}`, `${where} ${spot.locked.text}`, ['door-knob']))
+        out.push(this.narrate(`s_${p.id}_${this.round}`, `${whereFor(spot.locked.text)} ${spot.locked.text}`, ['door-knob']))
         return out
       }
       if (!hasKey && canForce) { p.usesLeft!--; out.push(this.narrate(`s_${p.id}_${this.round}_f`, `${where} ${this.act(p, spot.locked.kind === 'digital' ? 'Защита сдаётся нетраннеру за минуту.' : 'Замок сдаётся взломщику за минуту.')}`, [spot.locked.kind === 'digital' ? 'static' : 'door-knob'])) }
@@ -673,7 +809,7 @@ export class Game {
 
     if (!this.searched.has(spot.id)) {
       this.searched.add(spot.id)
-      applyFind(spot.primary, `s_${p.id}_${this.round}_1`, where)
+      applyFind(spot.primary, `s_${p.id}_${this.round}_1`, whereFor(spot.primary.text))
       if (spot.hidden && kind === 'forensic') { this.hiddenDone.add(spot.id); applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, 'Криминалист смотрит глубже.') }
       else if (spot.hidden && this.smallBrigade) { this.hiddenDone.add(spot.id); applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, 'Рук мало — смотрят сразу внимательно.') }
     } else if (spot.hidden && !this.hiddenDone.has(spot.id)) {
@@ -717,9 +853,12 @@ export class Game {
     const w = this.b.WIT.get(witnessId), item = this.b.ITEM.get(itemId)
     const pr = this.S.presentations.find(x => x.witnessId === witnessId && x.itemId === itemId)
     if (!w || !item || !this.items.has(itemId)) return out
-    if (!pr) { out.push(this.narrate(`pr_${p.id}_${this.round}`, `Улика на столе: «${item.name}». ${w.name} пожимает плечами: это ничего не значит.`)); return out }
+    if (!pr) {
+      this.presented.add(`${w.id}:${itemId}`)
+      out.push(this.narrate(`pr_${p.id}_${this.round}`, `Улика на столе: «${item.name}». ${w.name} пожимает плечами: это ничего не значит.`)); return out
+    }
     if (this.presented.has(pr.id)) { out.push(this.narrate(`pr_${p.id}_${this.round}`, `«${item.name}» уже показывали. ${w.name} больше ничего не добавит.`)); return out }
-    if (!this.reqOk(pr.requires)) return out
+    if (!this.reqOk(pr.requires)) { out.push(this.narrate(`pr_${p.id}_${this.round}`, `Улика на столе: «${item.name}». ${w.name} смотрит на неё и молчит — пока ему нечего к этому добавить.`)); return out }
     if (!this.greeted.has(w.id)) { this.greeted.add(w.id); out.push(w.greeting) }
     this.presented.add(pr.id)
     this.addFact(pr.factId, p.id, { witnessId: w.id, locationId: this.witnessAt(w.id) })
@@ -772,7 +911,7 @@ export class Game {
       } else {
         this.attemptsLeft--
         const d = this.S.accusation.defenses[culprit]
-        if (d) { beats.push(d.beat); if (this.addFact(d.factId, 'обвинение', { witnessId: culprit }) && d.factId) beats.push(this.narrate('v_fact', `На доску ложится: «${this.b.FACT.get(d.factId)!.title}».`, ['drawer'])) }
+        if (d) { beats.push(d.beat); if (this.addFact(d.factId, 'обвинение', { witnessId: culprit }) && d.factId) beats.push({ ...this.narrate('v_fact', `На доску ложится: «${this.b.FACT.get(d.factId)!.title}».`, ['drawer']), facts: [d.factId] }) }
         if (this.attemptsLeft > 0) beats.push(this.narrate('v_wrong', this.b.info.lines.wrong, ['thunder-roll'], 800))
         else { this.outcome = 'failed'; beats.push(this.narrate('v_lost', this.b.info.lines.lost, ['thunder-clap', 'dawn'], 1200)) }
       }
@@ -830,9 +969,24 @@ export class Game {
       : a.type === 'verify' ? 'проверка показания'
       : a.type === 'coroner' ? 'медицинское заключение'
       : a.type === 'reporter' ? `прошлое: ${this.b.WIT.get(a.witnessId)?.name ?? '?'}`
+      : a.type === 'confront' ? `уличить: ${this.b.WIT.get(a.witnessId)?.name ?? '?'}`
       : 'способность'
-    const kind = a.type === 'search' || a.type === 'ask' || a.type === 'present' || a.type === 'wait' ? a.type : 'ability'
-    return { playerId: p.id, locationId: p.plan.locationId, kind, label: `${loc} · ${label}` }
+    const kind = a.type === 'search' || a.type === 'ask' || a.type === 'present' || a.type === 'confront' || a.type === 'wait' ? a.type : 'ability'
+    return { playerId: p.id, locationId: p.plan.locationId, kind, label: `${loc} · ${label}`, bonus: this.bonusLabel(p) ?? undefined }
+  }
+
+  private bonusLabel(p: PlayerRecord): string | null {
+    const a = p.bonus
+    if (!a) return null
+    return a.type === 'drone' ? `дрон → ${this.b.LOC.get(this.b.SPOT.get(a.spotId)?.locationId ?? '')?.name ?? '?'}`
+      : a.type === 'ask' || a.type === 'present' ? `вызов на допрос: ${this.b.WIT.get(a.witnessId)?.name ?? '?'}`
+      : a.type === 'archivist' ? 'архив: где искать'
+      : a.type === 'verify' ? 'проверка показания'
+      : a.type === 'coroner' ? 'медицинское заключение'
+      : a.type === 'reporter' ? `прошлое: ${this.b.WIT.get(a.witnessId)?.name ?? '?'}`
+      : a.type === 'intern' ? 'подслушать разговор'
+      : a.type === 'fixer' ? 'сделка с фиксером'
+      : 'способность'
   }
 
   publicState(): PublicState {
@@ -863,6 +1017,7 @@ export class Game {
       beatIndex: this.beatIndex,
       plans: players.map(p => this.planLabel(p)).filter((x): x is PlanSummary => !!x),
       proceedVotes: this.proceedVotes.size,
+      tutorialStep: this.tutorialStep,
       accusation: this.accusation,
       verdict: this.verdict,
       attemptsLeft: this.attemptsLeft,
@@ -895,12 +1050,16 @@ export class Game {
       })),
       witnesses: this.S.witnesses.filter(w => this.witnessAt(w.id) === l.id).map(w => ({
         id: w.id, name: w.name,
-        questions: this.S.questions.filter(q => q.witnessId === w.id && (q.initial || this.unlocked.has(q.id))).map(q => ({
-          id: q.id, text: q.text, asked: this.asked.has(q.id), locked: this.reqText(q.requires), canForce: kind === 'inspector' && (p.usesLeft ?? 0) > 0
-        })),
-        presents: this.S.presentations.filter(x => x.witnessId === w.id && this.items.has(x.itemId) && this.reqOk(x.requires)).map(x => ({
-          itemId: x.itemId, name: this.b.ITEM.get(x.itemId)!.name, done: this.presented.has(x.id)
-        }))
+        questions: this.S.questions.filter(q => q.witnessId === w.id && (q.initial || this.unlocked.has(q.id))).map(q => {
+          const locked = this.asked.has(q.id) ? null : this.reqHint(q.requires)
+          // текст закрытого вопроса — сам по себе подсказка: до открытия телефон его не получает
+          return { id: q.id, text: locked ? '' : q.text, asked: this.asked.has(q.id), locked, canForce: kind === 'inspector' && (p.usesLeft ?? 0) > 0 }
+        }),
+        presents: [...this.items].reverse().map(itemId => {
+          const pr = this.S.presentations.find(x => x.witnessId === w.id && x.itemId === itemId)
+          return { itemId, name: this.b.ITEM.get(itemId)?.name ?? '?', done: this.presented.has(pr ? pr.id : `${w.id}:${itemId}`), locked: pr && !this.presented.has(pr.id) ? this.reqHint(pr.requires) : null }
+        }),
+        confronts: this.linksOf(w.id).map(c => ({ linkId: c.id, text: c.text, done: this.confronted.has(`${w.id}:${c.id}`) }))
       }))
     }))
     // патрульному и аналитику больше не нужны подсказки о соседях и прогнозы: их способности — действия
@@ -912,7 +1071,8 @@ export class Game {
     return {
       id: p.id, name: p.name, ink: p.ink, photo: p.photo, ready: p.ready,
       detectiveId: p.detectiveId, ability: role?.ability ?? null, usesLeft: p.usesLeft,
-      locationId: p.locationId, planned: this.planLabel(p),
+      locationId: p.locationId, planned: this.planLabel(p), bonus: p.bonus ? { playerId: p.id, locationId: p.locationId, kind: 'ability', label: this.bonusLabel(p)! } : null,
+      proceeded: this.proceedVotes.has(p.id),
       options,
       items: [...this.items].map(i => this.b.ITEM.get(i)!).filter(Boolean),
       lieMarks: this.lieMarks.get(p.id) ?? {},
@@ -940,7 +1100,7 @@ export class Game {
         caseId: this.S.id, screen: this.screen, round: this.round, roundsTotal: this.roundsTotal, brigade: this.brigade, phaseMs: this.phaseMs, startedAt: this.startedAt, deadline: this.deadline, paused: this.paused, pauseLeft: this.pauseLeft,
         settings: this.settings, board: [...this.board.entries()], pins: [...this.pins], links: [...this.links], items: [...this.items],
         searched: [...this.searched], hiddenDone: [...this.hiddenDone], memoryDone: [...this.memoryDone], asked: [...this.asked], presented: [...this.presented],
-        unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()],
+        unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()], confronted: [...this.confronted], tutorialStep: this.tutorialStep,
         beats: this.beats, beatIndex: this.beatIndex, proceedVotes: [...this.proceedVotes], accusation: this.accusation, verdict: this.verdict,
         attemptsLeft: this.attemptsLeft, hintsUsed: this.hintsUsed, hintsFired: [...this.hintsFired], eventsFired: [...this.eventsFired], outcome: this.outcome
       }
@@ -954,18 +1114,18 @@ export class Game {
       if (!d || !Array.isArray(d.players)) return
       // дело из снимка убрали из папки дел — партию не продолжить, игроки остаются в меню
       if (d.caseId && !CASES[d.caseId]) {
-        for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: null, detectiveId: null, usesLeft: null, ready: false, locationId: this.startLoc() })
+        for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: null, bonus: null, detectiveId: null, usesLeft: null, ready: false, locationId: this.startLoc() })
         this.store.log(`дело ${d.caseId} не найдено — комната возвращена в меню`)
         return
       }
       if (d.caseId) this.loadCase(d.caseId)
-      for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: p.plan ?? null, locationId: this.b.LOC.has(p.locationId) ? p.locationId : this.startLoc() })
+      for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: p.plan ?? null, bonus: p.bonus ?? null, locationId: this.b.LOC.has(p.locationId) ? p.locationId : this.startLoc() })
       this.screen = d.screen ?? 'menu'; this.round = d.round ?? 0; this.roundsTotal = d.roundsTotal ?? roundsFor(6); this.brigade = d.brigade ?? 0; this.phaseMs = d.phaseMs ?? null; this.startedAt = d.startedAt ?? 0
       this.paused = !!d.paused; this.pauseLeft = d.pauseLeft ?? 0
       this.settings = { ...this.settings, ...(d.settings ?? {}) }
       this.board = new Map(d.board ?? []); this.pins = new Set(d.pins ?? []); this.links = new Set(d.links ?? []); this.items = new Set(d.items ?? [])
       this.searched = new Set(d.searched ?? []); this.hiddenDone = new Set(d.hiddenDone ?? []); this.memoryDone = new Set(d.memoryDone ?? []); this.asked = new Set(d.asked ?? [])
-      this.presented = new Set(d.presented ?? []); this.unlocked = new Set(d.unlocked ?? []); this.greeted = new Set(d.greeted ?? [])
+      this.presented = new Set(d.presented ?? []); this.unlocked = new Set(d.unlocked ?? []); this.greeted = new Set(d.greeted ?? []); this.confronted = new Set(d.confronted ?? []); this.tutorialStep = d.tutorialStep ?? 0
       this.lieMarks = new Map(d.lieMarks ?? []); this.beats = d.beats ?? []; this.beatIndex = d.beatIndex ?? 0; this.proceedVotes = new Set(d.proceedVotes ?? [])
       this.accusation = d.accusation ?? null; this.verdict = d.verdict ?? null
       this.attemptsLeft = d.attemptsLeft ?? 2; this.hintsUsed = d.hintsUsed ?? 0; this.hintsFired = new Set(d.hintsFired ?? []); this.eventsFired = new Set(d.eventsFired ?? []); this.outcome = d.outcome ?? null

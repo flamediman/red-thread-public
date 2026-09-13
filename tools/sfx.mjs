@@ -44,12 +44,8 @@ const PACKS = {
     'gasp': ['Woman gasps in shock, close microphone, clean', 1.5],
     'thunder-roll': ['Distant thunder over a huge rainy megacity with faint sirens, low rumble', 5],
     'thunder-clap': ['Sharp thunder crack over a cyberpunk city with electrical buzz of neon signs flickering', 3],
-    'rain-heavy': ['Heavy rain on a neon megacity street at night: rain on metal awnings, distant hover traffic, electric hum of neon signs, seamless ambience', 22, true],
-    'rain-soft': ['Light rain in a cyberpunk alley at night: soft drizzle, dripping pipes, far away synth music from a bar, neon buzz, seamless ambience', 22, true],
-    'wind-haunted': ['Wind howling between skyscrapers with faint mechanical whine and distant drones, seamless ambience', 22, true],
-    'room-tone': ['Server room ambience: cooling fans, soft electrical hum, occasional data clicks, seamless', 22, true],
-    'dawn': ['Early morning in a cyberpunk city after rain: distant traffic waking, birds and a quiet synth pad drone, seamless', 22, true],
-    'ocean-pier': ['Industrial harbor at dawn in a futuristic city: water lapping on concrete, distant cranes and horns, seamless', 22, true],
+    // длинные фоны (дождь, ветер, гул помещения, рассвет, пристань) генератор делает не длиннее 22 с и с артефактами:
+    // петля слышна и звучит «урезанно». Для них остаются общие записи из public/sfx.
     'steps-wood': ['Footsteps on wet metal grating, slow and steady', 3],
     'typewriter': ['Fast typing on a mechanical cyberdeck keyboard with soft synthetic confirmation beeps', 3],
     'match': ['Electronic cigarette lighter click and plasma coil hiss', 1.5],

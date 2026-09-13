@@ -12,23 +12,49 @@ export const KIND_LABEL: Record<FactKind, string> = {
   background: 'Прошлое'
 }
 
-export function useBoardFilter(state: Ref<PublicState | null> | ComputedRef<PublicState | null>) {
+/** Карточки и нити, которые разбор ещё не показал: они ложатся на доску вместе со своей репликой на экране.
+    at — реплика на экране (экран знает её сам, телефоны — из состояния). */
+export function unrevealed(s: PublicState | null, at?: number) {
+  const facts = new Set<string>(), links = new Set<string>()
+  if (!s || (s.screen !== 'resolve' && s.screen !== 'verdict')) return { facts, links }
+  const current = at ?? s.beatIndex
+  s.beats.forEach((b, i) => {
+    if (i <= current) return
+    for (const f of b.facts ?? []) facts.add(f)
+    for (const l of b.links ?? []) links.add(l)
+  })
+  return { facts, links }
+}
+
+export function useBoardFilter(state: Ref<PublicState | null> | ComputedRef<PublicState | null>, beatAt?: Ref<number | null>) {
+  /* выбор фильтра — сразу (кнопка загорается без задержки), список перестраивается кадром позже */
   const view = ref<BoardView>('all')
   const kind = ref<FactKind | null>(null)
   /** 'w:<id>' — человек, 'l:<id>' — место */
   const source = ref<string | null>(null)
+  const applied = shallowRef({ view: view.value, kind: kind.value, source: source.value })
+  let frame = 0
+  watch([view, kind, source], () => {
+    if (import.meta.server) return
+    cancelAnimationFrame(frame)
+    // два кадра: сначала отрисуется нажатая кнопка и приглушённый список, потом тяжёлая перестройка
+    frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { applied.value = { view: view.value, kind: kind.value, source: source.value } }) })
+  })
+  const pending = computed(() => applied.value.view !== view.value || applied.value.kind !== kind.value || applied.value.source !== source.value)
 
-  const cards = computed(() => state.value?.board.cards ?? [])
-  const links = computed(() => state.value?.board.links ?? [])
+  const hidden = computed(() => unrevealed(state.value, beatAt?.value ?? undefined))
+  const cards = computed(() => (state.value?.board.cards ?? []).filter(c => !hidden.value.facts.has(c.id)))
+  const links = computed(() => (state.value?.board.links ?? []).filter(l => !hidden.value.links.has(l.id) && !hidden.value.facts.has(l.facts[0]) && !hidden.value.facts.has(l.facts[1])))
   const linked = computed(() => new Set(links.value.flatMap(l => l.facts)))
   const lastRound = computed(() => cards.value.reduce((m, c) => Math.max(m, c.round), -1))
 
   const byView = (v: BoardView) => cards.value.filter(c =>
     v === 'all' ? true : v === 'new' ? c.round === lastRound.value : v === 'pinned' ? c.pinned : linked.value.has(c.id))
 
-  const visible = computed(() => byView(view.value).filter(c =>
-    (!kind.value || c.kind === kind.value)
-    && (!source.value || (source.value.startsWith('w:') ? c.witnessId === source.value.slice(2) : c.locationId === source.value.slice(2)))))
+  const visible = computed(() => {
+    const { view: v, kind: k, source: src } = applied.value
+    return byView(v).filter(c => (!k || c.kind === k) && (!src || (src.startsWith('w:') ? c.witnessId === src.slice(2) : c.locationId === src.slice(2))))
+  })
 
   const views = computed(() => ([
     { id: 'all', label: 'Все' }, { id: 'new', label: 'Новые' }, { id: 'pinned', label: '★ Важные' }, { id: 'linked', label: 'Противоречия' }
@@ -55,5 +81,5 @@ export function useBoardFilter(state: Ref<PublicState | null> | ComputedRef<Publ
   const filtered = computed(() => view.value !== 'all' || !!kind.value || !!source.value)
   function reset() { view.value = 'all'; kind.value = null; source.value = null }
 
-  return { view, kind, source, visible, visibleLinks, views, kinds, people, places, linked, lastRound, filtered, reset }
+  return { view, kind, source, pending, cards, links, visible, visibleLinks, views, kinds, people, places, linked, lastRound, filtered, reset }
 }

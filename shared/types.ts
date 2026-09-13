@@ -27,6 +27,10 @@ export interface Beat {
   itemName?: string
   /** чей это ход */
   playerId?: string
+  /** карточки доски, которые ложатся вместе с этой репликой: до неё экран и телефоны их не показывают */
+  facts?: string[]
+  /** противоречия, которые натягиваются этой репликой */
+  links?: string[]
 }
 
 /* ── Сыщики ─────────────────────────────────────────────────── */
@@ -382,7 +386,7 @@ export interface GameRecord {
 /* ── Публичное состояние (без разгадки) ─────────────────────── */
 
 export type Screen =
-  | 'menu' | 'lobby' | 'prologue' | 'plan' | 'resolve' | 'discuss'
+  | 'menu' | 'lobby' | 'tutorial' | 'prologue' | 'plan' | 'resolve' | 'discuss'
   | 'accuse' | 'verdict' | 'epilogue' | 'final'
 
 export interface Player {
@@ -440,8 +444,10 @@ export interface PublicLocation extends Location {
 export interface PlanSummary {
   playerId: string
   locationId: string
-  kind: 'search' | 'ask' | 'present' | 'ability' | 'wait'
+  kind: 'search' | 'ask' | 'present' | 'confront' | 'ability' | 'wait'
   label: string
+  /** способность сверх хода */
+  bonus?: string
 }
 
 export interface AccusationState {
@@ -485,6 +491,8 @@ export interface PublicState {
     roles: 'pick' | 'random'
     /** с таймерами фаз или только ограничение ходами */
     timers: 'on' | 'off'
+    /** перед прологом — короткое обучение на экране */
+    tutorial: 'on' | 'off'
   }
   players: Player[]
   detectives: DetectiveRole[]
@@ -499,6 +507,8 @@ export interface PublicState {
   plans: PlanSummary[]
   /** голоса «дальше» на совещании */
   proceedVotes: number
+  /** шаг обучения на экране (screen === 'tutorial') */
+  tutorialStep: number
   accusation: AccusationState | null
   verdict: Verdict | null
   attemptsLeft: number
@@ -531,6 +541,10 @@ export interface YouState {
   usesLeft: number | null
   locationId: string
   planned: PlanSummary | null
+  /** способность, выбранная сверх хода в этом раунде */
+  bonus: PlanSummary | null
+  /** проголосовал за «дальше» на совещании */
+  proceeded: boolean
   /** что доступно в каждой локации */
   options: LocationOptions[]
   /** предметы в общем распоряжении бригады */
@@ -553,8 +567,12 @@ export interface LocationOptions {
   witnesses: {
     id: string
     name: string
+    /** у закрытого вопроса текст не приходит (в нём подсказка) — только что нужно, чтобы его открыть */
     questions: { id: string; text: string; asked: boolean; locked: string | null; canForce: boolean }[]
-    presents: { itemId: string; name: string; done: boolean }[]
+    /** любая улика бригады: locked — чего не хватает, чтобы свидетелю было что сказать */
+    presents: { itemId: string; name: string; done: boolean; locked: string | null }[]
+    /** найденные противоречия, в которых замешаны слова этого свидетеля */
+    confronts: { linkId: string; text: string; done: boolean }[]
   }[]
 }
 
@@ -571,6 +589,8 @@ export type PlanAction =
   | { type: 'coroner' }
   | { type: 'drone'; spotId: string }
   | { type: 'fixer' }
+  /** уличить свидетеля во лжи найденным противоречием */
+  | { type: 'confront'; witnessId: string; linkId: string }
   | { type: 'wait' }
 
 export type ClientMessage =
@@ -583,6 +603,9 @@ export type ClientMessage =
   | { type: 'pickDetective'; detectiveId: string | null }
   | { type: 'plan'; locationId: string; action: PlanAction }
   | { type: 'unplan' }
+  /** способность со счётчиком — действие сверх хода в этом раунде */
+  | { type: 'bonus'; action: PlanAction }
+  | { type: 'unbonus' }
   | { type: 'proceed' }
   | { type: 'callAccuse' }
   | { type: 'vote'; culprit?: string; method?: string; motive?: string }
@@ -599,6 +622,8 @@ export type ClientMessage =
   | { type: 'kick'; playerId: string }
   | { type: 'settings'; settings: Partial<PublicState['settings']> }
   | { type: 'selectCase'; caseId: string }
+  /** ведущий: шаг обучения (число шагов и больше — к прологу) */
+  | { type: 'tutorial'; step: number }
   | { type: 'toMenu' }
 
 export type ServerMessage =

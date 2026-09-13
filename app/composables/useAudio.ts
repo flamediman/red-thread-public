@@ -57,6 +57,8 @@ function ensure(): AudioContext | null {
     ctx = new AC()
     ambFilter = ctx.createBiquadFilter()
     ambFilter.type = 'lowpass'
+    // пологий срез без резонанса: дождь за окном глуше, но не превращается в гул
+    ambFilter.Q.value = 0.5
     ambFilter.frequency.value = 18000
     ambRoom = ctx.createGain()
     ambFilter.connect(ambRoom).connect(ctx.destination)
@@ -186,8 +188,9 @@ export function useAudio() {
   /** Улица или помещение: в помещении дождь и ветер глохнут, как за стеклом; переход плавный. */
   function setOutdoors(outdoors: boolean) {
     const c = ensure(); if (!c || !ambFilter || !ambRoom) return
-    ambFilter.frequency.setTargetAtTime(outdoors ? 18000 : 650, c.currentTime, 0.6)
-    ambRoom.gain.setTargetAtTime(outdoors ? 1 : 0.6, c.currentTime, 0.6)
+    // в помещении дождь слышен через стекло: верх приглушён, а не срезан до 650 Гц, как раньше, — иначе звучит «урезанно»
+    ambFilter.frequency.setTargetAtTime(outdoors ? 18000 : 3200, c.currentTime, 0.6)
+    ambRoom.gain.setTargetAtTime(outdoors ? 1 : 0.5, c.currentTime, 0.6)
   }
 
   /** Атмосфера: набор петель, которые должны звучать сейчас. Лишние затухают, новые всплывают. */

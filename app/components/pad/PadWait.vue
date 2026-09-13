@@ -36,21 +36,23 @@ const confirmAccuse = ref(false)
       <p class="wait__text">{{ text }}</p>
     </div>
     <template v-else>
-      <p class="wait__text" style="text-align:center">{{ text }}<template v-if="secondsLeft != null"> · {{ secondsLeft }} с</template></p>
+      <p class="wait__text" style="text-align:center">{{ text }}<template v-if="state.settings.timers === 'on' && secondsLeft != null"> · {{ secondsLeft }} с</template></p>
       <div class="pad-board__actions">
-        <button class="btn btn--ghost btn--small" style="flex:1" type="button" @click="emit('send', { type: 'proceed' })">Дальше ({{ state.proceedVotes }})</button>
+        <button class="btn btn--small pad-board__proceed" :class="you.proceeded ? 'pad-board__proceed--on' : 'btn--ghost'" style="flex:1" type="button" :aria-pressed="you.proceeded" @click="emit('send', { type: 'proceed' })">
+          {{ you.proceeded ? '✓ Вы за «дальше»' : 'Дальше' }} · {{ state.proceedVotes }} из {{ state.players.filter(p => p.connected).length }}
+        </button>
         <button class="btn btn--stamp btn--small" style="flex:1" type="button" @click="confirmAccuse = true">Собрать всех</button>
       </div>
     </template>
 
     <div class="pad-board__tabs">
-      <button type="button" class="pad-board__tab" :class="{ 'pad-board__tab--on': tab === 'board' }" @click="tab = 'board'">Доска · {{ state.board.cards.length }}</button>
+      <button type="button" class="pad-board__tab" :class="{ 'pad-board__tab--on': tab === 'board' }" @click="tab = 'board'">Доска · {{ f.cards.value.length }}</button>
       <button type="button" class="pad-board__tab" :class="{ 'pad-board__tab--on': tab === 'items' }" @click="tab = 'items'">Улики · {{ you.items.length }}</button>
     </div>
 
     <template v-if="tab === 'board'">
       <!-- фильтры листаются вбок -->
-      <div v-if="state.board.cards.length" class="pad-filters">
+      <div v-if="f.cards.value.length" class="pad-filters">
         <button v-for="v in f.views.value" :key="v.id" type="button" class="chip" :class="{ 'chip--on': f.view.value === v.id }" :disabled="!v.count && v.id !== 'all'" @click="f.view.value = v.id">
           {{ v.label }} <b>{{ v.count }}</b>
         </button>
@@ -67,9 +69,9 @@ const confirmAccuse = ref(false)
         </button>
       </div>
 
-      <div class="pad-board__list">
+      <div class="pad-board__list" :class="{ 'pad-board__list--pending': f.pending.value }">
         <div v-for="l in f.visibleLinks.value" :key="l.id" class="board__link">{{ l.text }}</div>
-        <p v-if="!state.board.cards.length" class="lobby__empty">Пока пусто.</p>
+        <p v-if="!f.cards.value.length" class="lobby__empty">Пока пусто.</p>
         <p v-else-if="!cards.length" class="lobby__empty">Под этот фильтр ничего не подходит. <button type="button" class="pad-board__reset" @click="f.reset()">Сбросить</button></p>
         <div
           v-for="c in cards"

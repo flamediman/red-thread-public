@@ -60,8 +60,11 @@ const caseHistory = computed(() => props.state.history.filter(g => g.caseId === 
 const knowers = computed(() => [...new Set(caseHistory.value.filter(g => g.outcome !== 'failed').flatMap(g => g.players))].slice(0, 12))
 
 /* настройки партии: название, варианты и пояснение под выбранный вариант */
-type Opt = { key: 'hints' | 'stepping' | 'timers' | 'roles'; name: string; values: { id: string; label: string }[]; notes: Partial<Record<string, string>> }
+type Opt = { key: 'hints' | 'stepping' | 'timers' | 'roles' | 'tutorial'; name: string; values: { id: string; label: string }[]; notes: Partial<Record<string, string>> }
 const options = computed<Opt[]>(() => [
+  { key: 'tutorial', name: 'Обучение',
+    values: [{ id: 'on', label: 'показать' }, { id: 'off', label: 'без' }],
+    notes: { on: 'Перед прологом — шесть коротких экранов о том, как играть. Листает ведущий, у каждого на телефоне — его сыщик.', off: 'Сразу к истории — для тех, кто уже играл.' } },
   { key: 'stepping', name: 'Смена реплик',
     values: [{ id: 'manual', label: 'вручную' }, { id: 'auto', label: 'сама' }],
     notes: { manual: 'Реплика не сменится, пока ведущий не нажмёт «Дальше» или пробел.', auto: 'Реплики идут одна за другой в темпе озвучки.' } },

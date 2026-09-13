@@ -2,16 +2,34 @@
 import type { PublicState } from '#shared/types'
 import { ART, tilt } from '~/utils/art'
 
-const props = withDefaults(defineProps<{ state: PublicState; mode?: 'strip' | 'full' }>(), { mode: 'full' })
+const props = withDefaults(defineProps<{ state: PublicState; mode?: 'strip' | 'full'; beatAt?: number | null }>(), { mode: 'full', beatAt: null })
 
-const f = useBoardFilter(computed(() => props.state))
+const f = useBoardFilter(computed(() => props.state), computed(() => props.beatAt))
 const nameOf = (id?: string) => id ? props.state.witnesses.find(w => w.id === id)?.name.split(' ')[0] ?? props.state.locations.find(l => l.id === id)?.name ?? '' : ''
 
 /* в полосе внизу экрана — свежие карточки первыми; на доске — по порядку, отмеченные командой впереди */
 const ordered = computed(() => {
-  const list = props.mode === 'strip' ? [...props.state.board.cards].reverse() : f.visible.value
+  const list = props.mode === 'strip' ? [...f.cards.value].reverse() : f.visible.value
   return props.mode === 'strip' ? list : [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.round - b.round)
 })
+
+/* карточка, которой не было при прошлой отрисовке, въезжает; при смене фильтра ничего не анимируется — так быстрее */
+const seen = new Set<string>()
+const entering = ref(new Set<string>())
+let settle: ReturnType<typeof setTimeout> | null = null
+watch(() => f.cards.value.map(c => c.id), (ids) => {
+  const first = seen.size === 0
+  // на полной доске при открытии вспыхивают карточки последнего раунда, дальше — только новые
+  const fresh = first
+    ? (props.mode === 'full' ? f.cards.value.filter(c => c.round === f.lastRound.value).map(c => c.id) : [])
+    : ids.filter(id => !seen.has(id))
+  for (const id of ids) seen.add(id)
+  if (!fresh.length) return
+  entering.value = new Set(fresh)
+  if (settle) clearTimeout(settle)
+  settle = setTimeout(() => { entering.value = new Set() }, 2600)
+}, { immediate: true })
+onBeforeUnmount(() => { if (settle) clearTimeout(settle) })
 
 /* красные нити между связанными карточками — рисуются по реальным координатам после раскладки */
 const grid = ref<HTMLElement | null>(null)
@@ -42,12 +60,12 @@ watch(() => [ordered.value.map(c => c.id).join(), f.visibleLinks.value.length, p
   <div class="board" :class="{ 'board--strip': mode === 'strip' }">
     <div class="board__head">
       <p class="board__title label">
-        Доска <span class="board__count tabnum">{{ state.board.cards.length }}</span> улик
-        <template v-if="state.board.links.length">· <span class="board__count tabnum">{{ state.board.links.length }}</span> {{ state.board.links.length === 1 ? 'противоречие' : 'противоречий' }}</template>
+        Доска <span class="board__count tabnum">{{ f.cards.value.length }}</span> улик
+        <template v-if="f.links.value.length">· <span class="board__count tabnum">{{ f.links.value.length }}</span> {{ f.links.value.length === 1 ? 'противоречие' : 'противоречий' }}</template>
       </p>
 
       <!-- фильтры: вид, тип, человек или место -->
-      <div v-if="mode === 'full' && state.board.cards.length" class="filters">
+      <div v-if="mode === 'full' && f.cards.value.length" class="filters">
         <button v-for="v in f.views.value" :key="v.id" type="button" class="chip" :class="{ 'chip--on': f.view.value === v.id }" :disabled="!v.count && v.id !== 'all'" @click="f.view.value = v.id">
           {{ v.label }} <b class="tabnum">{{ v.count }}</b>
         </button>
@@ -67,16 +85,16 @@ watch(() => [ordered.value.map(c => c.id).join(), f.visibleLinks.value.length, p
       <div v-for="l in f.visibleLinks.value" :key="l.id" class="board__link">{{ l.text }}</div>
     </div>
     <div class="board__scroll">
-      <div ref="grid" class="board__cards">
-        <p v-if="!state.board.cards.length" class="lobby__empty">Пока пусто. Улики лягут сюда после первого раунда.</p>
+      <div ref="grid" class="board__cards" :class="{ 'board__cards--pending': f.pending.value }">
+        <p v-if="!f.cards.value.length" class="lobby__empty">Пока пусто. Улики лягут сюда после первого раунда.</p>
         <p v-else-if="!ordered.length" class="lobby__empty">Под этот фильтр ничего не подходит.</p>
-        <TransitionGroup name="list">
+        <template v-if="ordered.length">
           <div
             v-for="c in ordered"
             :key="c.id"
             :data-card="c.id"
             class="card"
-            :class="[`card--${c.kind}`, { 'card--linked': f.linked.value.has(c.id), 'card--fresh': mode === 'full' && c.round === f.lastRound.value, 'card--pinned': c.pinned }]"
+            :class="[`card--${c.kind}`, { 'card--linked': f.linked.value.has(c.id), 'card--fresh': mode === 'full' && c.round === f.lastRound.value, 'card--pinned': c.pinned, 'card--enter': entering.has(c.id) }]"
             :style="{ '--tilt': tilt(c.id, mode === 'full' ? 1.6 : 0.8) }"
           >
             <i class="card__kind" />
@@ -86,7 +104,7 @@ watch(() => [ordered.value.map(c => c.id).join(), f.visibleLinks.value.length, p
             <div class="card__meta">{{ nameOf(c.witnessId) || nameOf(c.locationId) || c.by }} · раунд {{ c.round + 1 }}</div>
             <span v-if="c.verdict" class="card__verdict" :class="c.verdict.lie ? 'card__verdict--lie' : 'card__verdict--truth'">{{ c.verdict.lie ? 'ложь' : 'правда' }}</span>
           </div>
-        </TransitionGroup>
+        </template>
         <svg v-if="mode === 'full' && strings.length" class="board__strings" :width="size.w" :height="size.h" aria-hidden="true">
           <template v-for="s in strings" :key="s.id">
             <path :d="s.d" />

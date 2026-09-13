@@ -32,7 +32,7 @@ const TOKENS = []   // боты переподключаются под теми
 
 function runGame() {
   return new Promise(resolve => {
-    let host = null, hostState = null, started = false, finished = false, lastScreen = '', room = null, spawned = false
+    let host = null, hostState = null, started = false, finished = false, lastScreen = '', room = null, spawned = false, lastTutorial = -1
     const kicked = new Set()
     const bots = []
     const stats = { rounds: 0, wrongAccusations: 0 }
@@ -68,6 +68,8 @@ function runGame() {
           started = true
           setTimeout(() => ws.send(JSON.stringify({ type: 'start' })), 300)
         }
+        // обучение перед прологом боты пролистывают
+        if (s.screen === 'tutorial' && s.tutorialStep !== lastTutorial) { lastTutorial = s.tutorialStep; setTimeout(() => ws.send(JSON.stringify({ type: 'tutorial', step: 99 })), 200) }
         // экран сам шлёт beatsDone, когда реплики дочитаны; тут — ускоренно
         if ((FAST || s.settings.stepping === 'manual') && ['prologue', 'resolve', 'verdict', 'epilogue'].includes(s.screen) && !s.beatsDoneSent && !process.env.WATCH) {
           s.beatsDoneSent = true
@@ -89,11 +91,13 @@ function runGame() {
     function spawnBots() {
     for (let i = 0; i < COUNT; i++) {
       const name = NAMES[i % NAMES.length]
-      let planKey = null, votedKey = null, picked = false, lastHello = 0
+      let planKey = null, votedKey = null, picked = false, pickedAt = 0, lastHello = 0
       const ws = connect(
         ws => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] })),
         async (m, ws) => {
           if (m.type === 'welcome') { TOKENS[i] = m.token; return }
+          // лобби занято игроками прошлого прогона — экран их уберёт, пробуем войти ещё раз
+          if (m.type === 'kicked') { setTimeout(() => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] })), 1500); return }
           // сервер сменил дело и сбросил состав — зайти в лобби заново
           if (m.type === 'state' && !m.you && TOKENS[i] && m.state.screen === 'lobby' && Date.now() - lastHello > 1500) {
             lastHello = Date.now(); picked = false
@@ -103,8 +107,11 @@ function runGame() {
           if (m.type !== 'state' || !m.you) return
           const { state, you } = m
           if (state.screen === 'lobby') {
+            // ведущий сменил дело — роли и готовность сброшены, выбираем заново
+            if (picked && !you.ready && !you.detectiveId && Date.now() - pickedAt > 2000) picked = false
             if (!picked) {
               picked = true
+              pickedAt = Date.now()
               const free = state.detectives.filter(d => !state.players.some(p => p.detectiveId === d.id))
               await sleep(100 + i * 60)
               ws.send(JSON.stringify({ type: 'pickDetective', detectiveId: free[i % free.length]?.id ?? null }))
@@ -119,6 +126,8 @@ function runGame() {
             planKey = key
             await sleep(150 + Math.random() * 500)
             ws.send(JSON.stringify(choosePlan(state, you)))
+            const extra = chooseBonus(state, you)
+            if (extra) ws.send(JSON.stringify(extra))
             return
           }
           if (state.screen === 'accuse') {
@@ -142,21 +151,9 @@ function runGame() {
         for (const s of loc.spots) if (!s.searched && (!s.locked || s.canUnlock)) acts.push({ locationId: loc.locationId, action: { type: 'search', spotId: s.id, force: !!s.locked } })
         for (const w of loc.witnesses) {
           for (const q of w.questions) if (!q.asked && (!q.locked || q.canForce)) acts.push({ locationId: loc.locationId, action: { type: 'ask', witnessId: w.id, questionId: q.id, force: !!q.locked } })
-          for (const p of w.presents) if (!p.done) acts.push({ locationId: loc.locationId, action: { type: 'present', witnessId: w.id, itemId: p.itemId }, weight: 3 })
+          for (const p of w.presents) if (!p.done && !p.locked) acts.push({ locationId: loc.locationId, action: { type: 'present', witnessId: w.id, itemId: p.itemId } })
+          for (const c of w.confronts ?? []) if (!c.done) acts.push({ locationId: loc.locationId, action: { type: 'confront', witnessId: w.id, linkId: c.linkId }, weight: 3 })
         }
-      }
-      // способности тоже пробуем: так прогон ловит ошибки в новых действиях
-      const kind = you.ability?.kind, left = you.usesLeft == null || you.usesLeft > 0
-      if (left && Math.random() < 0.25) {
-        const cards = state.board.cards
-        if (kind === 'coroner') return { type: 'plan', locationId: you.locationId, action: { type: 'coroner' } }
-        if (kind === 'archivist' && cards.length) return { type: 'plan', locationId: you.locationId, action: { type: 'archivist', factId: pick(cards).id } }
-        if (kind === 'tracker') { const t = cards.filter(c => c.kind === 'testimony' && !c.verdict); if (t.length) return { type: 'plan', locationId: you.locationId, action: { type: 'verify', factId: pick(t).id } } }
-        if (kind === 'reporter') return { type: 'plan', locationId: you.locationId, action: { type: 'reporter', witnessId: pick(state.witnesses).id } }
-        if (kind === 'intern') return { type: 'plan', locationId: you.locationId, action: { type: 'intern' } }
-        if (kind === 'fixer' && you.market.length) return { type: 'plan', locationId: you.locationId, action: { type: 'fixer' } }
-        if (kind === 'patrol') { const far = acts.filter(a => a.action.type === 'ask' && a.locationId !== you.locationId); if (far.length) { const a = pick(far); return { type: 'plan', locationId: you.locationId, action: { ...a.action, remote: true } } } }
-        if (kind === 'drone') { const sp = acts.filter(a => a.action.type === 'search' && a.locationId !== you.locationId); if (sp.length) return { type: 'plan', locationId: you.locationId, action: { type: 'drone', spotId: pick(sp).action.spotId } } }
       }
       if (!acts.length) return { type: 'plan', locationId: you.locationId, action: { type: 'wait' } }
       let chosen
@@ -166,6 +163,25 @@ function runGame() {
         chosen = pick(weighted)
       } else chosen = pick(acts)
       return { type: 'plan', locationId: chosen.locationId, action: chosen.action }
+    }
+
+    /** способность со счётчиком — отдельным сообщением, сверх хода */
+    function chooseBonus(state, you) {
+      const kind = you.ability?.kind
+      if (!(you.usesLeft > 0) || Math.random() > 0.35) return null
+      const cards = state.board.cards
+      const spots = you.options.flatMap(o => o.spots.filter(s => s.stage !== 'done' && !s.locked))
+      const questions = you.options.flatMap(o => o.witnesses.flatMap(w => w.questions.filter(q => !q.asked && !q.locked).map(q => ({ w, q }))))
+      const bonus = action => ({ type: 'bonus', action })
+      if (kind === 'coroner') return bonus({ type: 'coroner' })
+      if (kind === 'archivist' && cards.length) return bonus({ type: 'archivist', factId: pick(cards).id })
+      if (kind === 'tracker') { const t = cards.filter(c => c.kind === 'testimony' && !c.verdict); if (t.length) return bonus({ type: 'verify', factId: pick(t).id }) }
+      if (kind === 'reporter') return bonus({ type: 'reporter', witnessId: pick(state.witnesses).id })
+      if (kind === 'intern') return bonus({ type: 'intern' })
+      if (kind === 'fixer' && you.market.length) return bonus({ type: 'fixer' })
+      if (kind === 'patrol' && questions.length) { const x = pick(questions); return bonus({ type: 'ask', witnessId: x.w.id, questionId: x.q.id, remote: true }) }
+      if (kind === 'drone' && spots.length) return bonus({ type: 'drone', spotId: pick(spots).id })
+      return null
     }
 
     function chooseVote(state) {

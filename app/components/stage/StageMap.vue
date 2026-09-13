@@ -51,13 +51,13 @@ const planned = computed(() => plans.value.filter(p => p.plan).length)
 
     <aside class="map__side">
       <div class="plans">
-        <div class="plans__timer tabnum" :class="{ 'plans__timer--low': secondsLeft != null && secondsLeft <= 10 }">
-          {{ secondsLeft ?? '—' }}<small>секунд на решение</small>
+        <div v-if="state.settings.timers === 'on' && secondsLeft != null" class="plans__timer tabnum" :class="{ 'plans__timer--low': secondsLeft <= 10 }">
+          {{ secondsLeft }}<small>секунд на решение</small>
         </div>
         <p class="label plans__title">Ходы раунда</p>
         <div v-for="p in plans" :key="p.id" class="plans__item" :class="{ 'plans__item--pending': !p.plan }">
           <PlayerAvatar :id="p.id" :name="p.name" :ink="p.ink" :photo="p.photo" :detective-id="p.detectiveId" size="xs" />
-          <span><b>{{ p.name }}</b> <template v-if="p.plan">— {{ p.plan.label }}</template><template v-else>думает…</template></span>
+          <span><b>{{ p.name }}</b> <template v-if="p.plan">— {{ p.plan.label }}<template v-if="p.plan.bonus"> <i class="plans__bonus">+ {{ p.plan.bonus }}</i></template></template><template v-else>думает…</template></span>
         </div>
         <div class="plans__count">
           <p class="label">Выбрали {{ planned }} из {{ plans.length }}</p>

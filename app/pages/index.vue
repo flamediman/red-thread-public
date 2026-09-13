@@ -57,10 +57,13 @@ const round = computed(() => state.value?.round ?? 0)
 
 /* ── фон: фотография по фазе и по текущей реплике ── */
 const currentBeat = ref<Beat | null>(null)
+/** какая реплика сейчас на экране — карточки доски внизу открываются вместе с ней */
+const beatHere = ref<number | null>(null)
 const lastLocation = ref<string | null>(null)
 /** сцена сообщает, какая реплика на экране; сервер запоминает — после перезагрузки продолжим с неё */
 function onBeat(b: Beat | null, index: number) {
   currentBeat.value = b
+  beatHere.value = b ? index : null
   if (b) send({ type: 'beatAt', index, beatId: b.id })
 }
 watch(currentBeat, b => { if (b?.locationId) lastLocation.value = b.locationId })
@@ -69,14 +72,14 @@ const backdrop = computed(() => {
   const at = currentBeat.value?.locationId
   // пролог — как ролик: у каждой реплики свой кадр
   if (s === 'prologue') return at && at !== 'cover' ? ART.location(at) : ART.cover
-  if (s === 'menu' || s === 'lobby' || s === 'plan') return ART.cover
+  if (s === 'menu' || s === 'lobby' || s === 'plan' || s === 'tutorial') return ART.cover
   if (s === 'epilogue' || s === 'final') return ART.dawn
   const stage = state.value?.caseInfo.stage
   if (s === 'discuss') return ART.location(stage?.discuss ?? '')
   if (s === 'accuse') return ART.location(stage?.accuse ?? '')
   return ART.location(currentBeat.value?.locationId ?? lastLocation.value ?? stage?.discuss ?? '')
 })
-const backdropDim = computed(() => screen.value === 'plan' || screen.value === 'discuss' || screen.value === 'menu' || screen.value === 'accuse')
+const backdropDim = computed(() => screen.value === 'plan' || screen.value === 'discuss' || screen.value === 'menu' || screen.value === 'accuse' || screen.value === 'tutorial')
 const dawn = computed(() => screen.value === 'epilogue' || screen.value === 'final')
 /* дождь в кадре — только на уличных фотографиях: поверх интерьера, карты или доски он выглядит нелепо */
 const outdoors = computed(() => (state.value?.caseInfo.stage.outdoors ?? []).some(id => backdrop.value === (id === 'cover' ? ART.cover : ART.location(id))))
@@ -91,7 +94,7 @@ watch([screen, round, () => audio.unlocked.value, () => state.value?.caseInfo.id
   if (!ok || !amb) return
   if (s === 'menu') { if (menuWorld.value) audio.ambience(menuWorld.value.menu.ambience.names, menuWorld.value.menu.ambience.levels ?? {}); return }
   const share = r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
-  const cue = s === 'lobby' ? amb.lobby
+  const cue = s === 'lobby' || s === 'tutorial' ? amb.lobby
     : s === 'epilogue' || s === 'final' ? amb.ending
     : s === 'accuse' || s === 'verdict' ? amb.accuse
     : share < 0.35 ? amb.early : share < 0.7 ? amb.mid : amb.late
@@ -101,7 +104,7 @@ watch([screen, round, () => audio.unlocked.value, () => state.value?.caseInfo.id
 const theme = computed(() => {
   const s = screen.value, r = round.value
   if (s === 'menu') return menuWorld.value?.menu.music ?? null
-  if (s === 'lobby') return 'lobby'
+  if (s === 'lobby' || s === 'tutorial') return 'lobby'
   if (s === 'prologue') return 'prologue'
   const share = r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
   if (s === 'plan' || s === 'resolve') return share < 0.35 ? 'night-early' : share < 0.7 ? 'night-late' : 'night-dawn'
@@ -152,6 +155,7 @@ function onKeyboard(e: KeyboardEvent) {
   if (!started.value || !state.value || screen.value === 'lobby' || screen.value === 'menu') return
   const t = e.target as HTMLElement | null
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+  if (screen.value === 'tutorial' && e.code === 'ArrowLeft') { e.preventDefault(); send({ type: 'tutorial', step: Math.max(0, (state.value.tutorialStep ?? 0) - 1) }); return }
   if (e.code === 'Space' || e.code === 'ArrowRight' || e.code === 'PageDown') { e.preventDefault(); skip() }
   else if (e.code === 'KeyP') { e.preventDefault(); send({ type: 'pause', paused: !state.value.paused }) }
 }
@@ -159,7 +163,7 @@ onMounted(() => window.addEventListener('keydown', onKeyboard))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeyboard))
 
 const screenTitle = computed(() => ({
-  menu: 'Выбор дела', lobby: 'Лобби', prologue: 'Пролог', plan: 'Ходы', resolve: 'Разбор', discuss: 'Совещание',
+  menu: 'Выбор дела', lobby: 'Лобби', tutorial: 'Как играть', prologue: 'Пролог', plan: 'Ходы', resolve: 'Разбор', discuss: 'Совещание',
   accuse: 'Обвинение', verdict: 'Вердикт', epilogue: 'Как это было', final: 'Итог'
 }[shownScreen.value] ?? ''))
 
@@ -236,12 +240,12 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
       <span class="stage__title">{{ state?.caseInfo.title }}</span>
       <span v-if="roomCode" class="stage__room" title="Код комнаты для телефонов">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
       <span class="stage__round">
-        {{ screenTitle }}<template v-if="screen !== 'lobby' && screen !== 'final'"> · раунд {{ round + 1 }} из {{ state?.roundsTotal }}</template>
+        {{ screenTitle }}<template v-if="screen !== 'lobby' && screen !== 'final' && screen !== 'tutorial'"> · раунд {{ round + 1 }} из {{ state?.roundsTotal }}</template>
       </span>
       <div v-if="progress != null" class="stage__timer"><i :style="{ transform: `scaleX(${progress})` }" /></div>
       <div class="stage__clock">
-        <b class="tabnum">{{ screen === 'lobby' ? state?.caseInfo.clock.start : state?.clock }}</b>
-        <span>{{ screen === 'lobby' ? 'ночь начнётся' : screen === 'final' ? state?.caseInfo.timeUp : untilDawn }}</span>
+        <b class="tabnum">{{ screen === 'lobby' || screen === 'tutorial' ? state?.caseInfo.clock.start : state?.clock }}</b>
+        <span>{{ screen === 'lobby' || screen === 'tutorial' ? 'ночь начнётся' : screen === 'final' ? state?.caseInfo.timeUp : untilDawn }}</span>
       </div>
       <div class="stage__controls">
         <button v-if="shownScreen !== 'lobby'" class="ctl" type="button" title="В лобби" @click="confirmLobby = true">
@@ -267,6 +271,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
       <Transition name="screen" mode="out-in" @before-enter="shownScreen = screen">
         <StageMenu v-if="screen === 'menu'" :state="state" @send="hostSend" @world="menuWorld = $event" />
         <StageLobby v-else-if="screen === 'lobby'" :state="state" @send="hostSend" />
+        <StageTutorial v-else-if="screen === 'tutorial'" :state="state" @send="hostSend" />
 
         <StageScene
           v-else-if="isScene"
@@ -291,7 +296,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
           <div class="discuss__head">
             <h2 class="display discuss__title">Совещание</h2>
             <p class="lobby__hint">Обсуждайте. Любой может нажать «дальше» на телефоне — при большинстве раунд закрывается раньше.</p>
-            <span class="discuss__votes tabnum">за «дальше» {{ state.proceedVotes }} <b>{{ seconds ?? 0 }} с</b></span>
+            <span class="discuss__votes tabnum">за «дальше» {{ state.proceedVotes }} из {{ state.players.filter(p => p.connected).length }}<b v-if="state.settings.timers === 'on' && seconds != null">{{ seconds }} с</b></span>
           </div>
           <StageBoard :state="state" mode="full" />
         </div>
@@ -301,8 +306,8 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
       </Transition>
     </main>
 
-    <footer v-if="state && shownScreen !== 'lobby' && shownScreen !== 'menu'" class="stage__strip">
-      <StageBoard v-if="screen === 'plan' || screen === 'resolve'" :state="state" mode="strip" />
+    <footer v-if="state && shownScreen !== 'lobby' && shownScreen !== 'menu' && shownScreen !== 'tutorial'" class="stage__strip">
+      <StageBoard v-if="screen === 'plan' || screen === 'resolve'" :state="state" mode="strip" :beat-at="screen === 'resolve' ? beatHere : null" />
       <div v-else class="crew">
         <div v-for="p in crew" :key="p.id" class="crew__item" :class="{ 'crew__item--away': !p.connected }">
           <PlayerAvatar :id="p.id" :name="p.name" :ink="p.ink" :photo="p.photo" :detective-id="p.detectiveId" size="xs" />

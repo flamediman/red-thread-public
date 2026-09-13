@@ -78,7 +78,7 @@ function attach(id: string, entry: { session: Session }, room: Room) {
   touch(room)
 }
 
-const HOST_ONLY = new Set(['start', 'pause', 'skip', 'restart', 'kick', 'settings', 'beatsDone', 'beatAt', 'selectCase', 'toMenu'])
+const HOST_ONLY = new Set(['start', 'pause', 'skip', 'restart', 'kick', 'settings', 'beatsDone', 'beatAt', 'selectCase', 'toMenu', 'tutorial'])
 
 export default defineWebSocketHandler({
   open(peer) {
