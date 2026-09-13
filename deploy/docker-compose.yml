@@ -9,7 +9,7 @@ services:
         cases: ${CASES_DIR:-../../red-thread-secret}
     environment:
       GAME_MODE: public
-      GAME_URL: https://${DOMAIN}
+      GAME_URL: ${GAME_URL:-}
       TRUST_PROXY: "1"
       REAL_IP_HEADER: ${REAL_IP_HEADER:-x-forwarded-for}
       TELEGRAM_URL: ${TELEGRAM_URL:-}

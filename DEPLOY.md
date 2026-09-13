@@ -73,6 +73,7 @@ done
 cd ~/red-thread/red-thread-public/deploy
 cp .env.example .env
 nano .env                         # DOMAIN, ссылки на канал и донат; за Cloudflare — REAL_IP_HEADER=cf-connecting-ip
+                                  # домена ещё нет — DOMAIN=http://<IP сервера>, игра откроется по HTTP
 mkdir -p data && sudo chown 1000:1000 data
 docker compose up -d --build
 docker compose logs -f party      # «режим «в сети»: комнат восстановлено 0»
