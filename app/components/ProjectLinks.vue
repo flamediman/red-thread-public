@@ -4,9 +4,15 @@ const { config } = useConfig()
 const open = ref(false)
 const cards = computed(() => [
   config.value.telegram && { id: 'tg', url: config.value.telegram, title: 'Канал игры', text: 'Новости, голосования за новые дела, обратная связь' },
-  config.value.donate && { id: 'donate', url: config.value.donate, title: 'Поддержать', text: 'Любая сумма, без подписки и регистрации' }
+  config.value.donate && { id: 'donate', url: config.value.donate, title: 'Поддержать', text: 'Любая сумма — на голоса, музыку и иллюстрации новых дел' }
 ].filter((c): c is { id: string; url: string; title: string; text: string } => !!c))
-const short = (url: string) => url.replace(/^https:\/\//, '').replace(/\/$/, '')
+/** подпись под кодом: короткий адрес как есть; длинную ссылку банка с реквизитами на экран не выводим */
+const BANKS = /sberbank|tbank|tinkoff|nspk|alfabank|vtb|yoomoney/
+function short(url: string) {
+  const clean = url.replace(/^https:\/\//, '').replace(/\/$/, '')
+  if (clean.length <= 32) return clean
+  try { return BANKS.test(new URL(url).hostname) ? 'перевод по СБП из любого банка' : new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
+}
 </script>
 
 <template>
@@ -18,10 +24,10 @@ const short = (url: string) => url.replace(/^https:\/\//, '').replace(/\/$/, '')
     <Teleport to="body">
       <div v-if="open" class="veil" @click.self="open = false">
         <div class="veil__card links" role="dialog" aria-modal="true">
-          <h2 class="veil__title">{{ config.donate ? 'Некоммерческий проект' : 'Канал игры' }}</h2>
+          <h2 class="veil__title">{{ config.donate ? 'Новые дела делаем вместе' : 'Канал игры' }}</h2>
           <p class="veil__text">
-            <template v-if="config.donate">Игра бесплатная. Новые дела выходят, пока их поддерживают: голоса, музыка и иллюстрации стоят денег.</template>
-            <template v-else>Новые дела, голосования за следующие сюжеты и обратная связь после партий.</template>
+            <template v-if="config.donate">Каждое дело — это сценарий, голоса, музыка и иллюстрации. В канале вы выбираете следующий сюжет, а поддержка помогает ему выйти быстрее.</template>
+            <template v-else>Новые дела, голосования за следующие сюжеты и разговоры после партий.</template>
             Наведите камеру телефона на код.
           </p>
           <div class="links__cards">

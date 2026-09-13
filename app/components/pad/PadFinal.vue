@@ -19,7 +19,7 @@ const sub = computed(() => props.state.outcome === 'failed'
     <p class="pad-final__sub">{{ sub }}</p>
     <p class="wait__foot">{{ you.name }} · {{ state.detectives.find(d => d.id === you.detectiveId)?.title ?? 'сыщик' }}</p>
     <div v-if="config.telegram || config.donate" class="pad-links">
-      <p>Понравилось? Игра бесплатная и живёт на поддержке.</p>
+      <p>Понравилось? Расскажите в канале и выберите, каким будет следующее дело.</p>
       <a v-if="config.telegram" class="btn" :href="config.telegram" target="_blank" rel="noopener">Канал игры в Telegram</a>
       <a v-if="config.donate" class="btn btn--ghost" :href="config.donate" target="_blank" rel="noopener">Поддержать проект</a>
     </div>
