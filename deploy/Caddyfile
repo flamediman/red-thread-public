@@ -1,4 +1,9 @@
+# DOMAIN — один или несколько адресов через запятую: «redthread-game.ru, www.redthread-game.ru» или «http://<IP>»
 {$DOMAIN} {
+	# www. — на основной домен, чтобы у игры был один адрес (комнаты экрана хранятся по адресу сайта)
+	@www host www.*
+	redir @www https://{labels.1}.{labels.0}{uri} permanent
+
 	encode zstd gzip
 	# WebSocket (/_ws) Caddy проксирует сам, отдельная настройка не нужна
 	reverse_proxy party:3000
