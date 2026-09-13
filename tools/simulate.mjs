@@ -21,6 +21,8 @@ function connect(onOpen, onMessage) {
   ws.addEventListener('open', () => onOpen(ws))
   ws.addEventListener('message', e => { let m; try { m = JSON.parse(e.data) } catch { return } onMessage(m, ws) })
   ws.addEventListener('error', e => console.error('сокет:', e.message || e))
+  // сервер закрыл соединение (лимиты) — сообщаем, иначе прогон молча зависнет
+  ws.addEventListener('close', e => { if (e.code === 1008 || e.code === 1009) { console.error(`сокет закрыт сервером: ${e.code} ${e.reason}`); process.exit(2) } })
   return ws
 }
 
@@ -93,7 +95,7 @@ function runGame() {
         async (m, ws) => {
           if (m.type === 'welcome') { TOKENS[i] = m.token; return }
           // сервер сменил дело и сбросил состав — зайти в лобби заново
-          if (m.type === 'state' && !m.you && m.state.screen === 'lobby' && Date.now() - lastHello > 1500) {
+          if (m.type === 'state' && !m.you && TOKENS[i] && m.state.screen === 'lobby' && Date.now() - lastHello > 1500) {
             lastHello = Date.now(); picked = false
             ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] }))
             return

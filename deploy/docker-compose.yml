@@ -15,6 +15,8 @@ services:
       TELEGRAM_URL: ${TELEGRAM_URL:-}
       DONATE_URL: ${DONATE_URL:-}
       MAX_ROOMS: ${MAX_ROOMS:-300}
+      MAX_SOCKETS_PER_IP: ${MAX_SOCKETS_PER_IP:-150}
+      MAX_NEW_ROOMS_PER_IP: ${MAX_NEW_ROOMS_PER_IP:-20}
     volumes:
       - ./data:/app/.data
     expose:

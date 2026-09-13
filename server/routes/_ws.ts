@@ -29,8 +29,8 @@ const MAX_SOCKETS_PER_IP = Number(process.env.MAX_SOCKETS_PER_IP) || (IS_PUBLIC 
 const hostFails = new WindowLimiter(10, 10 * 60_000)
 /** несуществующие комнаты: 60 за минуту — перебор 30⁶ кодов не окупается */
 const roomMisses = new WindowLimiter(60, 60_000)
-/** новые комнаты с одного адреса */
-const roomCreates = new WindowLimiter(20, 10 * 60_000)
+/** новые комнаты с одного адреса за 10 минут */
+const roomCreates = new WindowLimiter(Number(process.env.MAX_NEW_ROOMS_PER_IP) || 20, 10 * 60_000)
 
 let unsubscribe: (() => void) | null = null
 function ensureSubscribed() {
@@ -207,26 +207,33 @@ function helloPlayer(id: string, entry: Entry, msg: Hello) {
   }
   if (!room) return
 
-  const moved = session.room !== room.code
-  attach(id, entry, room)
-  if (moved) session.playerId = undefined
+  // сменил комнату — уходит из старой (там он «не на связи»), в новой пока никто
+  if (session.room !== room.code) {
+    detach(id, entry)
+    session.playerId = undefined
+  }
   session.role = 'player'
   const g = room.game
   const named = !!(typeof msg.name === 'string' && msg.name.trim())
   // незнакомый жетон без имени (например, от прошлой комнаты) — показываем форму входа, а не заводим «Сыщика»
   if (!named && !(typeof msg.token === 'string' && g.byToken(msg.token))) {
     session.playerId = undefined
+    attach(id, entry, room)
     pushState(entry, room)
     return
   }
+  // сокет подписывается на комнату только после входа: иначе рассылка о самом входе придёт ему
+  // раньше «welcome» без личного состояния, и телефон на миг покажет форму входа
   const player = g.join(typeof msg.token === 'string' ? msg.token : undefined, (typeof msg.name === 'string' ? msg.name : '').trim().slice(0, 14), typeof msg.ink === 'number' ? msg.ink : -1)
   if (!player) {
+    attach(id, entry, room)
     send(entry.peer, { type: 'kicked', reason: 'Бригада укомплектована — десять сыщиков, больше не берём' })
     return
   }
   // вернувшийся после перезапуска — поднимаем фото с диска (только дома: в сети фото не храним)
   if (!IS_PUBLIC && player.photo == null && restorePhoto(player.token, player.id)) player.photo = 1
   session.playerId = player.id
+  attach(id, entry, room)
   send(entry.peer, { type: 'welcome', playerId: player.id, token: player.token })
   pushState(entry, room)
 }

@@ -79,6 +79,7 @@ node .output/server/index.mjs     # переменные — из окружен
 | `REAL_IP_HEADER` | `x-forwarded-for` | заголовок с адресом игрока (`cf-connecting-ip` за Cloudflare) |
 | `MAX_ROOMS` | `300` | предел одновременных комнат (в сети) |
 | `MAX_SOCKETS_PER_IP` | `150` в сети | предел соединений с одного адреса |
+| `MAX_NEW_ROOMS_PER_IP` | `20` | новых комнат с одного адреса за 10 минут |
 
 ## Как играть
 
