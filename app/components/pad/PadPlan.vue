@@ -1,0 +1,293 @@
+<script setup lang="ts">
+import type { ClientMessage, PlanAction, PublicState, YouState } from '#shared/types'
+import { ART } from '~/utils/art'
+
+const props = defineProps<{ you: YouState; state: PublicState; secondsLeft: number | null }>()
+const emit = defineEmits<{ send: [ClientMessage] }>()
+
+/** шаг выбора: комната или экран способности (дрон, архив, камеры, вызов на допрос, прошлое) */
+const locId = ref<string | null>(null)
+const mode = ref<'where' | 'room' | 'drone' | 'archivist' | 'verify' | 'summon' | 'reporter'>('where')
+const pendingAsk = ref<{ witnessId: string; questionId: string; force: boolean } | null>(null)
+
+const kind = computed(() => props.you.ability?.kind ?? null)
+const uses = computed(() => props.you.usesLeft ?? 0)
+const hasUses = computed(() => props.you.usesLeft == null || uses.value > 0)
+
+const optionsOf = (id: string) => props.you.options.find(o => o.locationId === id) ?? null
+const locName = (id: string) => props.state.locations.find(l => l.id === id)?.name ?? ''
+
+/* плитки комнат по этажам: кто там и что можно сделать */
+const floors = computed(() => props.state.floors.map(fl => ({
+  ...fl,
+  rooms: props.state.locations.filter(l => l.floor === fl.id).map(l => {
+    const o = optionsOf(l.id)
+    const open = o?.spots.filter(s => s.stage !== 'done' && (!s.locked || s.canUnlock)).length ?? 0
+    const talk = o?.witnesses.reduce((n, w) => n + w.questions.filter(q => !q.asked && (!q.locked || q.canForce)).length + w.presents.filter(p => !p.done).length, 0) ?? 0
+    return { ...l, art: ART.location(l.id), faces: props.state.witnesses.filter(w => w.locationId === l.id), open, talk, here: props.you.locationId === l.id }
+  })
+})))
+
+const room = computed(() => locId.value ? optionsOf(locId.value) : null)
+const summary = computed(() => {
+  const o = room.value
+  if (!o) return ''
+  const parts: string[] = []
+  const spots = o.spots.filter(s => s.stage !== 'done').length
+  if (spots) parts.push(`${spots} ${spots === 1 ? 'место осмотра' : 'места осмотра'}`)
+  if (o.witnesses.length) parts.push(`${o.witnesses.length} ${o.witnesses.length === 1 ? 'человек' : 'человека'}`)
+  return parts.length ? `Здесь: ${parts.join(' · ')}` : 'Здесь больше нечего делать — можно просто понаблюдать'
+})
+
+const STAGE: Record<string, string> = { new: 'новое', second: 'второй осмотр', memory: 'запись памяти', done: 'осмотрено' }
+
+function plan(action: PlanAction, at = locId.value ?? props.you.locationId) {
+  emit('send', { type: 'plan', locationId: at, action })
+  pendingAsk.value = null
+}
+function goRoom(id: string) { locId.value = id; mode.value = 'room'; pendingAsk.value = null }
+function back() { locId.value = null; mode.value = 'where'; pendingAsk.value = null }
+
+/* следователь: первый выбранный вопрос ждёт второго */
+function askQ(witnessId: string, questionId: string, force = false) {
+  if (kind.value === 'investigator' && !pendingAsk.value) { pendingAsk.value = { witnessId, questionId, force }; return }
+  const first = pendingAsk.value
+  if (first && first.questionId !== questionId) plan({ type: 'ask', witnessId: first.witnessId, questionId: first.questionId, second: questionId, force: first.force })
+  else plan({ type: 'ask', witnessId, questionId, force })
+}
+
+/* все свидетели, где бы они ни были, — для вызова на допрос */
+const everyone = computed(() => props.you.options.flatMap(o => o.witnesses.map(w => ({ ...w, locationId: o.locationId }))))
+/* показания без проверки — для камер аналитика */
+const unchecked = computed(() => props.state.board.cards.filter(c => c.kind === 'testimony' && !c.verdict))
+/* какие способности-действия доступны прямо с первого шага */
+const abilityHere = computed(() => hasUses.value && (
+  kind.value === 'intern' || kind.value === 'fixer' || kind.value === 'drone' || kind.value === 'coroner' || kind.value === 'patrol' || kind.value === 'reporter' ||
+  (kind.value === 'archivist' && props.state.board.cards.length > 0) || (kind.value === 'tracker' && unchecked.value.length > 0)))
+
+/* дрон: все места, где осмотр что-то даст, во всех комнатах */
+const droneTargets = computed(() => props.state.locations.map(l => ({
+  ...l, spots: (optionsOf(l.id)?.spots ?? []).filter(s => s.stage !== 'done' && (!s.locked || !!s.canUnlock))
+})).filter(l => l.spots.length))
+
+watch(() => props.you.planned, p => { if (!p) pendingAsk.value = null })
+</script>
+
+<template>
+  <div class="plan">
+    <div class="plan__head">
+      <h1 class="display plan__title">Раунд {{ state.round + 1 }}</h1>
+      <span class="plan__timer tabnum" :class="{ 'plan__timer--low': secondsLeft != null && secondsLeft <= 10 }">{{ secondsLeft != null ? secondsLeft + ' с' : 'без таймера' }}</span>
+    </div>
+
+    <Transition name="screen" mode="out-in">
+      <!-- ход уже выбран -->
+      <div v-if="you.planned" key="planned" class="plan__actions">
+        <div class="plan__chosen">
+          <span class="label">Ваш ход</span>
+          <b>{{ you.planned.label }}</b>
+          <button class="btn btn--ghost btn--small" type="button" @click="emit('send', { type: 'unplan' })">Изменить</button>
+        </div>
+        <p class="wait__foot">Ждём остальных. Ходы разберут на большом экране.</p>
+      </div>
+
+      <!-- шаг 1: куда -->
+      <div v-else-if="mode === 'where'" key="where" class="plan__actions">
+        <p class="plan__hint">Выберите, куда идти. В комнате можно осмотреть место, поговорить с тем, кто там сейчас, или показать ему улику.</p>
+
+        <!-- способности, не привязанные к комнате -->
+        <div v-if="abilityHere" class="plan__group">
+          <p class="plan__tag">Способность<template v-if="you.usesLeft != null"> · осталось {{ uses }}</template></p>
+          <button v-if="kind === 'intern'" type="button" class="plan__act plan__act--ability" @click="plan({ type: 'intern' }, you.locationId)">
+            <span>Подслушать разговор <small>на доску ляжет то, о чём свидетели шепчутся между собой</small></span>
+          </button>
+          <button v-if="kind === 'fixer'" type="button" class="plan__act plan__act--ability" :disabled="!you.market.length" @click="plan({ type: 'fixer' }, you.locationId)">
+            <span>Достать улику через фиксера <small>{{ you.market.length ? `сейчас можно достать: «${you.market[0]!.name}»` : 'рынок пуст — всё уже у команды' }}</small></span>
+          </button>
+          <button v-if="kind === 'drone'" type="button" class="plan__act plan__act--ability" @click="mode = 'drone'">
+            <span>Поднять дрон <small>осмотреть место в любой комнате, не уходя отсюда</small></span>
+          </button>
+          <button v-if="kind === 'coroner'" type="button" class="plan__act plan__act--ability" @click="plan({ type: 'coroner' }, you.locationId)">
+            <span>Медицинское заключение <small>на доску ляжет заключение эксперта по главной улике дела</small></span>
+          </button>
+          <button v-if="kind === 'patrol'" type="button" class="plan__act plan__act--ability" @click="mode = 'summon'">
+            <span>Вызвать на допрос <small>спросить любого свидетеля, где бы он сейчас ни был</small></span>
+          </button>
+          <button v-if="kind === 'reporter'" type="button" class="plan__act plan__act--ability" @click="mode = 'reporter'">
+            <span>Позвонить в редакцию <small>узнать прошлое любого свидетеля</small></span>
+          </button>
+          <button v-if="kind === 'archivist' && state.board.cards.length" type="button" class="plan__act plan__act--ability" @click="mode = 'archivist'">
+            <span>Поднять архив <small>выберите карточку — архив скажет, где искать то, что ей противоречит</small></span>
+          </button>
+          <button v-if="kind === 'tracker' && unchecked.length" type="button" class="plan__act plan__act--ability" @click="mode = 'verify'">
+            <span>Проверить показание <small>камеры скажут, правду сказал свидетель или соврал — увидит вся команда</small></span>
+          </button>
+        </div>
+
+        <div class="plan__where">
+          <template v-for="fl in floors" :key="fl.id">
+            <p class="label plan__floor">{{ fl.label }}</p>
+            <button v-for="l in fl.rooms" :key="l.id" type="button" class="plan__loc" :style="{ '--art': `url(${l.art})` }" @click="goRoom(l.id)">
+              <span class="plan__loc-faces">
+                <img v-for="w in l.faces" :key="w.id" class="face" :src="ART.witness(w.id)" :alt="w.name">
+              </span>
+              <span class="plan__loc-name">{{ l.name }}</span>
+              <small>
+                <template v-if="l.open">осмотреть: {{ l.open }}</template>
+                <template v-if="l.open && l.talk"> · </template>
+                <template v-if="l.talk">спросить: {{ l.talk }}</template>
+                <template v-if="!l.open && !l.talk">нечего делать</template>
+              </small>
+              <span v-if="l.here" class="plan__loc-here">вы здесь</span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- шаг 2: что в комнате -->
+      <div v-else-if="mode === 'room' && locId && room" key="room" class="plan__actions">
+        <button type="button" class="plan__loc plan__loc--on" :style="{ '--art': `url(${ART.location(locId)})` }" @click="back">
+          <span class="plan__loc-name">{{ locName(locId) }}</span>
+          <small>← выбрать другое место</small>
+        </button>
+        <p class="plan__hint">{{ summary }}</p>
+
+        <div v-if="pendingAsk" class="plan__ability">
+          <b>Следователь:</b> первый вопрос выбран. Выберите второй — или задайте только его.
+          <button type="button" class="btn btn--small" style="margin-top:.4rem" @click="plan({ type: 'ask', witnessId: pendingAsk.witnessId, questionId: pendingAsk.questionId, force: pendingAsk.force })">Только этот вопрос</button>
+        </div>
+
+        <section v-if="room.spots.length" class="plan__group">
+          <p class="plan__tag">Осмотреть место</p>
+          <button
+            v-for="s in room.spots"
+            :key="s.id"
+            type="button"
+            class="plan__act"
+            :class="{ 'plan__act--done': s.stage === 'done', 'plan__act--locked': !!s.locked && !s.canUnlock }"
+            :disabled="s.stage === 'done' || (!!s.locked && !s.canUnlock)"
+            @click="plan({ type: 'search', spotId: s.id, force: !!s.locked && s.canUnlock })"
+          >
+            <span>{{ s.name }} <small>{{ s.locked ? s.locked : s.glance }}</small></span>
+            <em class="plan__state" :class="`plan__state--${s.locked ? (s.canUnlock ? 'force' : 'locked') : s.stage}`">{{ s.locked ? (s.canUnlock ? 'вскрыть' : 'заперто') : STAGE[s.stage] }}</em>
+          </button>
+        </section>
+
+        <section v-for="w in room.witnesses" :key="w.id" class="plan__person">
+          <div class="plan__person-head">
+            <img class="face" :src="ART.witness(w.id)" alt="">
+            <span><b>{{ w.name }}</b><small>{{ state.witnesses.find(x => x.id === w.id)?.role }}</small></span>
+          </div>
+          <p v-if="w.questions.length" class="plan__tag">Спросить</p>
+          <button
+            v-for="q in w.questions"
+            :key="q.id"
+            type="button"
+            class="plan__act"
+            :class="{ 'plan__act--done': q.asked, 'plan__act--locked': !!q.locked && !q.canForce, 'plan__act--second': pendingAsk?.questionId === q.id }"
+            :disabled="q.asked || (!!q.locked && !q.canForce) || pendingAsk?.questionId === q.id"
+            @click="askQ(w.id, q.id, !!q.locked && q.canForce)"
+          >
+            <span>{{ q.text }} <small v-if="q.locked">{{ q.locked }}{{ q.canForce ? ' — открыть авторитетом' : '' }}</small></span>
+            <em class="plan__state" :class="`plan__state--${q.asked ? 'done' : q.locked ? (q.canForce ? 'force' : 'locked') : 'new'}`">{{ q.asked ? 'спросили' : q.locked ? (q.canForce ? 'можно' : 'закрыто') : 'новое' }}</em>
+          </button>
+          <template v-if="w.presents.length">
+            <p class="plan__tag">Показать улику</p>
+            <button
+              v-for="pr in w.presents"
+              :key="pr.itemId"
+              type="button"
+              class="plan__act plan__act--item"
+              :class="{ 'plan__act--done': pr.done }"
+              :disabled="pr.done"
+              @click="plan({ type: 'present', witnessId: w.id, itemId: pr.itemId })"
+            >
+              <img class="plan__thumb" :src="ART.item(pr.itemId)" alt="">
+              <span>{{ pr.name }} <small>{{ pr.done ? 'уже показывали' : 'посмотреть, как отреагирует' }}</small></span>
+            </button>
+          </template>
+        </section>
+
+        <div class="plan__group">
+          <button type="button" class="plan__act" @click="plan({ type: 'wait' })"><span>Просто побыть здесь <small>наблюдать, ничего не трогать</small></span></button>
+        </div>
+      </div>
+
+      <!-- дрон: место в любой комнате -->
+      <div v-else-if="mode === 'drone'" key="drone" class="plan__actions">
+        <button type="button" class="plan__back" @click="back">← назад</button>
+        <p class="plan__hint">Дрон осмотрит место в любой комнате. Вы останетесь там, где стоите. Осталось полётов: {{ uses }}.</p>
+        <section v-for="l in droneTargets" :key="l.id" class="plan__group">
+          <p class="plan__tag">{{ l.name }}</p>
+          <button v-for="s in l.spots" :key="s.id" type="button" class="plan__act" @click="plan({ type: 'drone', spotId: s.id }, l.id)">
+            <span>{{ s.name }} <small>{{ s.glance }}</small></span>
+            <em class="plan__state" :class="`plan__state--${s.stage}`">{{ STAGE[s.stage] }}</em>
+          </button>
+        </section>
+      </div>
+
+      <!-- архивариус: одна карточка → где искать противоречие -->
+      <div v-else-if="mode === 'archivist'" key="arch" class="plan__actions">
+        <button type="button" class="plan__back" @click="back">← назад</button>
+        <p class="plan__hint">Выберите карточку. В разборе архив назовёт место или человека, у которых есть то, что с ней не сходится. Осталось: {{ uses }}.</p>
+        <button v-for="c in state.board.cards" :key="c.id" type="button" class="plan__act" @click="plan({ type: 'archivist', factId: c.id }, you.locationId)">
+          <span>{{ c.title }} <small>{{ c.detail }}</small></span>
+        </button>
+      </div>
+
+      <!-- аналитик: проверить показание по камерам -->
+      <div v-else-if="mode === 'verify'" key="verify" class="plan__actions">
+        <button type="button" class="plan__back" @click="back">← назад</button>
+        <p class="plan__hint">Выберите чьи-то слова с доски. В разборе станет ясно, правда это или ложь, — пометка появится у всей команды. Осталось: {{ uses }}.</p>
+        <button v-for="c in unchecked" :key="c.id" type="button" class="plan__act" @click="plan({ type: 'verify', factId: c.id }, you.locationId)">
+          <span>{{ c.title }} <small>{{ c.detail }}</small></span>
+        </button>
+      </div>
+
+      <!-- патрульный: вызвать на допрос любого свидетеля -->
+      <div v-else-if="mode === 'summon'" key="summon" class="plan__actions">
+        <button type="button" class="plan__back" @click="back">← назад</button>
+        <p class="plan__hint">Свидетель придёт к вам и ответит на один вопрос или посмотрит на улику. Вы остаётесь на месте. Осталось вызовов: {{ uses }}.</p>
+        <section v-for="w in everyone" :key="w.id" class="plan__person">
+          <div class="plan__person-head">
+            <img class="face" :src="ART.witness(w.id)" alt="">
+            <span><b>{{ w.name }}</b><small>сейчас: {{ locName(w.locationId) }}</small></span>
+          </div>
+          <button
+            v-for="q in w.questions.filter(x => !x.asked)"
+            :key="q.id"
+            type="button"
+            class="plan__act"
+            :class="{ 'plan__act--locked': !!q.locked }"
+            :disabled="!!q.locked"
+            @click="plan({ type: 'ask', witnessId: w.id, questionId: q.id, remote: true }, you.locationId)"
+          >
+            <span>{{ q.text }} <small v-if="q.locked">{{ q.locked }}</small></span>
+            <em class="plan__state" :class="`plan__state--${q.locked ? 'locked' : 'new'}`">{{ q.locked ? 'закрыто' : 'новое' }}</em>
+          </button>
+          <button
+            v-for="pr in w.presents.filter(x => !x.done)"
+            :key="pr.itemId"
+            type="button"
+            class="plan__act plan__act--item"
+            @click="plan({ type: 'present', witnessId: w.id, itemId: pr.itemId, remote: true }, you.locationId)"
+          >
+            <img class="plan__thumb" :src="ART.item(pr.itemId)" alt="">
+            <span>{{ pr.name }} <small>показать</small></span>
+          </button>
+          <p v-if="!w.questions.some(x => !x.asked) && !w.presents.some(x => !x.done)" class="plan__hint">Спросить больше нечего.</p>
+        </section>
+      </div>
+
+      <!-- репортёр: прошлое любого свидетеля -->
+      <div v-else-if="mode === 'reporter'" key="reporter" class="plan__actions">
+        <button type="button" class="plan__back" @click="back">← назад</button>
+        <p class="plan__hint">Редакция поднимет архив по одному человеку: на доску ляжет факт из его прошлого. Осталось звонков: {{ uses }}.</p>
+        <button v-for="w in state.witnesses" :key="w.id" type="button" class="plan__act plan__act--item" @click="plan({ type: 'reporter', witnessId: w.id }, you.locationId)">
+          <img class="plan__thumb" :src="ART.witness(w.id)" alt="">
+          <span>{{ w.name }} <small>{{ w.role }}</small></span>
+        </button>
+      </div>
+    </Transition>
+  </div>
+</template>

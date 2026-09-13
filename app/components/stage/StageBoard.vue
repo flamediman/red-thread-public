@@ -1,0 +1,100 @@
+<script setup lang="ts">
+import type { PublicState } from '#shared/types'
+import { ART, tilt } from '~/utils/art'
+
+const props = withDefaults(defineProps<{ state: PublicState; mode?: 'strip' | 'full' }>(), { mode: 'full' })
+
+const f = useBoardFilter(computed(() => props.state))
+const nameOf = (id?: string) => id ? props.state.witnesses.find(w => w.id === id)?.name.split(' ')[0] ?? props.state.locations.find(l => l.id === id)?.name ?? '' : ''
+
+/* в полосе внизу экрана — свежие карточки первыми; на доске — по порядку, отмеченные командой впереди */
+const ordered = computed(() => {
+  const list = props.mode === 'strip' ? [...props.state.board.cards].reverse() : f.visible.value
+  return props.mode === 'strip' ? list : [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.round - b.round)
+})
+
+/* красные нити между связанными карточками — рисуются по реальным координатам после раскладки */
+const grid = ref<HTMLElement | null>(null)
+const strings = ref<{ id: string; d: string; x1: number; y1: number; x2: number; y2: number }[]>([])
+const size = ref({ w: 0, h: 0 })
+
+function layout() {
+  const g = grid.value
+  if (!g || props.mode !== 'full') { strings.value = []; return }
+  size.value = { w: g.scrollWidth, h: g.scrollHeight }
+  const pos = new Map<string, { x: number; y: number }>()
+  for (const el of g.querySelectorAll<HTMLElement>('[data-card]')) pos.set(el.dataset.card!, { x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop })
+  strings.value = f.visibleLinks.value.flatMap(l => {
+    const a = pos.get(l.facts[0]!), b = pos.get(l.facts[1]!)
+    if (!a || !b) return []
+    const sag = 18 + Math.abs(a.x - b.x) * 0.08
+    const d = `M ${a.x} ${a.y} Q ${(a.x + b.x) / 2} ${Math.max(a.y, b.y) + sag} ${b.x} ${b.y}`
+    return [{ id: l.id, d, x1: a.x, y1: a.y, x2: b.x, y2: b.y }]
+  })
+}
+let ro: ResizeObserver | null = null
+onMounted(() => { ro = new ResizeObserver(() => layout()); if (grid.value) ro.observe(grid.value); nextTick(layout) })
+onBeforeUnmount(() => ro?.disconnect())
+watch(() => [ordered.value.map(c => c.id).join(), f.visibleLinks.value.length, props.mode], () => nextTick(layout))
+</script>
+
+<template>
+  <div class="board" :class="{ 'board--strip': mode === 'strip' }">
+    <div class="board__head">
+      <p class="board__title label">
+        Доска <span class="board__count tabnum">{{ state.board.cards.length }}</span> улик
+        <template v-if="state.board.links.length">· <span class="board__count tabnum">{{ state.board.links.length }}</span> {{ state.board.links.length === 1 ? 'противоречие' : 'противоречий' }}</template>
+      </p>
+
+      <!-- фильтры: вид, тип, человек или место -->
+      <div v-if="mode === 'full' && state.board.cards.length" class="filters">
+        <button v-for="v in f.views.value" :key="v.id" type="button" class="chip" :class="{ 'chip--on': f.view.value === v.id }" :disabled="!v.count && v.id !== 'all'" @click="f.view.value = v.id">
+          {{ v.label }} <b class="tabnum">{{ v.count }}</b>
+        </button>
+        <span class="filters__sep" />
+        <button v-for="k in f.kinds.value" :key="k.id" type="button" class="chip" :class="[`chip--${k.id}`, { 'chip--on': f.kind.value === k.id }]" @click="f.kind.value = f.kind.value === k.id ? null : k.id">
+          <i class="chip__dot" />{{ k.label }} <b class="tabnum">{{ k.count }}</b>
+        </button>
+        <span v-if="f.people.value.length" class="filters__sep" />
+        <button v-for="p in f.people.value" :key="p.id" type="button" class="chip chip--face" :class="{ 'chip--on': f.source.value === p.id }" @click="f.source.value = f.source.value === p.id ? null : p.id">
+          <img class="face" :src="ART.witness(p.witnessId)" alt="">{{ p.label }} <b class="tabnum">{{ p.count }}</b>
+        </button>
+        <button v-if="f.filtered.value" type="button" class="chip chip--reset" @click="f.reset()">сбросить</button>
+      </div>
+    </div>
+
+    <div v-if="mode === 'full' && f.visibleLinks.value.length" class="board__links">
+      <div v-for="l in f.visibleLinks.value" :key="l.id" class="board__link">{{ l.text }}</div>
+    </div>
+    <div class="board__scroll">
+      <div ref="grid" class="board__cards">
+        <p v-if="!state.board.cards.length" class="lobby__empty">Пока пусто. Улики лягут сюда после первого раунда.</p>
+        <p v-else-if="!ordered.length" class="lobby__empty">Под этот фильтр ничего не подходит.</p>
+        <TransitionGroup name="list">
+          <div
+            v-for="c in ordered"
+            :key="c.id"
+            :data-card="c.id"
+            class="card"
+            :class="[`card--${c.kind}`, { 'card--linked': f.linked.value.has(c.id), 'card--fresh': mode === 'full' && c.round === f.lastRound.value, 'card--pinned': c.pinned }]"
+            :style="{ '--tilt': tilt(c.id, mode === 'full' ? 1.6 : 0.8) }"
+          >
+            <i class="card__kind" />
+            <span v-if="c.pinned" class="card__star" title="команда отметила как важное">★</span>
+            <div class="card__title">{{ c.title }}</div>
+            <div v-if="mode === 'full'" class="card__detail">{{ c.detail }}</div>
+            <div class="card__meta">{{ nameOf(c.witnessId) || nameOf(c.locationId) || c.by }} · раунд {{ c.round + 1 }}</div>
+            <span v-if="c.verdict" class="card__verdict" :class="c.verdict.lie ? 'card__verdict--lie' : 'card__verdict--truth'">{{ c.verdict.lie ? 'ложь' : 'правда' }}</span>
+          </div>
+        </TransitionGroup>
+        <svg v-if="mode === 'full' && strings.length" class="board__strings" :width="size.w" :height="size.h" aria-hidden="true">
+          <template v-for="s in strings" :key="s.id">
+            <path :d="s.d" />
+            <circle :cx="s.x1" :cy="s.y1" r="4" />
+            <circle :cx="s.x2" :cy="s.y2" r="4" />
+          </template>
+        </svg>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,32 @@
+:root {
+  --void: #14101f;
+  --void-2: #1d1730;
+  --void-3: #2a2142;
+  --void-4: #3a2f58;
+
+  --paper: #f2ebdc;
+  --paper-dim: #a79fba;
+  --paper-faint: #6d6485;
+
+  --pink: #ff3e7f;
+  --blue: #5b7cff;
+  --yellow: #ffc93c;
+  --mint: #3ed9a4;
+
+  --ink: var(--pink);
+
+  --step--1: clamp(0.72rem, 0.68rem + 0.2vw, 0.85rem);
+  --step-0: clamp(0.9rem, 0.85rem + 0.25vw, 1.05rem);
+  --step-1: clamp(1.05rem, 0.95rem + 0.5vw, 1.35rem);
+  --step-2: clamp(1.3rem, 1.1rem + 1vw, 1.9rem);
+  --step-3: clamp(1.7rem, 1.3rem + 2vw, 3rem);
+  --step-4: clamp(2.2rem, 1.5rem + 3.6vw, 5rem);
+  --step-5: clamp(2.8rem, 1.6rem + 6vw, 7.5rem);
+
+  --radius: 14px;
+  --radius-lg: 24px;
+  --gap: clamp(0.75rem, 0.5rem + 1vw, 1.5rem);
+  --pad: clamp(1rem, 0.6rem + 2vw, 3rem);
+
+  color-scheme: dark;
+}

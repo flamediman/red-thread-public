@@ -1,0 +1,60 @@
+@use '../abstracts' as *;
+
+.ink-swatch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--chip-ink);
+  transition: transform $dur-fast $ease-pop, box-shadow $dur-fast ease;
+
+  &--active {
+    box-shadow: 0 0 0 3px var(--void), 0 0 0 6px var(--chip-ink);
+  }
+
+  &--taken {
+    opacity: 0.22;
+    cursor: not-allowed;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 40% 12%;
+      border-top: 3px solid var(--void);
+      transform: rotate(-45deg);
+    }
+  }
+}
+
+.avatar {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--avatar-size, 2.5rem);
+  height: var(--avatar-size, 2.5rem);
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--void-3);
+  box-shadow: inset 0 0 0 3px var(--chip-ink);
+
+  &__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &__initial {
+    display: grid;
+    height: 100%;
+    place-items: center;
+    color: var(--chip-ink);
+    font-weight: 800;
+    font-size: calc(var(--avatar-size, 2.5rem) * 0.52);
+    letter-spacing: 0;
+  }
+
+  &--xs { --avatar-size: 1.7rem; box-shadow: inset 0 0 0 2px var(--chip-ink); }
+  &--sm { --avatar-size: 2.2rem; }
+  &--md { --avatar-size: clamp(2.6rem, 4vw, 4rem); }
+  &--lg { --avatar-size: clamp(4rem, 9vw, 8rem); }
+}

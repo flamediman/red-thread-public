@@ -1,0 +1,23 @@
+@use '../abstracts' as *;
+
+.loader {
+  display: flex;
+  gap: 0.6rem;
+  margin: auto;
+
+  &__dot {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    animation: loader-pulse 1.1s $ease-out infinite;
+  }
+
+  &__dot--a { background: var(--pink); }
+  &__dot--b { background: var(--blue); animation-delay: 0.15s; }
+  &__dot--c { background: var(--yellow); animation-delay: 0.3s; }
+}
+
+@keyframes loader-pulse {
+  0%, 100% { transform: scale(0.6); opacity: 0.35; }
+  40% { transform: scale(1); opacity: 1; }
+}

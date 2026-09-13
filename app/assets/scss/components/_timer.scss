@@ -1,0 +1,39 @@
+@use '../abstracts' as *;
+
+.timer {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+
+  &__track {
+    flex: 1;
+    height: 8px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--void-3);
+  }
+
+  &__fill {
+    height: 100%;
+    background: var(--paper-dim);
+    transform-origin: left center;
+
+    transition: transform 0.14s linear, background-color $dur-base ease;
+  }
+
+  &__value {
+    min-width: 2.2ch;
+    font-weight: 800;
+    font-size: var(--step-1);
+    color: var(--paper-dim);
+    text-align: right;
+  }
+
+  &--urgent &__fill { background: var(--pink); }
+  &--urgent &__value { color: var(--pink); }
+
+  &--paused {
+    .timer__fill { background: var(--void-4); }
+    .timer__value { font-size: var(--step--1); letter-spacing: 0.1em; text-transform: uppercase; }
+  }
+}

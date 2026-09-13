@@ -1,0 +1,23 @@
+# Дома: PORT=3100 docker compose up -d --build
+# Дела — репозиторий red-thread-secret; путь к нему — CASES_DIR в .env (по умолчанию ./cases).
+services:
+  party:
+    build:
+      context: .
+      additional_contexts:
+        cases: ${CASES_DIR:-./cases}
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      GAME_MODE: ${GAME_MODE:-local}
+      HOST_CODE: ${HOST_CODE:-0228}
+      GAME_URL: ${GAME_URL:-}
+      TELEGRAM_URL: ${TELEGRAM_URL:-}
+      DONATE_URL: ${DONATE_URL:-}
+    # состояние партии и фото — на диске хоста; дела и арт миров подмонтированы,
+    # чтобы перерисованные картинки, озвучка и музыка подхватывались без пересборки
+    volumes:
+      - ./.data:/app/.data
+      - ${CASES_DIR:-./cases}:/app/cases:ro
+      - ./media:/app/media:ro
+    restart: unless-stopped

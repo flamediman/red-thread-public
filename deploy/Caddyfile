@@ -1,0 +1,9 @@
+{$DOMAIN} {
+	encode zstd gzip
+	# WebSocket (/_ws) Caddy проксирует сам, отдельная настройка не нужна
+	reverse_proxy party:3000
+	header {
+		Strict-Transport-Security "max-age=15552000"
+		-Server
+	}
+}

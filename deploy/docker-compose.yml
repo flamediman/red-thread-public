@@ -1,0 +1,47 @@
+# Сервер в интернете: игра + Caddy (HTTPS от Let's Encrypt).
+#   cd deploy && cp .env.example .env && nano .env && docker compose up -d --build
+# Подробно — DEPLOY.md в корне репозитория.
+services:
+  party:
+    build:
+      context: ..
+      additional_contexts:
+        cases: ${CASES_DIR:-../../red-thread-secret}
+    environment:
+      GAME_MODE: public
+      GAME_URL: https://${DOMAIN}
+      TRUST_PROXY: "1"
+      REAL_IP_HEADER: ${REAL_IP_HEADER:-x-forwarded-for}
+      TELEGRAM_URL: ${TELEGRAM_URL:-}
+      DONATE_URL: ${DONATE_URL:-}
+      MAX_ROOMS: ${MAX_ROOMS:-300}
+    volumes:
+      - ./data:/app/.data
+    expose:
+      - "3000"
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.5
+    logging:
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on: [party]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    logging:
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+  caddy_config:

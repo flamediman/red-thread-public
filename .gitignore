@@ -1,0 +1,14 @@
+node_modules
+.nuxt
+.output
+.data
+.env
+*.log
+.DS_Store
+# дела — отдельный репозиторий red-thread-secret
+/cases/*
+!/cases/.gitkeep
+server/scenario/cases.gen.ts
+# запасные варианты картинок генератора
+.variants
+*.tmp.jpg
