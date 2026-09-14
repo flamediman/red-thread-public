@@ -56,16 +56,21 @@ git clone git@github-secret:flamediman/red-thread-secret.git
 Закройте 80 и 443 для всех, кроме адресов Cloudflare:
 
 ```bash
-sudo ufw delete allow 80 && sudo ufw delete allow 443
-for ip in $(curl -s https://www.cloudflare.com/ips-v4) $(curl -s https://www.cloudflare.com/ips-v6); do
-  sudo ufw allow from $ip to any port 80,443 proto tcp
+sudo tee /usr/local/bin/cf-ufw.sh > /dev/null <<'SH'
+#!/bin/sh
+# 80/443 — только с адресов Cloudflare; список обновляется раз в неделю
+for r in $(ufw status numbered | grep -E '(80|443)' | grep -oE '^\[ *[0-9]+\]' | tr -d '[] ' | sort -rn); do ufw --force delete "$r"; done
+for ip in $(curl -fsS https://www.cloudflare.com/ips-v4) $(curl -fsS https://www.cloudflare.com/ips-v6); do
+  ufw allow proto tcp from "$ip" to any port 80,443 comment cloudflare > /dev/null
 done
+SH
+sudo chmod +x /usr/local/bin/cf-ufw.sh && sudo /usr/local/bin/cf-ufw.sh
+echo '17 4 * * 1 root /usr/local/bin/cf-ufw.sh' | sudo tee /etc/cron.d/cf-ufw
 ```
 
-Тогда Let's Encrypt не достучится до Caddy по HTTP. Выпустите в Cloudflare Origin Certificate
-(SSL/TLS → Origin Server), сохраните в `deploy/certs/origin.pem` и `origin.key` и замените в `Caddyfile`
-строку `{$DOMAIN} {` на блок с `tls /certs/origin.pem /certs/origin.key` (и подмонтируйте папку `certs`).
-Если IP не закрывать — ничего менять не нужно, Caddy сам получит сертификат.
+Caddy работает в сети хоста (`network_mode: host`), поэтому эти правила действительно закрывают порты: опубликованные
+порты контейнеров Docker обходят ufw. Сертификат продлевается и так — Let's Encrypt проверяет домен через Cloudflare
+по HTTP, а он пропускает запрос до сервера. В `deploy/.env` за Cloudflare — `REAL_IP_HEADER=cf-connecting-ip`.
 
 ## 4. Запуск
 

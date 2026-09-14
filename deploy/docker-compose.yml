@@ -19,8 +19,9 @@ services:
       MAX_NEW_ROOMS_PER_IP: ${MAX_NEW_ROOMS_PER_IP:-20}
     volumes:
       - ./data:/app/.data
-    expose:
-      - "3000"
+    # наружу игра не смотрит: только Caddy на этой же машине
+    ports:
+      - "127.0.0.1:3000:3000"
     restart: unless-stopped
     mem_limit: 1g
     cpus: 1.5
@@ -30,12 +31,12 @@ services:
   caddy:
     image: caddy:2-alpine
     depends_on: [party]
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+    # сеть хоста: порты 80/443 открывает сам Caddy, и их закрывает файрвол сервера
+    # (опубликованные порты Docker обходят ufw — через них не закрыть доступ в обход Cloudflare)
+    network_mode: host
     environment:
       DOMAIN: ${DOMAIN}
+      UPSTREAM: 127.0.0.1:3000
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
