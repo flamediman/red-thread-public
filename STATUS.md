@@ -98,7 +98,7 @@
   Звуки (`tools/sfx.mjs`) делать можно.
 - Генераторы: `tools/gigachat-art.mjs` (GigaChat, лучший по качеству; сертификат Минцифры в `tools/certs`, один запрос
   за раз, варианты в `.variants`), `tools/flux.mjs` (FLUX на HF, квота 2–3 картинки), `tools/trim-borders.mjs`
-  (белые рамки), `tools/voice.ts`, `tools/music.mjs`, `tools/sfx.mjs`. Пути — `tools/paths.mjs`.
+  (белые рамки), `tools/trim-edges.mjs` (мягкие полосы у краёв, сначала без `--fix`), `tools/voice.ts`, `tools/music.mjs`, `tools/sfx.mjs`. Пути — `tools/paths.mjs`.
 - ElevenLabs: на 14.09.2026 осталось ~2,6 тыс. кредитов из 65 тыс. (сброс 12.10.2026); звуки стоят ~8 кредитов за секунду. eleven_v3 ≈ 0,25 кредита за знак.
   Качество голоса проверять по шумовому полу между словами (заметка в `red-thread-secret/NOTES.md`).
 - Скрытая вкладка браузера не проигрывает CSS-переходы и отдаёт устаревшие скриншоты — проверять DOM через JS.

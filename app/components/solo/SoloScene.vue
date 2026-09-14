@@ -3,7 +3,7 @@
 import type { SoloLine } from '#shared/types'
 
 /** fallback — кадр места, где герой сейчас: сцена без своей картинки идёт поверх него, а не на пустом тумане */
-const props = defineProps<{ lines: SoloLine[]; story: string; hero: string; speakers: Record<string, string>; fallback?: string | null }>()
+const props = defineProps<{ lines: SoloLine[]; story: string; hero: string; speakers: Record<string, string>; fallback?: string | null; focus?: Record<string, string> }>()
 const emit = defineEmits<{ done: [] }>()
 const audio = useAudio()
 
@@ -13,6 +13,7 @@ const art = computed(() => {
   const a = [...props.lines.slice(0, index.value + 1)].reverse().find(l => l.art)?.art
   return a && a !== 'letter' ? `/art/${props.story}/${a}.jpg` : props.fallback ?? null
 })
+const focusOf = (src: string) => props.focus?.[src.split('/').pop()!.replace(/\.jpg$/, '')] ?? undefined
 const letter = computed(() => line.value?.art === 'letter')
 const who = computed(() => {
   const s = line.value?.speaker
@@ -42,7 +43,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="solo-scene" role="dialog" aria-modal="true" @click="next">
     <Transition name="fade" :duration="400">
-      <img v-if="art" :key="art" class="solo-scene__art" :src="art" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
+      <img v-if="art" :key="art" class="solo-scene__art" :src="art" :style="{ objectPosition: focusOf(art) }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     </Transition>
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.6" />

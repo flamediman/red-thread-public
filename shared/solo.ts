@@ -218,6 +218,8 @@ export interface SoloStory {
   endings: SoloEnding[]
   /** концовка 'auto': первое подходящее правило; score — не меньше указанного */
   endingRules: { ending: string; when?: SoloCond; score?: Record<string, number> }[]
+  /** что в кадре главное, если кадр режется под узкий экран: имя картинки → object-position («86% 40%») */
+  artFocus?: Record<string, string>
   voices: { narrator: string; hero: string }
 }
 
@@ -243,6 +245,8 @@ export interface SoloView {
   info: SoloInfo
   /** подписи к репликам сцен: id персонажа → имя */
   speakers: Record<string, string>
+  /** главная точка кадра для узких экранов: имя картинки → object-position */
+  artFocus: Record<string, string>
   /** нет партии — только меню */
   started: boolean
   place: {

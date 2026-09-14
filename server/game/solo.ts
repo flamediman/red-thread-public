@@ -13,7 +13,7 @@ const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSyn
 const FEED = 14
 const SAVE_SLOTS = 3
 const HANDS = { damage: 8, accuracy: 0.55 }
-/** фонарь садится на столько процентов за переход */
+/** фонарь садится на столько процентов за переход (до нуля — дальше только тлеет) */
 const LIGHT_DRAIN = 2
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
@@ -280,9 +280,11 @@ export class SoloGame {
     r.prev = r.place
     r.place = to
     r.passed = []
+    // севшая батарейка не гасит фонарь совсем: он еле тлеет, в темноте видно только вплотную — но игра не запирается
     if (walked && r.light) {
+      const before = r.battery
       r.battery = clamp(r.battery - LIGHT_DRAIN)
-      if (r.battery === 0) { r.light = false; this.say('Фонарь мигнул и погас. Батарейка села.', ['flashlight-off']) }
+      if (before > 0 && r.battery === 0) this.say('Батарейка села. Фонарь еле тлеет — видно только то, что под самым носом.', ['flashlight-off'])
     }
     if (sfx?.length) this.say('', sfx)
     const first = !r.visited.includes(to)
@@ -303,7 +305,7 @@ export class SoloGame {
 
   private setLight(on: boolean) {
     const r = this.run!
-    if (on && (!this.has('flashlight') || r.battery <= 0)) { this.say(this.has('flashlight') ? 'Фонарь не включается: батарейка села.' : 'Фонаря нет.'); return this.changed() }
+    if (on && !this.has('flashlight')) { this.say('Фонаря нет.'); return this.changed() }
     if (r.light === on) return
     r.light = on
     this.say('', [on ? 'flashlight-on' : 'flashlight-off'])
@@ -681,7 +683,7 @@ export class SoloGame {
   view(): SoloView {
     const r = this.run
     const empty: SoloView = {
-      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
+      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
       ammo: 0, radio: 0, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }

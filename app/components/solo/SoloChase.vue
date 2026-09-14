@@ -2,7 +2,7 @@
 /* Погоня: отбиться нельзя, только выбрать, куда бежать, пока не догнали. Цифры 1–4 — варианты. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
-const props = defineProps<{ chase: NonNullable<SoloView['chase']>; story: string; offset: number }>()
+const props = defineProps<{ chase: NonNullable<SoloView['chase']>; story: string; offset: number; focus?: Record<string, string> }>()
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
 
 const now = ref(Date.now())
@@ -29,7 +29,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div class="solo-enc solo-enc--chase" role="alertdialog" aria-modal="true" :style="{ '--glow': glow }">
-    <img class="solo-enc__art" :src="`/art/${story}/m_${chase.art}.jpg`" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
+    <img class="solo-enc__art" :src="`/art/${story}/m_${chase.art}.jpg`" :style="{ objectPosition: focus?.[`m_${chase.art}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="1" other />
     <i class="solo-chase__lamp" aria-hidden="true" />

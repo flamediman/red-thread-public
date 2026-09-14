@@ -224,13 +224,13 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
     <template v-else>
       <main class="solo-main">
         <div
-          class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk }]"
+          class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk, 'solo-view--weak': v.battery < 15 }]"
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
           @pointermove="onPointer" @pointerdown="onPointer"
         >
           <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
           <Transition name="solo-cut" :duration="{ enter: 1400, leave: 900 }">
-            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :src="artSrc" alt="" @error="artOk = false">
+            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :src="artSrc" :style="{ objectPosition: place ? v.artFocus[place.art] : undefined }" alt="" @error="artOk = false">
           </Transition>
           <i class="solo-tint" aria-hidden="true" />
           <SoloFog :density="place?.ambience.includes('room-hum') ? 0.45 : 1" :other="v.otherworld" />
@@ -352,10 +352,10 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       </div>
 
       <!-- ── поверх всего ── -->
-      <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :fallback="artOk ? artSrc : null" @done="sceneDone" />
-      <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
-      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :offset="clockOffset" @send="relay" />
-      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :offset="clockOffset" :light="v.light" @send="relay" />
+      <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="sceneDone" />
+      <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
+      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
+      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :last-fail="puzzleFail" @send="relay" />
 

@@ -2,7 +2,7 @@
 /* Встреча: секунды на решение. Полоса тает в настоящем времени (по часам сервера), цифры 1–5 — варианты. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
-const props = defineProps<{ enc: NonNullable<SoloView['encounter']>; story: string; offset: number; light: boolean }>()
+const props = defineProps<{ enc: NonNullable<SoloView['encounter']>; story: string; offset: number; light: boolean; focus?: Record<string, string> }>()
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
 
 const now = ref(Date.now())
@@ -33,7 +33,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div class="solo-enc" role="alertdialog" aria-modal="true">
-    <img class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
+    <img class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" :style="{ objectPosition: focus?.[`m_${enc.monster}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
     <div class="solo-enc__panel">
