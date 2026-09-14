@@ -2,7 +2,8 @@
 
 Кооперативный детектив: 2–10 телефонов + телевизор. Заказчик — Дмитрий. Возможна продажа игры в будущем →
 **визуал и звук — главный приоритет**. Проверять визуал скриншотами в браузере, а не по коду.
-Для игроков и тех, кто разворачивает у себя, — `README.md` и `DEPLOY.md` (без спойлеров).
+Для игроков и тех, кто разворачивает у себя, — `README.md` (без спойлеров). Сервер в интернете и его настройка —
+в закрытом репозитории: `red-thread-secret/ops/deploy/DEPLOY.md`.
 
 Два репозитория в одной папке `~/Workspace/red-thread/`:
 - `red-thread-public` — движок, миры, инструменты (этот);
@@ -60,7 +61,9 @@
 ## Инструменты
 
 - Дома: `PORT=3100 docker compose up -d --build` (контекст сборки дел — `CASES_DIR`, дела и `media/` подмонтированы).
-- В сети: `deploy/docker-compose.yml` (игра + Caddy), инструкция — `DEPLOY.md`.
+- В сети: https://redthread-game.ru — Timeweb Cloud + Cloudflare, файлы запуска и инструкция — `red-thread-secret/ops/deploy`.
+  Обновить движок: `ssh root@176.57.218.253 'cd /opt/red-thread/red-thread-public && git pull && cd ../deploy && docker compose up -d --build'`;
+  дела — `rsync -az --delete --exclude .git --exclude .variants red-thread-secret/ root@176.57.218.253:/opt/red-thread/red-thread-secret/`.
 - Боты: `FAST=1 CASE=<id> node tools/simulate.mjs 5 0228`; `ONLINE=1` — против сервера «в сети».
 - Генераторы: `tools/gigachat-art.mjs` (GigaChat, лучший по качеству; сертификат Минцифры в `tools/certs`, один запрос
   за раз, варианты в `.variants`), `tools/flux.mjs` (FLUX на HF, квота 2–3 картинки), `tools/trim-borders.mjs`
@@ -71,7 +74,7 @@
 
 ## Что осталось
 
-1. Хостинг: VPS + домен + Cloudflare по `DEPLOY.md`, ссылки на канал и донат в `deploy/.env`.
+1. Правила кэша Cloudflare для `/art`, `/voice`, `/music`, `/sfx`, `/_nuxt` и ограничение частоты на `/_ws`.
 2. Нагрузочный прогон на настоящем сервере (боты с нескольких машин), Lighthouse для телефона.
 3. Открытое учебное дело для публичного репозитория, чтобы движок можно было попробовать без закрытых дел.
 4. Шумные голоса в остальных делах (Меридиан: доктор, Соня; Кораблик: Вера) — после сброса кредитов.
