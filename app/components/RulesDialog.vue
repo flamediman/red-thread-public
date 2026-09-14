@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /* Правила простыми словами, с примерами. На экране — крупная карточка в две колонки, на телефоне — лист на весь экран. */
-import { RULES } from '~/utils/rules'
+import { rulesFor } from '~/utils/rules'
 
-defineProps<{ variant?: 'stage' | 'pad' }>()
+const props = defineProps<{ variant?: 'stage' | 'pad'; mode?: 'rounds' | 'realtime' }>()
+const rules = computed(() => rulesFor(props.mode))
 const open = defineModel<boolean>({ default: false })
 
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') open.value = false }
@@ -24,7 +25,7 @@ onBeforeUnmount(() => { if (import.meta.client) window.removeEventListener('keyd
             <button class="rules__close" type="button" aria-label="Закрыть" @click="open = false">×</button>
           </div>
           <ol class="rules__list">
-            <li v-for="(r, i) in RULES" :key="r.title" class="rules__item">
+            <li v-for="(r, i) in rules" :key="r.title" class="rules__item">
               <span class="rules__num tabnum">{{ i + 1 }}</span>
               <div>
                 <h3 class="rules__title">{{ r.title }}</h3>

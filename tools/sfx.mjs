@@ -23,7 +23,17 @@ const PACKS = {
     'suspense-04': ['1950s film noir orchestral stinger: descending low strings with a soft muted brass chord, uneasy resolution', 3],
     'suspense-06': ['Old Hollywood film noir shock chord: sharp tremolo strings and low piano hit, then decaying reverb', 3],
     'suspense-07': ['Classic film noir dramatic reveal: slow swelling orchestra with timpani roll and brass chord, 1950s movie score', 4],
-    'rumble': ['Deep orchestral bass drum and low cello swell, ominous, old movie score, no electronic sounds', 3]
+    'rumble': ['Deep orchestral bass drum and low cello swell, ominous, old movie score, no electronic sounds', 3],
+    // доска дела (режим «на время») и «Витрина»
+    'board-pin': ['A brass thumbtack pushed into a cork board, then a taut red thread plucked once, close microphone, quiet room, no music', 1.5],
+    'board-solve': ['Short 1950s film noir revelation sting: soft muted brass chord with a gentle celesta shimmer on top, then silence, no drums', 3],
+    'board-wrong': ['A dull wooden knock on a desk and a low muted piano cluster, short disappointment, dry room, no music after', 1.5],
+    'electric-spark': ['Sharp electrical arc from an old switchboard: a snapping spark, crackle and a buzzing hum dying out, close, no music', 2.5],
+    'fuse-pop': ['Old porcelain electrical fuse blowing with a small pop and fizz, then a relay click and silence', 1.5],
+    'music-box': ['An old detuned children music box plays a few slow notes of a waltz and winds down to a stop, eerie, close microphone, no other sounds', 4.5],
+    'truck-engine': ['An old 1950s truck engine starting in hard frost: cranking, sputtering to life, rough idle, then driving away across a snowy courtyard', 7],
+    'crowd-murmur': ['Muffled crowd of people waiting outside closed shop doors on a winter morning, murmur heard through thick glass, a few children voices far away, no music', 6],
+    'steps-snow': ['Slow footsteps crunching on hard frozen snow at night, close, no wind, no music', 3]
   },
   neon: {
     'phone-ring': ['Futuristic holographic phone call chime, two soft synthetic tones with glassy shimmer, cyberpunk interface', 2.5],

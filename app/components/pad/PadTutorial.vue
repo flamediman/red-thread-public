@@ -6,7 +6,7 @@ import { ART } from '~/utils/art'
 import { tutorialSteps } from '~/utils/tutorial'
 
 const props = defineProps<{ you: YouState; state: PublicState }>()
-const step = computed(() => tutorialSteps(props.state.setting.crew)[Math.min(props.state.tutorialStep, TUTORIAL_STEPS - 1)]!)
+const step = computed(() => tutorialSteps(props.state.setting.crew, props.state.caseInfo.mode, Number(props.state.settings.duration))[Math.min(props.state.tutorialStep, TUTORIAL_STEPS - 1)]!)
 const role = computed(() => props.state.detectives.find(d => d.id === props.you.detectiveId) ?? null)
 /** способности, которые — действие сверх хода (остальные со счётчиком срабатывают внутри обычного хода) */
 const EXTRA = new Set(['drone', 'patrol', 'reporter', 'intern', 'fixer', 'archivist', 'tracker', 'coroner'])

@@ -15,7 +15,7 @@ const worlds = computed(() => props.state.catalog.map(g => ({
     const games = props.state.history.filter(h => h.caseId === c.id)
     const last = games[0]
     const when = last ? new Date(last.finishedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : ''
-    return { ...c, meta: [`${c.players} игроков`, `${c.minutes} минут`, last ? `сыграно: ${c.outcomes.short[last.outcome]}, ${when}` : ''].filter(Boolean).join(' · ') }
+    return { ...c, meta: [c.mode === 'realtime' ? 'на время' : '', `${c.players} игроков`, `${c.minutes} минут`, last ? `сыграно: ${c.outcomes.short[last.outcome]}, ${when}` : ''].filter(Boolean).join(' · ') }
   })
 })))
 

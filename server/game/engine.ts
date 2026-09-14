@@ -8,12 +8,24 @@ import { INKS } from '../../shared/inks'
 import { TUTORIAL_STEPS } from '../../shared/tutorial'
 import { honestBeatId } from '../../shared/types'
 import type {
-  Beat, BoardCard, BoardLink, CaseInfo, ClientMessage, DetectiveRole, Fact, GameRecord, HonestAnswer, Item, Location, LocationOptions, PlanAction, PlanSummary, Presentation,
-  PublicState, Question, Scenario, Screen, Spot, Verdict, Witness, YouState
+  Beat, BoardCard, BoardLink, BoardQuestion, CaseInfo, ClientMessage, DetectiveRole, Fact, FieldBusy, FieldFeedEntry, FieldLogEntry, FieldMoment, FieldState, FieldWalk,
+  GameRecord, HonestAnswer, Item, Location, LocationOptions, PlanAction, PlanSummary, Presentation, PublicState, Question, Scenario, Screen, Spot, Verdict, Witness, YouState
 } from '../../shared/types'
 
 const PLAN_MS = 90_000
 const ACCUSE_MS = 120_000
+/* Режим «на время»: сколько настоящего времени занимает шаг и действие */
+const FIELD_STEP_MS = 5000          // соседнее место на том же этаже
+const FIELD_FLOOR_MS = 8000         // лестница: другой этаж
+const FIELD_SEARCH_MS = 8000
+const FIELD_SECOND_MS = 10_000      // второй, внимательный осмотр
+const FIELD_TALK_MS = 5000
+const FIELD_ABILITY_MS = 4000
+const FIELD_FORCE_MS = 4000         // взлом замка — сверх осмотра
+const FIELD_WRONG_MS = 45_000       // неверные карточки на вопросе доски
+const FIELD_COOLDOWN_MS = 20_000    // вопрос «остывает» после неверной попытки
+const FIELD_ACCUSE_PENALTY_MS = 5 * 60_000
+const FIELD_FEED = 40, FIELD_LOG = 40, FIELD_MOMENTS = 8
 /* Баланс по составу. Ходов за партию = сыщики × раунды: двое — 36, шестеро — 84, десятеро — 100.
    Разбор растёт с числом сыщиков, поэтому у больших бригад раундов меньше — партия остаётся в 75–90 минутах. */
 const SMALL_BRIGADE = 3
@@ -39,9 +51,13 @@ interface PlayerRecord {
   plan: { locationId: string; action: PlanAction } | null
   /** способность со счётчиком, выбранная сверх хода */
   bonus: PlanAction | null
+  /** режим «на время»: путь, текущее действие и личный журнал */
+  walk?: FieldWalk | null
+  busy?: (FieldBusy & { action: PlanAction }) | null
+  log?: FieldLogEntry[]
 }
 
-interface BoardEntry { by: string; round: number; witnessId?: string; locationId?: string; verdict?: { lie: boolean; by: string } }
+interface BoardEntry { by: string; round: number; witnessId?: string; locationId?: string; verdict?: { lie: boolean; by: string }; time?: string }
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 /** тип недостающей карточки — как на фильтрах доски */
@@ -105,7 +121,7 @@ export class Game {
   deadline: number | null = null
   paused = false
   pauseLeft = 0
-  settings: PublicState['settings'] = { hints: 'soft', stepping: 'manual', roles: 'pick', timers: 'on', tutorial: 'on' }
+  settings: PublicState['settings'] = { hints: 'soft', stepping: 'manual', roles: 'pick', timers: 'on', tutorial: 'on', duration: '45' }
   tutorialStep = 0
 
   board = new Map<string, BoardEntry>()
@@ -141,6 +157,22 @@ export class Game {
   /** после верного обвинения: чем закончилось */
   outcome: 'solved' | 'partial' | 'failed' | null = null
 
+  /* режим «на время» */
+  fieldTotalMs = 0
+  fieldPenaltyMs = 0
+  /** сколько оставалось до конца поиска, когда бригада пошла обвинять */
+  fieldLeftMs = 0
+  solved = new Set<string>()
+  solveCooldown = new Map<string, number>()
+  /** места осмотра, которых больше нет */
+  gone = new Set<string>()
+  /** запертые места, которые вскрыли способностью */
+  openedLocs = new Set<string>()
+  feed: FieldFeedEntry[] = []
+  moments: FieldMoment[] = []
+  private seq = 0
+  private pausedAt = 0
+
   private store: GameStore
 
   constructor(onChange: () => void, store: GameStore) {
@@ -174,7 +206,7 @@ export class Game {
     const player: PlayerRecord = {
       id, token: token && TOKEN.test(token) ? token : uid(16), name: name || 'Сыщик', ink: chosen, photo: null,
       connected: true, ready: false, order: this.players.size,
-      detectiveId: null, locationId: this.startLoc(), usesLeft: null, plan: null, bonus: null
+      detectiveId: null, locationId: this.startLoc(), usesLeft: null, plan: null, bonus: null, walk: null, busy: null, log: []
     }
     this.players.set(id, player)
     this.emit()
@@ -254,7 +286,7 @@ export class Game {
   handleHost(msg: ClientMessage) {
     switch (msg.type) {
       case 'settings': {
-        const allowed: Record<string, string[]> = { hints: ['soft', 'off'], stepping: ['manual', 'auto'], roles: ['pick', 'random'], timers: ['on', 'off'], tutorial: ['on', 'off'] }
+        const allowed: Record<string, string[]> = { hints: ['soft', 'off'], stepping: ['manual', 'auto'], roles: ['pick', 'random'], timers: ['on', 'off'], tutorial: ['on', 'off'], duration: ['30', '45', '60'] }
         const next = { ...this.settings } as Record<string, string>
         for (const [k, v] of Object.entries(msg.settings ?? {})) if (allowed[k]?.includes(v as string)) next[k] = v as string
         this.settings = next as PublicState['settings']
@@ -296,10 +328,22 @@ export class Game {
 
   private setPaused(paused: boolean) {
     if (this.paused === paused) return
+    const now = Date.now()
     if (paused) {
-      this.pauseLeft = this.deadline ? Math.max(0, this.deadline - Date.now()) : 0
-    } else if (this.deadline) {
-      this.deadline = Date.now() + this.pauseLeft
+      this.pauseLeft = this.deadline ? Math.max(0, this.deadline - now) : 0
+      this.pausedAt = now
+    } else {
+      if (this.deadline) this.deadline = now + this.pauseLeft
+      // «на время»: пути, действия и остывание вопросов стояли вместе с часами
+      const shift = this.pausedAt ? now - this.pausedAt : 0
+      if (shift > 0) {
+        for (const p of this.players.values()) {
+          if (p.walk) p.walk = { ...p.walk, startedAt: p.walk.startedAt + shift }
+          if (p.busy) p.busy = { ...p.busy, startedAt: p.busy.startedAt + shift, until: p.busy.until + shift }
+        }
+        for (const [q, t] of this.solveCooldown) this.solveCooldown.set(q, t + shift)
+      }
+      this.pausedAt = 0
     }
     this.paused = paused
     this.emit()
@@ -308,7 +352,13 @@ export class Game {
   private reset() {
     for (const p of this.players.values()) {
       p.ready = false; p.detectiveId = null; p.usesLeft = null; p.plan = null; p.bonus = null; p.locationId = this.startLoc()
+      p.walk = null; p.busy = null; p.log = []
     }
+    this.fieldTotalMs = 0; this.fieldPenaltyMs = 0; this.fieldLeftMs = 0; this.solved.clear(); this.solveCooldown.clear()
+    this.gone.clear(); this.openedLocs.clear(); this.feed = []; this.moments = []; this.seq = 0
+    // длительность поиска по умолчанию — из дела
+    const minutes = String(this.S.realtime?.minutes ?? '')
+    if (this.realtime && ['30', '45', '60'].includes(minutes)) this.settings = { ...this.settings, duration: minutes as PublicState['settings']['duration'] }
     this.screen = 'lobby'
     this.round = 0
     this.deadline = null
@@ -334,7 +384,8 @@ export class Game {
     }
     this.brigade = roster.length
     this.startedAt = Date.now()
-    this.roundsTotal = roundsFor(roster.length)
+    // «на время»: расписания свидетелей идут по отрезкам времени, а не по раундам
+    this.roundsTotal = this.realtime ? Math.max(1, this.S.scheduleLength) : roundsFor(roster.length)
     this.round = 0
     if (this.settings.tutorial === 'on') {
       // обучение ведёт ведущий кнопкой «Дальше»: сервер не торопит
@@ -360,7 +411,9 @@ export class Game {
   /* ── таймер и переходы ──────────────────────────────────────── */
 
   private tick() {
-    if (this.paused || !this.deadline) return
+    if (this.paused) return
+    if (this.screen === 'field') this.fieldTick(Date.now())
+    if (!this.deadline) return
     if (Date.now() >= this.deadline) this.onDeadline(false)
   }
 
@@ -371,7 +424,9 @@ export class Game {
         if (this.tutorialStep + 1 >= TUTORIAL_STEPS) this.beginPrologue()
         else { this.tutorialStep++; this.emit() }
         break
-      case 'prologue': this.beginPlan(); break
+      case 'prologue': if (this.realtime) this.beginField(); else this.beginPlan(); break
+      // «Дальше» с пульта поиск не обрывает: обвинение открывают сами сыщики или конец времени
+      case 'field': if (!forced) this.openAccusation('dawn'); break
       case 'plan': this.resolve(); break
       case 'resolve': this.beginDiscuss(); break
       case 'discuss': this.nextRound(); break
@@ -429,7 +484,10 @@ export class Game {
 
   clock(): string {
     const step = Math.round(this.b.night / this.roundsTotal / 5) * 5
-    const total = clockMinutes(this.S.clock.start) + Math.min(this.b.night, this.round * step)
+    // «на время»: игровые часы идут вместе с настоящими, поминутно
+    const total = clockMinutes(this.S.clock.start) + (this.realtime && this.fieldTotalMs
+      ? Math.round(this.b.night * this.fieldShare())
+      : Math.min(this.b.night, this.round * step))
     const hh = Math.floor(total / 60) % 24, mm = total % 60
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
   }
@@ -494,9 +552,17 @@ export class Game {
         this.emit()
         break
       case 'callAccuse':
-        if (this.screen !== 'discuss' && this.screen !== 'plan') return
+        if (this.screen !== 'discuss' && this.screen !== 'plan' && this.screen !== 'field') return
+        if (this.screen === 'field' && this.paused) return
         this.openAccusation(pid)
         break
+      case 'go': if (typeof msg.locationId === 'string') this.fieldGo(p, msg.locationId, !!msg.force); break
+      case 'act': this.fieldAct(p, msg.action); break
+      case 'halt':
+        if (this.screen !== 'field') return
+        this.settleWalk(p, Date.now()); p.walk = null; p.busy = null; this.emit()
+        break
+      case 'solve': if (typeof msg.questionId === 'string') this.fieldSolve(p, msg.questionId, msg.factIds); break
       case 'vote':
         if (this.screen !== 'accuse' || !this.accusation) return
         this.accusation.votes[pid] = { ...(this.accusation.votes[pid] ?? {}), ...this.pickVote(msg) }
@@ -537,7 +603,7 @@ export class Game {
 
   private addFact(id: string | undefined, by: string, from: { witnessId?: string; locationId?: string } = {}) {
     if (!id || this.board.has(id) || !this.b.FACT.has(id)) return false
-    this.board.set(id, { by, round: this.round, ...from })
+    this.board.set(id, { by, round: this.round, ...from, ...(this.realtime && this.screen === 'field' ? { time: this.clock() } : {}) })
     return true
   }
 
@@ -903,6 +969,12 @@ export class Game {
   /* ── обвинение ──────────────────────────────────────────────── */
 
   private openAccusation(calledBy: string) {
+    if (this.screen === 'field') {
+      // часы поиска останавливаются: после неверного обвинения бригада вернётся к ним со штрафом
+      const now = Date.now()
+      this.fieldLeftMs = calledBy === 'dawn' ? 0 : Math.max(0, (this.deadline ?? now) - now)
+      for (const p of this.players.values()) { this.settleWalk(p, now); p.walk = null; p.busy = null }
+    }
     this.screen = 'accuse'
     const timed = this.settings.timers === 'on'
     this.accusation = { calledBy, deadline: timed ? Date.now() + ACCUSE_MS : null, votes: {} }
@@ -970,6 +1042,15 @@ export class Game {
     }
     // ошибка: теряем раунд и продолжаем
     this.verdict = null
+    if (this.realtime) {
+      // «на время»: минус пять минут поиска
+      const penalty = Math.min(this.fieldLeftMs, FIELD_ACCUSE_PENALTY_MS)
+      this.fieldPenaltyMs += penalty
+      this.fieldLeftMs -= penalty
+      if (this.fieldLeftMs <= 0) { this.openAccusation('dawn'); return }
+      this.beginField(this.fieldLeftMs)
+      return
+    }
     if (this.round + 1 >= this.roundsTotal) { this.openAccusation('dawn'); return }
     this.round++
     this.beginPlan()
@@ -980,7 +1061,7 @@ export class Game {
   private cards(): BoardCard[] {
     return [...this.board.entries()].map(([id, e]) => {
       const f = this.b.FACT.get(id)!
-      return { id, title: f.title, detail: f.detail, kind: f.kind, by: this.players.get(e.by)?.name ?? e.by, round: e.round, witnessId: e.witnessId, locationId: e.locationId, pinned: this.pins.has(id), verdict: e.verdict }
+      return { id, title: f.title, detail: f.detail, kind: f.kind, by: this.players.get(e.by)?.name ?? e.by, round: e.round, witnessId: e.witnessId, locationId: e.locationId, pinned: this.pins.has(id), verdict: e.verdict, time: e.time }
     }).sort((a, b) => a.round - b.round)
   }
 
@@ -1040,9 +1121,11 @@ export class Game {
       detectives: this.S.detectives,
       locations: this.S.locations.map(l => ({
         ...l,
-        unsearched: this.S.spots.filter(s => s.locationId === l.id && (!this.searched.has(s.id) || (s.hidden && !this.hiddenDone.has(s.id)))).length
+        unsearched: this.S.spots.filter(s => s.locationId === l.id && !this.gone.has(s.id) && (!this.searched.has(s.id) || (s.hidden && !this.hiddenDone.has(s.id)))).length,
+        open: this.canEnter(l)
       })),
-      witnesses: this.S.witnesses.map(w => ({ id: w.id, name: w.name, role: w.role, age: w.age, bio: w.bio, locationId: this.witnessAt(w.id) })),
+      // «на время»: кто сидит за запертой дверью, не видно, пока дверь не открыта
+      witnesses: this.S.witnesses.map(w => ({ id: w.id, name: w.name, role: w.role, age: w.age, bio: w.bio, locationId: this.witnessVisible(w.id) ? this.witnessAt(w.id) : '' })),
       board: { cards: this.cards(), links: this.linkCards() },
       beats: this.beats,
       beatIndex: this.beatIndex,
@@ -1060,7 +1143,8 @@ export class Game {
       history: (this.screen === 'lobby' || this.screen === 'menu') ? this.store.history().slice(-30).reverse() : [],
       accusationOptions: { methods: this.S.accusation.methods, motives: this.S.accusation.motives },
       outcome: this.outcome,
-      standings: null
+      standings: null,
+      field: this.realtime && ['field', 'accuse', 'verdict', 'epilogue', 'final'].includes(this.screen) ? this.fieldState() : null
     }
   }
 
@@ -1071,7 +1155,7 @@ export class Game {
     const kind = role?.ability.kind
     const options: LocationOptions[] = this.S.locations.map(l => ({
       locationId: l.id,
-      spots: this.S.spots.filter(s => s.locationId === l.id).map(s => ({
+      spots: this.S.spots.filter(s => s.locationId === l.id && !this.gone.has(s.id)).map(s => ({
         id: s.id, name: s.name, glance: s.glance,
         searched: this.searched.has(s.id) && (!s.hidden || this.hiddenDone.has(s.id)) && !this.memoryReadable(s, kind),
         locked: s.locked && !this.searched.has(s.id) && !(s.locked.keyItemId && this.items.has(s.locked.keyItemId)) ? s.locked.text : null,
@@ -1079,7 +1163,7 @@ export class Game {
         memory: this.memoryReadable(s, kind),
         stage: !this.searched.has(s.id) ? 'new' as const : s.hidden && !this.hiddenDone.has(s.id) ? 'second' as const : this.memoryReadable(s, kind) ? 'memory' as const : 'done' as const
       })),
-      witnesses: this.S.witnesses.filter(w => this.witnessAt(w.id) === l.id).map(w => ({
+      witnesses: this.S.witnesses.filter(w => this.witnessAt(w.id) === l.id && this.witnessVisible(w.id)).map(w => ({
         id: w.id, name: w.name,
         questions: this.S.questions.filter(q => q.witnessId === w.id && (q.initial || this.unlocked.has(q.id))).map(q => {
           const locked = this.asked.has(q.id) ? null : this.reqHint(q.requires)
@@ -1107,7 +1191,265 @@ export class Game {
       options,
       items: [...this.items].map(i => this.b.ITEM.get(i)!).filter(Boolean),
       lieMarks: this.lieMarks.get(p.id) ?? {},
-      peeks, forecast, market
+      peeks, forecast, market,
+      field: this.realtime ? { walk: p.walk ?? null, busy: p.busy ? { label: p.busy.label, startedAt: p.busy.startedAt, until: p.busy.until } : null, log: (p.log ?? []).slice(-FIELD_LOG) } : null
+    }
+  }
+
+  /* ── режим «на время» ───────────────────────────────────────── */
+
+  /** дело играется «на время»: все ходят одновременно, время настоящее */
+  private get realtime() { return this.b.info.mode === 'realtime' && !!this.S.realtime }
+
+  private beginField(leftMs?: number) {
+    this.screen = 'field'
+    this.beats = []
+    this.verdict = null
+    if (leftMs === undefined) { this.fieldTotalMs = Number(this.settings.duration) * 60_000 || 45 * 60_000; leftMs = this.fieldTotalMs }
+    this.phaseMs = this.fieldTotalMs
+    this.deadline = Date.now() + leftMs
+    this.fieldTick(Date.now())
+    this.emit()
+  }
+
+  /** доля прошедшего времени поиска, 0…1 (штрафы приближают конец) */
+  private fieldShare(now = Date.now()) {
+    if (!this.fieldTotalMs) return 0
+    const left = this.screen !== 'field' ? this.fieldLeftMs
+      : this.paused ? this.pauseLeft
+      : Math.max(0, (this.deadline ?? now) - now)
+    return Math.min(1, Math.max(0, 1 - left / this.fieldTotalMs))
+  }
+
+  /** свидетель на виду: не за запертой дверью */
+  private witnessVisible(witnessId: string) {
+    const loc = this.b.LOC.get(this.witnessAt(witnessId))
+    return !loc || this.canEnter(loc)
+  }
+
+  /** войти можно: замка нет, ключ у бригады или дверь вскрыли */
+  private canEnter(l: Location) {
+    return !l.locked || this.openedLocs.has(l.id) || (!!l.locked.keyItemId && this.items.has(l.locked.keyItemId))
+  }
+
+  /** кратчайший путь по соседям; запертые места обходятся, кроме цели */
+  private route(from: string, to: string): string[] | null {
+    if (from === to) return []
+    const prev = new Map<string, string>([[from, '']])
+    const queue = [from]
+    while (queue.length) {
+      const at = queue.shift()!
+      for (const next of this.b.LOC.get(at)?.adjacent ?? []) {
+        if (prev.has(next)) continue
+        const loc = this.b.LOC.get(next)
+        if (!loc || (next !== to && !this.canEnter(loc))) continue
+        prev.set(next, at)
+        if (next === to) {
+          const path = [to]
+          for (let x = at; x !== from; x = prev.get(x)!) path.unshift(x)
+          return path
+        }
+        queue.push(next)
+      }
+    }
+    return null
+  }
+
+  /** дошёл ли сыщик до очередного места; true — что-то изменилось */
+  private settleWalk(p: PlayerRecord, now: number) {
+    const w = p.walk
+    if (!w) return false
+    let t = w.startedAt, changed = false
+    for (let i = 0; i < w.path.length; i++) {
+      t += w.legs[i] ?? 0
+      if (now < t) break
+      if (p.locationId !== w.path[i]) { p.locationId = w.path[i]!; changed = true }
+      if (i === w.path.length - 1) { p.walk = null; changed = true }
+    }
+    return changed
+  }
+
+  private fieldGo(p: PlayerRecord, locationId: string, force: boolean) {
+    const dest = this.b.LOC.get(locationId)
+    if (!dest || this.screen !== 'field' || this.paused) return
+    const now = Date.now()
+    this.settleWalk(p, now)
+    p.busy = null
+    if (locationId === p.locationId) { p.walk = null; this.emit(); return }
+    if (!this.canEnter(dest)) {
+      const kind = this.roleOf(p)?.ability.kind
+      const canForce = force && (dest.locked!.kind === 'digital' ? kind === 'netrunner' : kind === 'burglar') && (p.usesLeft ?? 0) > 0
+      if (!canForce) {
+        this.logTo(p, [this.narrate(`door_${dest.id}`, `${dest.name}. ${dest.locked!.text}`, ['door-knob'])])
+        p.walk = null
+        this.emit()
+        return
+      }
+      p.usesLeft!--
+      this.openedLocs.add(dest.id)
+      this.pushFeed({ kind: 'door', playerId: p.id, locationId: dest.id, text: `${p.name} вскрывает дверь: ${dest.name}` })
+    }
+    const path = this.route(p.locationId, dest.id)
+    if (!path) return
+    let prev = this.b.LOC.get(p.locationId)!
+    const legs = path.map(id => { const next = this.b.LOC.get(id)!; const ms = next.floor === prev.floor ? FIELD_STEP_MS : FIELD_FLOOR_MS; prev = next; return ms })
+    p.walk = { from: p.locationId, path, legs, startedAt: now }
+    this.emit()
+  }
+
+  private fieldAct(p: PlayerRecord, action: PlanAction) {
+    if (this.screen !== 'field' || this.paused || !action || typeof action !== 'object') return
+    const now = Date.now()
+    this.settleWalk(p, now)
+    if (p.walk || p.busy) return
+    const kind = this.roleOf(p)?.ability.kind
+    let ms = FIELD_ABILITY_MS, label = ''
+    switch (action.type) {
+      case 'search': {
+        const sp = this.b.SPOT.get(action.spotId)
+        if (!sp || sp.locationId !== p.locationId || this.gone.has(sp.id)) return
+        ms = (this.searched.has(sp.id) ? FIELD_SECOND_MS : FIELD_SEARCH_MS) + (action.force ? FIELD_FORCE_MS : 0)
+        label = `осматривает: ${sp.name}`
+        break
+      }
+      case 'ask': case 'present': {
+        const w = this.b.WIT.get(action.witnessId)
+        if (!w) return
+        if (!action.remote && this.witnessAt(w.id) !== p.locationId) return
+        ms = kind === 'investigator' ? Math.round(FIELD_TALK_MS / 2) : FIELD_TALK_MS
+        label = `${action.remote ? 'вызывает на допрос' : action.type === 'ask' ? 'говорит' : 'показывает улику'}: ${w.name}`
+        break
+      }
+      case 'drone': {
+        const sp = this.b.SPOT.get(action.spotId)
+        if (!sp || this.gone.has(sp.id)) return
+        label = this.bonusLabel({ ...p, bonus: action }) ?? 'способность'
+        break
+      }
+      case 'reporter': case 'intern': case 'fixer': case 'archivist': case 'verify': case 'coroner':
+        label = this.bonusLabel({ ...p, bonus: action }) ?? 'способность'
+        break
+      default: return
+    }
+    p.busy = { action, startedAt: now, until: now + ms, label }
+    this.emit()
+  }
+
+  /** действие закончилось: реплики — в журнал сыщика, находки — в ленту экрана */
+  private fieldFinish(p: PlayerRecord, action: PlanAction) {
+    const before = new Set(this.board.keys()), itemsBefore = new Set(this.items)
+    const beats = this.actBeats(p, { locationId: p.locationId, action })
+    if (beats.length) this.logTo(p, beats.map(b => ({ ...b, locationId: b.locationId ?? p.locationId, playerId: p.id })))
+    const fresh = [...this.board.keys()].filter(k => !before.has(k))
+    const newItems = [...this.items].filter(i => !itemsBefore.has(i))
+    const talk = action.type === 'ask' || action.type === 'present'
+    const kind: FieldFeedEntry['kind'] = talk ? 'talk' : action.type === 'search' || action.type === 'drone' ? 'find' : 'ability'
+    for (const f of fresh) this.pushFeed({ kind, playerId: p.id, locationId: p.locationId, text: `${p.name}: «${this.b.FACT.get(f)!.title}»` })
+    for (const i of newItems) this.pushFeed({ kind: 'find', playerId: p.id, locationId: p.locationId, text: `${p.name} забирает улику «${this.b.ITEM.get(i)?.name ?? ''}»` })
+    if (!fresh.length && !newItems.length && talk) this.pushFeed({ kind: 'talk', playerId: p.id, locationId: p.locationId, text: `${p.name} говорит: ${this.b.WIT.get(action.witnessId)?.name ?? ''}` })
+    // противоречия в делах «на время» тоже натягиваются сами
+    for (const c of this.S.contradictions) {
+      if (this.links.has(c.id) || !this.board.has(c.facts[0]) || !this.board.has(c.facts[1])) continue
+      this.links.add(c.id)
+      this.addFact(c.yieldsFactId, 'доска')
+      this.pushFeed({ kind: 'solve', text: `Противоречие: ${c.text}` })
+    }
+  }
+
+  private fieldSolve(p: PlayerRecord, questionId: string, factIds: unknown) {
+    if (this.screen !== 'field' || this.paused || !Array.isArray(factIds)) return
+    const q = this.S.realtime?.board.find(x => x.id === questionId)
+    if (!q || this.solved.has(q.id) || !this.reqOk(q.requires)) return
+    const now = Date.now()
+    if ((this.solveCooldown.get(q.id) ?? 0) > now) return
+    const set = new Set(factIds.filter((f): f is string => typeof f === 'string' && this.board.has(f)))
+    if (set.size !== q.slots) return
+    if (q.answers.some(a => a.length === set.size && a.every(f => set.has(f)))) {
+      this.solved.add(q.id)
+      this.addFact(q.yieldsFactId, p.id)
+      this.pushMoment({ ...q.beat, facts: [q.yieldsFactId] }, q.title)
+      this.pushFeed({ kind: 'solve', playerId: p.id, text: `${p.name} закрывает вопрос «${q.title}»: ${this.b.FACT.get(q.yieldsFactId)?.title ?? ''}` })
+    } else {
+      this.solveCooldown.set(q.id, now + FIELD_COOLDOWN_MS)
+      this.fieldPenaltyMs += FIELD_WRONG_MS
+      if (this.deadline) this.deadline -= FIELD_WRONG_MS
+      this.pushFeed({ kind: 'fail', playerId: p.id, text: `${p.name}: к вопросу «${q.title}» эти карточки не подходят. Минус ${FIELD_WRONG_MS / 1000} секунд.` })
+    }
+    this.emit()
+  }
+
+  private fieldTick(now: number) {
+    let changed = false
+    const share = this.fieldShare(now)
+    const slot = Math.min(this.roundsTotal - 1, Math.floor(share * this.roundsTotal))
+    if (slot !== this.round) { this.round = slot; changed = true }
+    // события утра: доля времени round/12
+    for (const [i, ev] of (this.S.events ?? []).entries()) {
+      if (this.eventsFired.has(i) || share < ev.round / 12) continue
+      this.eventsFired.add(i)
+      if (ev.itemId) this.items.add(ev.itemId)
+      this.addFact(ev.factId, 'событие')
+      for (const sp of ev.spotsGone ?? []) this.gone.add(sp)
+      const item = ev.itemId ? this.b.ITEM.get(ev.itemId) : null
+      this.pushMoment({ ...ev.beat, itemId: item?.id, itemName: item?.name, facts: ev.factId ? [ev.factId] : undefined })
+      this.pushFeed({ kind: 'event', locationId: ev.beat.locationId, text: ev.beat.text })
+      changed = true
+    }
+    // звонки инспектора: если бригада до сих пор не нашла ничего из нужного
+    if (this.settings.hints === 'soft') {
+      for (const h of this.S.hints) {
+        if (this.hintsFired.has(h.round) || share < h.round / 12) continue
+        this.hintsFired.add(h.round)
+        if (h.missingAll.some(f => this.board.has(f))) continue
+        this.hintsUsed++
+        this.pushMoment(h.beat, this.b.info.helper.name)
+        this.pushFeed({ kind: 'hint', text: `${this.b.info.helper.name}: ${h.beat.text}` })
+        changed = true
+      }
+    }
+    for (const p of this.players.values()) {
+      if (this.settleWalk(p, now)) changed = true
+      if (p.busy && now >= p.busy.until) {
+        const action = p.busy.action
+        p.busy = null
+        this.fieldFinish(p, action)
+        changed = true
+      }
+    }
+    if (changed) this.emit()
+  }
+
+  private logTo(p: PlayerRecord, beats: Beat[]) {
+    p.log = [...(p.log ?? []), { seq: ++this.seq, at: this.clock(), beats }].slice(-FIELD_LOG)
+  }
+  private pushFeed(e: Omit<FieldFeedEntry, 'seq' | 'at'>) {
+    this.feed = [...this.feed, { ...e, seq: ++this.seq, at: this.clock() }].slice(-FIELD_FEED)
+  }
+  private pushMoment(beat: Beat, title?: string) {
+    this.moments = [...this.moments, { seq: ++this.seq, beat, title }].slice(-FIELD_MOMENTS)
+  }
+
+  /** какие карточки нужны вопросу доски — по типам первого подходящего набора */
+  private slotHint(q: BoardQuestion) {
+    const kinds = new Map<string, number>()
+    for (const f of q.answers[0] ?? []) { const k = this.b.FACT.get(f)?.kind ?? 'physical'; kinds.set(k, (kinds.get(k) ?? 0) + 1) }
+    return [...kinds].map(([k, n]) => `${KIND_HINT[k] ?? 'факты'}${n > 1 ? ` ×${n}` : ''}`).join(' + ')
+  }
+
+  private fieldState(): FieldState {
+    const now = Date.now()
+    return {
+      serverNow: now,
+      totalMs: this.fieldTotalMs,
+      penaltyMs: this.fieldPenaltyMs,
+      players: [...this.players.values()].map(p => ({ id: p.id, walk: p.walk ?? null, busy: p.busy ? { label: p.busy.label, startedAt: p.busy.startedAt, until: p.busy.until } : null })),
+      questions: (this.S.realtime?.board ?? []).filter(q => this.solved.has(q.id) || this.reqOk(q.requires)).map(q => {
+        const cd = this.solveCooldown.get(q.id) ?? 0
+        return { id: q.id, group: q.group, title: q.title, slots: q.slots, solved: this.solved.has(q.id), yieldsFactId: this.solved.has(q.id) ? q.yieldsFactId : null, cooldownUntil: cd > now ? cd : null, hint: this.slotHint(q) }
+      }),
+      feed: this.feed.slice(-30),
+      moments: this.moments.slice(-6),
+      gone: [...this.gone]
     }
   }
 
@@ -1133,7 +1475,9 @@ export class Game {
         searched: [...this.searched], hiddenDone: [...this.hiddenDone], memoryDone: [...this.memoryDone], asked: [...this.asked], presented: [...this.presented],
         unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()], confronted: [...this.confronted], tutorialStep: this.tutorialStep,
         beats: this.beats, beatIndex: this.beatIndex, proceedVotes: [...this.proceedVotes], accusation: this.accusation, verdict: this.verdict,
-        attemptsLeft: this.attemptsLeft, hintsUsed: this.hintsUsed, hintsFired: [...this.hintsFired], eventsFired: [...this.eventsFired], outcome: this.outcome
+        attemptsLeft: this.attemptsLeft, hintsUsed: this.hintsUsed, hintsFired: [...this.hintsFired], eventsFired: [...this.eventsFired], outcome: this.outcome, pausedAt: this.pausedAt,
+        fieldTotalMs: this.fieldTotalMs, fieldPenaltyMs: this.fieldPenaltyMs, fieldLeftMs: this.fieldLeftMs, solved: [...this.solved], solveCooldown: [...this.solveCooldown],
+        gone: [...this.gone], openedLocs: [...this.openedLocs], feed: this.feed, moments: this.moments, seq: this.seq, savedAt: Date.now()
       }
       this.store.save(data)
     } catch (e) { console.warn('снимок партии не записался:', (e as Error).message) }
@@ -1150,7 +1494,7 @@ export class Game {
         return
       }
       if (d.caseId) this.loadCase(d.caseId)
-      for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: p.plan ?? null, bonus: p.bonus ?? null, locationId: this.b.LOC.has(p.locationId) ? p.locationId : this.startLoc() })
+      for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: p.plan ?? null, bonus: p.bonus ?? null, walk: p.walk ?? null, busy: p.busy ?? null, log: p.log ?? [], locationId: this.b.LOC.has(p.locationId) ? p.locationId : this.startLoc() })
       this.screen = d.screen ?? 'menu'; this.round = d.round ?? 0; this.roundsTotal = d.roundsTotal ?? roundsFor(6); this.brigade = d.brigade ?? 0; this.phaseMs = d.phaseMs ?? null; this.startedAt = d.startedAt ?? 0
       this.paused = !!d.paused; this.pauseLeft = d.pauseLeft ?? 0
       for (const k of Object.keys(this.settings) as (keyof PublicState['settings'])[]) if (d.settings?.[k]) (this.settings as Record<string, string>)[k] = d.settings[k]
@@ -1160,8 +1504,17 @@ export class Game {
       this.lieMarks = new Map(d.lieMarks ?? []); this.beats = d.beats ?? []; this.beatIndex = d.beatIndex ?? 0; this.proceedVotes = new Set(d.proceedVotes ?? [])
       this.accusation = d.accusation ?? null; this.verdict = d.verdict ?? null
       this.attemptsLeft = d.attemptsLeft ?? 2; this.hintsUsed = d.hintsUsed ?? 0; this.hintsFired = new Set(d.hintsFired ?? []); this.eventsFired = new Set(d.eventsFired ?? []); this.outcome = d.outcome ?? null
-      // после перезапуска фаза с таймером ставится на паузу — ведущий продолжит, когда все вернутся
-      if (this.screen !== 'lobby' && this.screen !== 'final' && d.deadline) { this.paused = true; this.pauseLeft = Math.max(10_000, d.deadline - Date.now()); this.deadline = d.deadline }
+      this.fieldTotalMs = d.fieldTotalMs ?? 0; this.fieldPenaltyMs = d.fieldPenaltyMs ?? 0; this.fieldLeftMs = d.fieldLeftMs ?? 0; this.solved = new Set(d.solved ?? []); this.solveCooldown = new Map(d.solveCooldown ?? [])
+      this.gone = new Set(d.gone ?? []); this.openedLocs = new Set(d.openedLocs ?? []); this.feed = d.feed ?? []; this.moments = d.moments ?? []; this.seq = d.seq ?? 0
+      // после перезапуска фаза с таймером ставится на паузу — ведущий продолжит, когда все вернутся;
+      // простой сервера в оставшееся время не засчитывается
+      if (this.screen !== 'lobby' && this.screen !== 'final' && d.deadline) {
+        const savedAt = d.savedAt ?? Date.now()
+        this.pauseLeft = d.paused ? (d.pauseLeft ?? 10_000) : Math.max(10_000, d.deadline - savedAt)
+        this.paused = true
+        this.pausedAt = d.paused && d.pausedAt ? d.pausedAt : savedAt
+        this.deadline = d.deadline
+      }
       this.store.log(`партия восстановлена: ${this.screen}, раунд ${this.round + 1}, игроков ${this.players.size}`)
     } catch (e) { console.warn('снимок партии не прочитался:', (e as Error).message) }
   }

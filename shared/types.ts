@@ -85,6 +85,8 @@ export interface Location {
   adjacent: string[]
   /** пол — для звука шагов */
   surface: 'wood' | 'marble' | 'stairs' | 'outside'
+  /** режим «на время»: дверь заперта — войти можно с ключом (или взломщику) */
+  locked?: { keyItemId?: string; text: string; kind?: 'physical' | 'digital' }
 }
 
 export interface Witness {
@@ -290,14 +292,44 @@ export interface Scenario {
   floors: { id: number; label: string }[]
   /** предмет, которым любой может прочитать слой памяти */
   memoryItemId?: string
-  /** события ночи: в раунд (из расчёта на 12 раундов, масштабируется) звучит реплика и ложатся факт/предмет */
-  events?: { round: number; beat: Beat; factId?: string; itemId?: string }[]
+  /** события ночи: в раунд (из расчёта на 12 раундов, масштабируется; в режиме «на время» — доля времени round/12)
+      звучит реплика, ложатся факт/предмет, исчезают места осмотра (грузовик уехал) */
+  events?: { round: number; beat: Beat; factId?: string; itemId?: string; spotsGone?: string[] }[]
   /** цели проверки сценария: итоговый факт (признание) и цепочка обвинения */
   checks?: { goal: string; chain: string[] }
   /** осмотр тела судмедэкспертом: место, факт и что звучит */
   coroner?: { spotId: string; factId: string; text: string }
   /** чёрный рынок фиксера: что можно достать (всё это находится и обычным путём) */
   market?: { itemId: string; text: string }[]
+  /** режим «на время»: длительность и доска дела */
+  realtime?: RealtimeSpec
+}
+
+/* ── Режим «на время» ───────────────────────────────────────── */
+
+/** Вопрос доски дела: команда прикалывает к нему карточки; подходящий набор даёт вывод. */
+export interface BoardQuestion {
+  id: string
+  /** раздел доски: «Витрина», «Люди»… */
+  group: string
+  /** сам вопрос */
+  title: string
+  /** сколько карточек нужно приколоть */
+  slots: number
+  /** подходящие наборы (порядок не важен): любой решает вопрос */
+  answers: string[][]
+  /** вывод, который ложится на доску */
+  yieldsFactId: string
+  /** что звучит на экране, когда вопрос решён */
+  beat: Beat
+  /** вопрос появляется на доске, когда есть все эти карточки */
+  requires?: Requirement
+}
+
+export interface RealtimeSpec {
+  /** сколько длится поиск, минут (по умолчанию; ведущий выбирает в лобби) */
+  minutes: number
+  board: BoardQuestion[]
 }
 
 /** Что сервер сообщает клиенту о себе (/api/config) */
@@ -353,6 +385,8 @@ export interface CaseInfo {
   lede: string
   /** часы: начало ночи и момент, когда время кончается */
   clock: { start: string; end: string }
+  /** как играется дело: раундами (по умолчанию) или «на время» — все ходят одновременно, время настоящее */
+  mode?: 'rounds' | 'realtime'
   /** «до катера», «до рассвета» — перед оставшимся временем */
   countdown: string
   /** когда время вышло: «катер у пристани» */
@@ -406,6 +440,8 @@ export interface GameRecord {
 
 export type Screen =
   | 'menu' | 'lobby' | 'tutorial' | 'prologue' | 'plan' | 'resolve' | 'discuss'
+  /** режим «на время»: все ходят по карте одновременно */
+  | 'field'
   | 'accuse' | 'verdict' | 'epilogue' | 'final'
 
 export interface Player {
@@ -438,6 +474,8 @@ export interface BoardCard {
   pinned: boolean
   /** проверено: психолог или камеры сказали, правда это или ложь */
   verdict?: { lie: boolean; by: string }
+  /** режим «на время»: игровое время, когда карточка легла */
+  time?: string
 }
 
 export interface BoardLink {
@@ -458,6 +496,59 @@ export interface PublicWitness {
 export interface PublicLocation extends Location {
   /** сколько мест осмотра ещё не тронуто */
   unsearched: number
+  /** режим «на время»: дверь уже можно открыть (нет замка, есть ключ или вскрыли) */
+  open: boolean
+}
+
+/* ── Режим «на время»: публичное состояние ── */
+
+/** путь сыщика: узлы после текущего места и длительность каждого перехода, мс */
+export interface FieldWalk { from: string; path: string[]; legs: number[]; startedAt: number }
+export interface FieldBusy { label: string; startedAt: number; until: number }
+
+/** строка ленты на экране: что нашли, кто с кем говорил, что решила доска */
+export interface FieldFeedEntry {
+  seq: number
+  /** игровое время */
+  at: string
+  playerId?: string
+  kind: 'find' | 'talk' | 'solve' | 'fail' | 'event' | 'hint' | 'ability' | 'door'
+  text: string
+  locationId?: string
+}
+
+/** крупный момент на экране: решённый вопрос доски, событие, звонок инспектора */
+export interface FieldMoment { seq: number; beat: Beat; title?: string }
+
+/** что сыщик увидел и услышал сам — журнал на телефоне */
+export interface FieldLogEntry { seq: number; at: string; beats: Beat[] }
+
+export interface FieldQuestionState {
+  id: string
+  group: string
+  title: string
+  slots: number
+  solved: boolean
+  /** вывод, когда вопрос решён */
+  yieldsFactId: string | null
+  /** после неверной попытки вопрос «остывает» до этого момента, epoch ms */
+  cooldownUntil: number | null
+  /** какие карточки нужны — по типам, без названий */
+  hint: string
+}
+
+export interface FieldState {
+  /** часы сервера — телефоны и экран поправляют по ним свои */
+  serverNow: number
+  totalMs: number
+  /** сколько отняли штрафы (неверные карточки на доске, неверное обвинение) */
+  penaltyMs: number
+  players: { id: string; walk: FieldWalk | null; busy: FieldBusy | null }[]
+  questions: FieldQuestionState[]
+  feed: FieldFeedEntry[]
+  moments: FieldMoment[]
+  /** места осмотра, которых больше нет (грузовик уехал) */
+  gone: string[]
 }
 
 export interface PlanSummary {
@@ -512,6 +603,8 @@ export interface PublicState {
     timers: 'on' | 'off'
     /** перед прологом — короткое обучение на экране */
     tutorial: 'on' | 'off'
+    /** режим «на время»: сколько минут на поиск */
+    duration: '30' | '45' | '60'
   }
   players: Player[]
   detectives: DetectiveRole[]
@@ -546,6 +639,8 @@ export interface PublicState {
   /** чем закончилось; null — партия идёт */
   outcome: 'solved' | 'partial' | 'failed' | null
   standings: null
+  /** режим «на время» (screen === 'field' и после него) */
+  field: FieldState | null
 }
 
 /** Что видит конкретный сыщик на телефоне */
@@ -576,6 +671,8 @@ export interface YouState {
   forecast: { witnessId: string; name: string; locationId: string }[]
   /** для фиксера: что ещё можно достать */
   market: { itemId: string; name: string }[]
+  /** режим «на время»: мой путь, моё действие и мой журнал */
+  field: { walk: FieldWalk | null; busy: FieldBusy | null; log: FieldLogEntry[] } | null
 }
 
 export interface LocationOptions {
@@ -643,6 +740,14 @@ export type ClientMessage =
   | { type: 'selectCase'; caseId: string }
   /** ведущий: шаг обучения (число шагов и больше — к прологу) */
   | { type: 'tutorial'; step: number }
+  /** режим «на время»: идти в место (force — вскрыть запертую дверь способностью) */
+  | { type: 'go'; locationId: string; force?: boolean }
+  /** режим «на время»: действие там, где сыщик стоит (осмотр, вопрос, улика, способность) */
+  | { type: 'act'; action: PlanAction }
+  /** режим «на время»: остановиться — бросить путь или действие */
+  | { type: 'halt' }
+  /** режим «на время»: приколоть карточки к вопросу доски */
+  | { type: 'solve'; questionId: string; factIds: string[] }
   | { type: 'toMenu' }
 
 export type ServerMessage =

@@ -77,7 +77,7 @@ function runGame() {
         if (!SLOW && s.screen === 'discuss' && !s.skipSent) { s.skipSent = true; setTimeout(() => ws.send(JSON.stringify({ type: 'skip' })), 500) }
         if (s.screen === 'final' && !finished) {
           finished = true
-          results.push({ outcome: s.outcome, rounds: s.round + 1, cards: s.board.cards.length, links: s.board.links.length, hints: s.hintsUsed, wrong: 2 - s.attemptsLeft, players: COUNT })
+          results.push({ outcome: s.outcome, rounds: s.round + 1, cards: s.board.cards.length, links: s.board.links.length, hints: s.hintsUsed, wrong: 2 - s.attemptsLeft, players: COUNT, solved: s.field ? s.field.questions.filter(q => q.solved).length : null, penalty: s.field ? Math.round(s.field.penaltyMs / 1000) : null })
           if (SLOW) { resolve(); return }   // в медленном режиме оставляем финал на экране
           setTimeout(() => {
             ws.send(JSON.stringify({ type: 'restart' }))
@@ -91,6 +91,7 @@ function runGame() {
     for (let i = 0; i < COUNT; i++) {
       const name = NAMES[i % NAMES.length]
       let planKey = null, votedKey = null, picked = false, pickedAt = 0, lastHello = 0, last = null
+      lastOf[i] = () => last
       const ws = connect(
         ws => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] })),
         async (m, ws) => {
@@ -106,6 +107,8 @@ function runGame() {
           if (m.type !== 'state' || !m.you) return
           const { state, you } = m
           last = m
+          // «на время»: действия идут сами по таймеру бота, здесь только первый толчок
+          if (state.screen === 'field') { fieldStep(ws, i); return }
           if (state.screen === 'lobby') {
             // ведущий сменил дело — роли и готовность сброшены, выбираем заново
             if (picked && !you.ready && !you.detectiveId && Date.now() - pickedAt > 2000) picked = false
@@ -151,8 +154,45 @@ function runGame() {
         }
       )
       bots.push(ws)
+      // «на время» состояние приходит не каждую секунду — бот сам проверяет, не пора ли действовать
+      const tickTimer = setInterval(() => { if (ws.readyState === 1) fieldStep(ws, i) }, 700)
+      ws.addEventListener('close', () => clearInterval(tickTimer))
     }
     }
+
+    /* ── «на время»: бот ходит и действует сам, пока не пора обвинять ── */
+    const fieldNext = [], fieldSince = { at: 0 }
+    function fieldStep(ws, i) {
+      const m = lastOf[i]?.()
+      if (!m || m.state.screen !== 'field' || m.state.paused) return
+      const { state, you } = m
+      const now = Date.now()
+      if (!fieldSince.at) fieldSince.at = now
+      if ((fieldNext[i] ?? 0) > now) return
+      fieldNext[i] = now + 400 + Math.random() * 900
+      if (you.field?.walk || you.field?.busy) return
+      // пора: обвинение через ACCUSE_AFTER мс поиска (по умолчанию минута — чтобы прогон не шёл 45 минут)
+      if (i === 0 && now - fieldSince.at > Number(process.env.ACCUSE_AFTER || 60000)) { fieldSince.at = now; ws.send(JSON.stringify({ type: 'callAccuse' })); return }
+      const here = you.options.find(o => o.locationId === you.locationId)
+      const acts = []
+      for (const sp of here?.spots ?? []) if (sp.stage !== 'done' && (!sp.locked || sp.canUnlock)) acts.push({ type: 'search', spotId: sp.id, force: !!sp.locked })
+      for (const w of here?.witnesses ?? []) {
+        for (const q of w.questions) if (!q.asked && (!q.locked || q.canForce)) acts.push({ type: 'ask', witnessId: w.id, questionId: q.id, force: !!q.locked })
+        for (const p of w.presents) if (!p.done && !p.locked) acts.push({ type: 'present', witnessId: w.id, itemId: p.itemId })
+      }
+      // изредка — попытка приколоть случайные карточки к вопросу доски (обычно мимо: так проверяется штраф)
+      const open = (state.field?.questions ?? []).filter(q => !q.solved && !(q.cooldownUntil > state.field.serverNow))
+      if (open.length && state.board.cards.length >= 3 && Math.random() < 0.03) {
+        const q = pick(open)
+        const ids = [...state.board.cards].sort(() => Math.random() - 0.5).slice(0, q.slots).map(c => c.id)
+        if (ids.length === q.slots) { ws.send(JSON.stringify({ type: 'solve', questionId: q.id, factIds: ids })); return }
+      }
+      if (acts.length && Math.random() < 0.85) { ws.send(JSON.stringify({ type: 'act', action: pick(acts) })); return }
+      const kind = you.ability?.kind
+      const targets = state.locations.filter(l => l.id !== you.locationId && (l.open || (kind === 'burglar' && you.usesLeft > 0)) && (l.unsearched > 0 || state.witnesses.some(w => w.locationId === l.id)))
+      if (targets.length) { const t = pick(targets); ws.send(JSON.stringify({ type: 'go', locationId: t.id, force: !t.open })) }
+    }
+    const lastOf = []
 
     function choosePlan(state, you) {
       // собираем все доступные действия по всем локациям
@@ -207,7 +247,7 @@ console.log(`боты: ${COUNT} сыщиков · режим ${MODE} · парт
 for (game = 0; game < GAMES; game++) {
   await runGame()
   const r = results[results.length - 1]
-  console.log(`партия ${game + 1}: исход ${r.outcome} · раундов ${r.rounds} · улик ${r.cards} · противоречий ${r.links} · подсказок ${r.hints} · ошибочных обвинений ${r.wrong}`)
+  console.log(`партия ${game + 1}: исход ${r.outcome} · раундов ${r.rounds} · улик ${r.cards} · противоречий ${r.links} · подсказок ${r.hints} · ошибочных обвинений ${r.wrong}${r.solved != null ? ` · вопросов доски ${r.solved} · штрафов ${r.penalty} с` : ''}`)
   await sleep(800)
 }
 const n = results.length

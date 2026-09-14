@@ -52,6 +52,21 @@ for (const x of [...S.questions, ...S.presentations]) {
     if (x.factId && h.when.includes(x.factId)) errors.push(`${x.id}: честный вариант ждёт собственную лживую карточку`)
   }
 }
+// режим «на время»: вопросы доски и запертые места
+const board = S.realtime?.board ?? []
+for (const q of board) {
+  if (!facts.has(q.yieldsFactId)) errors.push(`вопрос доски ${q.id}: нет факта ${q.yieldsFactId}`)
+  if (!q.answers.length) errors.push(`вопрос доски ${q.id}: нет ни одного ответа`)
+  for (const a of q.answers) {
+    if (a.length !== q.slots) errors.push(`вопрос доски ${q.id}: набор из ${a.length} карточек, а мест ${q.slots}`)
+    for (const f of a) if (!facts.has(f)) errors.push(`вопрос доски ${q.id}: нет факта ${f}`)
+    if (a.includes(q.yieldsFactId)) errors.push(`вопрос доски ${q.id}: вывод среди собственных карточек`)
+  }
+  checkReq(`вопрос доски ${q.id}`, q.requires)
+}
+for (const l of S.locations) if (l.locked?.keyItemId && !items.has(l.locked.keyItemId)) errors.push(`место ${l.id}: нет ключа ${l.locked.keyItemId}`)
+for (const e of S.events ?? []) for (const sp of e.spotsGone ?? []) if (!spots.has(sp)) errors.push(`событие ${e.beat.id}: нет места ${sp}`)
+if (S.realtime && !S.realtime.board.length) warn.push('дело «на время» без вопросов доски')
 for (const c of S.contradictions) {
   for (const f of c.facts) if (!facts.has(f)) errors.push(`противоречие ${c.id}: нет факта ${f}`)
   if (c.yieldsFactId && !facts.has(c.yieldsFactId)) errors.push(`противоречие ${c.id}: нет факта ${c.yieldsFactId}`)
@@ -92,6 +107,7 @@ for (const q of S.questions) src(q.factId, 'вопрос ' + q.id)
 for (const p of S.presentations) src(p.factId, 'предъявление ' + p.id)
 for (const x of [...S.questions, ...S.presentations]) for (const h of x.honest ?? []) for (const f of h.facts ?? []) src(f, 'честный ответ ' + x.id)
 for (const c of S.contradictions) src(c.yieldsFactId, 'противоречие ' + c.id)
+for (const q of board) src(q.yieldsFactId, 'доска ' + q.id)
 for (const o of S.overheard) src(o.factId, 'подслушано')
 for (const b of Object.values(S.backgrounds)) src(b.factId, 'прошлое')
 for (const d of Object.values(acc.defenses)) src(d.factId, 'защита')
@@ -103,7 +119,7 @@ const dup = (arr: { id: string }[], name: string) => {
   const seen = new Set<string>()
   for (const x of arr) { if (seen.has(x.id)) errors.push(`дубль id в ${name}: ${x.id}`); seen.add(x.id) }
 }
-dup(S.questions, 'вопросах'); dup(S.presentations, 'предъявлениях'); dup(S.facts, 'фактах'); dup(S.spots, 'местах'); dup(S.items, 'предметах')
+dup(S.questions, 'вопросах'); dup(S.presentations, 'предъявлениях'); dup(board, 'вопросах доски'); dup(S.facts, 'фактах'); dup(S.spots, 'местах'); dup(S.items, 'предметах')
 const beatIds = [...S.prologue, ...S.epilogue.truth, ...S.epilogue.branch.found, ...S.epilogue.branch.lost, S.epilogue.closing,
   ...S.hints.map(h => h.beat), ...S.overheard.map(o => o.beat), ...Object.values(S.backgrounds).map(b => b.beat),
   ...Object.values(acc.defenses).map(d => d.beat), ...S.witnesses.flatMap(w => [w.greeting, w.idle]), ...(S.events ?? []).map(e => e.beat)]
@@ -112,15 +128,27 @@ dup(beatIds, 'репликах')
 /* ── достижимость: жадный обход без способностей ──
    Состояние: предметы, факты, открытые вопросы. Каждый шаг — одно действие бригады.
    Считаем, за сколько действий достижимы все ключевые факты и признание. */
-function solve(opts: { forensic: boolean; burglar: boolean }) {
+/** грузовик уехал: места, которые исчезают по ходу партии */
+const GONE = new Set((S.events ?? []).flatMap(e => e.spotsGone ?? []))
+const LOC = new Map(S.locations.map(l => [l.id, l]))
+
+function solve(opts: { forensic: boolean; burglar: boolean; withoutGone?: boolean }) {
   const have = { items: new Set<string>(), facts: new Set<string>(), asked: new Set<string>(), presented: new Set<string>(), searched: new Set<string>(), hidden: new Set<string>(), unlocked: new Set<string>() }
   const reqOk = (r?: Requirement) => (r?.items ?? []).every(i => have.items.has(i)) && (r?.facts ?? []).every(f => have.facts.has(f))
+  // запертое место («на время»): войти с ключом или взломщику
+  const open = (locId: string) => { const l = LOC.get(locId); return !l?.locked || opts.burglar || (!!l.locked.keyItemId && have.items.has(l.locked.keyItemId)) }
+  const reachable = (witnessId: string) => S.witnesses.find(w => w.id === witnessId)?.schedule.some(open) ?? false
   const applyContradictions = () => {
     let changed = true
     while (changed) {
       changed = false
       for (const c of S.contradictions) {
         if (c.yieldsFactId && !have.facts.has(c.yieldsFactId) && have.facts.has(c.facts[0]) && have.facts.has(c.facts[1])) { have.facts.add(c.yieldsFactId); changed = true }
+      }
+      // доска дела: команда прикалывает подходящий набор
+      for (const q of board) {
+        if (have.facts.has(q.yieldsFactId) || !reqOk(q.requires)) continue
+        if (q.answers.some(a => a.every(f => have.facts.has(f)))) { have.facts.add(q.yieldsFactId); changed = true }
       }
     }
   }
@@ -132,6 +160,7 @@ function solve(opts: { forensic: boolean; burglar: boolean }) {
     let did = false
     // осмотр: первый — верхний слой, второй (или криминалист сразу) — скрытый, память — с проигрывателем
     for (const sp of S.spots) {
+      if (!open(sp.locationId) || (opts.withoutGone && GONE.has(sp.id))) continue
       const grab = (f: typeof sp.primary) => { if (f.itemId) have.items.add(f.itemId); if (f.factId) have.facts.add(f.factId) }
       if (sp.memory && have.searched.has(sp.id) && !memoryDone.has(sp.id) && S.memoryItemId && have.items.has(S.memoryItemId)) { memoryDone.add(sp.id); actions++; grab(sp.memory); did = true; break }
       if (!have.searched.has(sp.id)) {
@@ -147,7 +176,7 @@ function solve(opts: { forensic: boolean; burglar: boolean }) {
     for (const q of S.questions) {
       if (have.asked.has(q.id)) continue
       if (!q.initial && !have.unlocked.has(q.id)) continue
-      if (!reqOk(q.requires)) continue
+      if (!reqOk(q.requires) || !reachable(q.witnessId)) continue
       have.asked.add(q.id); actions++
       if (q.factId) have.facts.add(q.factId)
       for (const u of q.unlocks ?? []) have.unlocked.add(u)
@@ -155,7 +184,7 @@ function solve(opts: { forensic: boolean; burglar: boolean }) {
     }
     if (did) { applyContradictions(); continue }
     for (const p of S.presentations) {
-      if (have.presented.has(p.id) || !have.items.has(p.itemId) || !reqOk(p.requires)) continue
+      if (have.presented.has(p.id) || !have.items.has(p.itemId) || !reqOk(p.requires) || !reachable(p.witnessId)) continue
       have.presented.add(p.id); actions++
       if (p.factId) have.facts.add(p.factId)
       for (const u of p.unlocks ?? []) have.unlocked.add(u)
@@ -168,14 +197,17 @@ function solve(opts: { forensic: boolean; burglar: boolean }) {
   const missingKey = keyFacts.filter(f => !have.facts.has(f))
   const unreachableQ = S.questions.filter(q => !have.asked.has(q.id)).map(q => q.id)
   const unreachableP = S.presentations.filter(p => !have.presented.has(p.id)).map(p => p.id)
-  const unreachableSpots = S.spots.filter(s => !have.searched.has(s.id)).map(s => s.id)
+  const unreachableSpots = S.spots.filter(s => !have.searched.has(s.id) && !(opts.withoutGone && GONE.has(s.id))).map(s => s.id)
   const unreachableMemory = S.spots.filter(sp => sp.memory && !memoryDone.has(sp.id)).map(sp => sp.id)
   const goal = S.checks?.goal
-  return { actions, facts: have.facts.size, items: have.items.size, missingKey, unreachableQ, unreachableP, unreachableSpots, unreachableMemory, confession: goal ? have.facts.has(goal) : true, logbook: have.items.has(S.epilogue.branch.itemId) }
+  const missingChain = (S.checks?.chain ?? []).filter(f => !have.facts.has(f))
+  return { actions, facts: have.facts.size, factSet: have.facts, items: have.items.size, missingKey, missingChain, unreachableQ, unreachableP, unreachableSpots, unreachableMemory, confession: goal ? have.facts.has(goal) : true, logbook: have.items.has(S.epilogue.branch.itemId) }
 }
 
 const plain = solve({ forensic: false, burglar: false })
 const full = solve({ forensic: true, burglar: true })
+/* то, что уезжает (грузовик в семь), ускоряет, но не запирает: без этих мест цель и цепочка всё равно достижимы */
+const noGone = GONE.size ? solve({ forensic: false, burglar: false, withoutGone: true }) : null
 
 /* ── минимальный путь до обвинения: сколько действий нужно до признания ── */
 function shortest(target: string) {
@@ -183,7 +215,9 @@ function shortest(target: string) {
   const have: Have = { items: new Set(), facts: new Set(), asked: new Set(), presented: new Set(), searched: new Set(), hidden: new Set(), unlocked: new Set() }
   for (const e of S.events ?? []) { if (e.itemId) have.items.add(e.itemId); if (e.factId) have.facts.add(e.factId) }
   const reqOk = (r?: Requirement) => (r?.items ?? []).every(i => have.items.has(i)) && (r?.facts ?? []).every(f => have.facts.has(f))
-  const contr = () => { let c = true; while (c) { c = false; for (const k of S.contradictions) if (k.yieldsFactId && !have.facts.has(k.yieldsFactId) && have.facts.has(k.facts[0]) && have.facts.has(k.facts[1])) { have.facts.add(k.yieldsFactId); c = true } } }
+  const contr = () => { let c = true; while (c) { c = false
+    for (const k of S.contradictions) if (k.yieldsFactId && !have.facts.has(k.yieldsFactId) && have.facts.has(k.facts[0]) && have.facts.has(k.facts[1])) { have.facts.add(k.yieldsFactId); c = true }
+    for (const q of board) if (!have.facts.has(q.yieldsFactId) && reqOk(q.requires) && q.answers.some(a => a.every(x => have.facts.has(x)))) { have.facts.add(q.yieldsFactId); c = true } } }
 
   // что нужно (факты и предметы), раскручиваем назад от цели
   const need = new Set<string>([target]); const queue = [target]
@@ -197,6 +231,7 @@ function shortest(target: string) {
     }
     for (const p of S.presentations) if (p.factId === f) { push(p.itemId); for (const r of p.requires?.facts ?? []) push(r); for (const r of p.requires?.items ?? []) push(r) }
     for (const c of S.contradictions) if (c.yieldsFactId === f) for (const r of c.facts) push(r)
+    for (const q of board) if (q.yieldsFactId === f) { for (const r of q.answers[0] ?? []) push(r); for (const r of q.requires?.facts ?? []) push(r) }
     for (const sp of S.spots) for (const layer of [sp.primary, sp.hidden, sp.memory]) if (layer && (layer.factId === f || layer.itemId === f)) { if (sp.locked?.keyItemId) push(sp.locked.keyItemId); if (layer === sp.memory && S.memoryItemId) push(S.memoryItemId) }
   }
 
@@ -257,6 +292,13 @@ if (plain.unreachableMemory.length || plain.unreachableSpots.length || plain.unr
 if (!plain.confession) errors.push('без способностей цель недостижима')
 // ключевые факты, которые дают только способности (подслушанное, прошлое, судмедэксперт), — бонус, не ошибка
 console.log(`  цель достижима: ${plain.confession} · предмет развилки достижим: ${plain.logbook}`)
+if (noGone) {
+  console.log(`── Без мест, которые исчезают по ходу партии (${[...GONE].join(', ')})`)
+  console.log(`  цель достижима: ${noGone.confession} · звенья цепочки без них: ${noGone.missingChain.length ? 'нет ' + noGone.missingChain.join(', ') : 'все'}`)
+  if (!noGone.confession || noGone.missingChain.length) errors.push('исчезающие места запирают цель или цепочку обвинения — нужен второй путь')
+}
+if (board.length) console.log(`── Доска дела: вопросов ${board.length}, решаемых без способностей: ${board.filter(q => plain.factSet.has(q.yieldsFactId)).length}`)
+for (const q of board) if (!plain.factSet.has(q.yieldsFactId)) errors.push(`вопрос доски ${q.id} не решается без способностей`)
 console.log('── С криминалистом и взломщиком')
 console.log(`  действий: ${full.actions} · фактов ${full.facts} · недостающих ключевых: ${full.missingKey.length}`)
 console.log('── Кратчайший путь (целевой обход)')

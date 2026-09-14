@@ -48,6 +48,10 @@ const menuWorld = ref<SettingInfo | null>(null)
 const brand = computed(() => hostAuthorized.value !== true || !started.value)
 useHead({ htmlAttrs: { 'data-setting': computed(() => brand.value ? 'brand' : shownScreen.value === 'menu' ? menuWorld.value?.theme ?? 'noir' : state.value?.setting.theme ?? 'noir') } })
 const round = computed(() => state.value?.round ?? 0)
+/** «на время»: доля прошедшего поиска по отрезкам расписания (для музыки и атмосферы) */
+const fieldShare = computed(() => state.value?.field && state.value.caseInfo.mode === 'realtime' ? (state.value.round + 0.5) / Math.max(1, state.value.roundsTotal) : null)
+const realtime = computed(() => state.value?.caseInfo.mode === 'realtime')
+const { leftMs: fieldLeft } = useFieldClock(computed(() => state.value))
 
 /* ── фон: фотография по фазе и по текущей реплике ── */
 const currentBeat = ref<Beat | null>(null)
@@ -66,14 +70,14 @@ const backdrop = computed(() => {
   const at = currentBeat.value?.locationId
   // пролог — как ролик: у каждой реплики свой кадр
   if (s === 'prologue') return at && at !== 'cover' ? ART.location(at) : ART.cover
-  if (s === 'menu' || s === 'lobby' || s === 'plan' || s === 'tutorial') return ART.cover
+  if (s === 'menu' || s === 'lobby' || s === 'plan' || s === 'tutorial' || s === 'field') return ART.cover
   if (s === 'epilogue' || s === 'final') return ART.dawn
   const stage = state.value?.caseInfo.stage
   if (s === 'discuss') return ART.location(stage?.discuss ?? '')
   if (s === 'accuse') return ART.location(stage?.accuse ?? '')
   return ART.location(currentBeat.value?.locationId ?? lastLocation.value ?? stage?.discuss ?? '')
 })
-const backdropDim = computed(() => screen.value === 'plan' || screen.value === 'discuss' || screen.value === 'menu' || screen.value === 'accuse' || screen.value === 'tutorial')
+const backdropDim = computed(() => screen.value === 'plan' || screen.value === 'discuss' || screen.value === 'menu' || screen.value === 'accuse' || screen.value === 'tutorial' || screen.value === 'field')
 const dawn = computed(() => screen.value === 'epilogue' || screen.value === 'final')
 /* дождь в кадре — только на уличных фотографиях: поверх интерьера, карты или доски он выглядит нелепо */
 const outdoors = computed(() => (state.value?.caseInfo.stage.outdoors ?? []).some(id => backdrop.value === (id === 'cover' ? ART.cover : ART.location(id))))
@@ -87,7 +91,7 @@ watch([screen, round, () => audio.unlocked.value, () => state.value?.caseInfo.id
   const amb = state.value?.caseInfo.ambience
   if (!ok || !amb) return
   if (s === 'menu') { if (menuWorld.value) audio.ambience(menuWorld.value.menu.ambience.names, menuWorld.value.menu.ambience.levels ?? {}); return }
-  const share = r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
+  const share = fieldShare.value ?? r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
   const cue = s === 'lobby' || s === 'tutorial' ? amb.lobby
     : s === 'epilogue' || s === 'final' ? amb.ending
     : s === 'accuse' || s === 'verdict' ? amb.accuse
@@ -100,8 +104,8 @@ const theme = computed(() => {
   if (s === 'menu') return menuWorld.value?.menu.music ?? null
   if (s === 'lobby' || s === 'tutorial') return 'lobby'
   if (s === 'prologue') return 'prologue'
-  const share = r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
-  if (s === 'plan' || s === 'resolve') return share < 0.35 ? 'night-early' : share < 0.7 ? 'night-late' : 'night-dawn'
+  const share = fieldShare.value ?? r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
+  if (s === 'plan' || s === 'resolve' || s === 'field') return share < 0.35 ? 'night-early' : share < 0.7 ? 'night-late' : 'night-dawn'
   if (s === 'discuss') return 'discuss'
   if (s === 'accuse') return 'accuse'
   if (s === 'verdict') return state.value?.verdict?.correct === false ? 'verdict-wrong' : 'epilogue'
@@ -157,7 +161,7 @@ onMounted(() => window.addEventListener('keydown', onKeyboard))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeyboard))
 
 const screenTitle = computed(() => ({
-  menu: 'Выбор дела', lobby: 'Лобби', tutorial: 'Как играть', prologue: 'Пролог', plan: 'Ходы', resolve: 'Разбор', discuss: 'Совещание',
+  menu: 'Выбор дела', lobby: 'Лобби', tutorial: 'Как играть', prologue: 'Пролог', plan: 'Ходы', resolve: 'Разбор', discuss: 'Совещание', field: 'Поиск',
   accuse: 'Обвинение', verdict: 'Вердикт', epilogue: 'Как это было', final: 'Итог'
 }[shownScreen.value] ?? ''))
 
@@ -212,7 +216,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
       <span class="stage__title">{{ state?.caseInfo.title }}</span>
       <span v-if="roomCode" class="stage__room" title="Код комнаты для телефонов">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
       <span class="stage__round">
-        {{ screenTitle }}<template v-if="screen !== 'lobby' && screen !== 'final' && screen !== 'tutorial'"> · раунд {{ round + 1 }} из {{ state?.roundsTotal }}</template>
+        {{ screenTitle }}<template v-if="realtime && screen === 'field'"> · <b class="tabnum stage__left" :class="{ 'stage__left--low': (fieldLeft ?? 1e9) < 5 * 60_000 }">{{ state?.paused ? 'пауза' : mmss(fieldLeft) }}</b></template><template v-else-if="!realtime && screen !== 'lobby' && screen !== 'final' && screen !== 'tutorial'"> · раунд {{ round + 1 }} из {{ state?.roundsTotal }}</template>
       </span>
       <div v-if="progress != null" class="stage__timer"><i :style="{ transform: `scaleX(${progress})` }" /></div>
       <div class="stage__clock">
@@ -263,6 +267,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
         />
 
         <StageMap v-else-if="screen === 'plan'" :state="state" :seconds-left="seconds" />
+        <StageField v-else-if="screen === 'field'" :state="state" />
 
         <div v-else-if="screen === 'discuss'" class="discuss">
           <div class="discuss__head">
@@ -278,7 +283,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
       </Transition>
     </main>
 
-    <footer v-if="state && shownScreen !== 'lobby' && shownScreen !== 'menu' && shownScreen !== 'tutorial'" class="stage__strip">
+    <footer v-if="state && shownScreen !== 'lobby' && shownScreen !== 'menu' && shownScreen !== 'tutorial' && shownScreen !== 'field'" class="stage__strip">
       <StageBoard v-if="screen === 'plan' || screen === 'resolve'" :state="state" mode="strip" :beat-at="screen === 'resolve' ? beatHere : null" />
       <div v-else class="crew">
         <div v-for="p in crew" :key="p.id" class="crew__item" :class="{ 'crew__item--away': !p.connected }">

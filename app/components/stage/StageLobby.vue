@@ -61,17 +61,21 @@ const caseHistory = computed(() => props.state.history.filter(g => g.caseId === 
 const knowers = computed(() => [...new Set(caseHistory.value.filter(g => g.outcome !== 'failed').flatMap(g => g.players))].slice(0, 12))
 
 /* настройки партии: название, варианты и пояснение под выбранный вариант */
-type Opt = { key: 'hints' | 'stepping' | 'timers' | 'roles' | 'tutorial'; name: string; values: { id: string; label: string }[]; notes: Partial<Record<string, string>> }
+type Opt = { key: 'hints' | 'stepping' | 'timers' | 'roles' | 'tutorial' | 'duration'; name: string; values: { id: string; label: string }[]; notes: Partial<Record<string, string>> }
+const realtime = computed(() => props.state.caseInfo.mode === 'realtime')
 const options = computed<Opt[]>(() => [
+  ...(realtime.value ? [{ key: 'duration' as const, name: 'Время на поиск',
+    values: [{ id: '30', label: '30 мин' }, { id: '45', label: '45 мин' }, { id: '60', label: '60 мин' }],
+    notes: { '30': 'Быстрая партия: успеть можно, но придётся делиться и не ходить толпой.', '45': 'Обычная партия: хватит на весь дом, если не терять время на лестницах.', '60': 'Спокойная партия для большой компании или первого раза.' } }] : []),
   { key: 'tutorial', name: 'Обучение',
     values: [{ id: 'on', label: 'показать' }, { id: 'off', label: 'без' }],
     notes: { on: 'Перед прологом — шесть коротких экранов о том, как играть. Листает ведущий, у каждого на телефоне — его сыщик.', off: 'Сразу к истории — для тех, кто уже играл.' } },
   { key: 'stepping', name: 'Смена реплик',
     values: [{ id: 'manual', label: 'вручную' }, { id: 'auto', label: 'сама' }],
     notes: { manual: 'Реплика не сменится, пока ведущий не нажмёт «Дальше» или пробел.', auto: 'Реплики идут одна за другой в темпе озвучки.' } },
-  { key: 'timers', name: 'Время на ход',
+  ...(realtime.value ? [] : [{ key: 'timers' as const, name: 'Время на ход',
     values: [{ id: 'on', label: 'с таймером' }, { id: 'off', label: 'без' }],
-    notes: { on: 'Полторы минуты на выбор хода, совещание — от двух до четырёх минут.', off: 'Никто не торопит: раунд идёт, пока все не выберут ход.' } },
+    notes: { on: 'Полторы минуты на выбор хода, совещание — от двух до четырёх минут.', off: 'Никто не торопит: раунд идёт, пока все не выберут ход.' } }]),
   { key: 'roles', name: 'Сыщики',
     values: [{ id: 'pick', label: 'выбирают' }, { id: 'random', label: 'случайно' }],
     notes: { pick: 'Каждый сам выбирает сыщика на телефоне.', random: 'Роли раздаст случай в момент старта.' } },
@@ -173,7 +177,13 @@ function tryStart() {
             >{{ v.label }}</button>
           </div>
         </div>
-        <div class="setting">
+        <div v-if="realtime" class="setting">
+          <div>
+            <span class="setting__name">На время: все ходят одновременно</span>
+            <span class="setting__note">Раундов нет. Каждый сам ходит по дому с телефона, осмотр и разговор занимают секунды, находки сразу ложатся на общую доску. Команда закрывает вопросы доски и успевает назвать имя до {{ state.caseInfo.clock.end }}.</span>
+          </div>
+        </div>
+        <div v-else class="setting">
           <div>
             <span class="setting__name">Раундов на ночь: {{ state.roundsTotal }}</span>
             <span class="setting__note">Ночь с {{ state.caseInfo.clock.start }} до {{ state.caseInfo.clock.end }}. Чем больше команда, тем меньше раундов — ходов выходит примерно поровну.</span>
@@ -183,7 +193,7 @@ function tryStart() {
       </div>
 
       <button class="btn btn--stamp lobby__start" :disabled="!canStart" @click="tryStart">
-        {{ players.length < 2 ? 'Нужны хотя бы двое' : 'Начать ночь' }}
+        {{ players.length < 2 ? 'Нужны хотя бы двое' : realtime ? 'Начать поиск' : 'Начать ночь' }}
       </button>
     </div>
 
@@ -200,6 +210,6 @@ function tryStart() {
         </div>
       </div>
     </div>
-    <RulesDialog v-model="rulesOpen" variant="stage" />
+    <RulesDialog v-model="rulesOpen" variant="stage" :mode="state.caseInfo.mode" />
   </div>
 </template>

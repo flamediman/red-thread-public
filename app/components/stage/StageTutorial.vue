@@ -8,7 +8,7 @@ import { tutorialSteps } from '~/utils/tutorial'
 const props = defineProps<{ state: PublicState }>()
 const emit = defineEmits<{ send: [ClientMessage] }>()
 
-const steps = computed(() => tutorialSteps(props.state.setting.crew))
+const steps = computed(() => tutorialSteps(props.state.setting.crew, props.state.caseInfo.mode, Number(props.state.settings.duration)))
 const index = computed(() => Math.min(props.state.tutorialStep, steps.value.length - 1))
 const step = computed(() => steps.value[index.value]!)
 const go = (to: number) => emit('send', { type: 'tutorial', step: to })

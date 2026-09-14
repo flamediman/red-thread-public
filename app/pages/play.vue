@@ -67,6 +67,7 @@ function onJoin(name: string, ink: number, photo: string | null, photoChanged: b
       </button>
       <PadTutorial v-if="screen === 'tutorial'" :you="you" :state="state" />
       <PadPlan v-else-if="screen === 'plan'" :you="you" :state="state" :seconds-left="seconds" @send="send" />
+      <PadField v-else-if="screen === 'field'" :you="you" :state="state" @send="send" />
       <PadVote v-else-if="screen === 'accuse'" :you="you" :state="state" :seconds-left="seconds" @send="send" />
       <PadFinal v-else-if="screen === 'final'" :you="you" :state="state" />
       <PadWait v-else :you="you" :state="state" :seconds-left="seconds" @send="send" />

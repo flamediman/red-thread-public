@@ -26,7 +26,7 @@ function pick(id: string) {
     <h1 class="display pad-lobby__name">{{ you.name }}</h1>
     <p class="pad-lobby__wait">Собрались: <b class="tabnum">{{ state.players.length }}</b> · готовы: <b class="tabnum">{{ readyCount }}</b></p>
     <button class="pad-lobby__rules" type="button" @click="rulesOpen = true"><i>?</i>Правила игры</button>
-    <RulesDialog v-model="rulesOpen" variant="pad" />
+    <RulesDialog v-model="rulesOpen" variant="pad" :mode="state.caseInfo.mode" />
 
     <p class="label">Кем вы будете</p>
     <p v-if="state.settings.roles === 'random'" class="pad-lobby__random">Роли раздаст случай при старте. Своего сыщика и его способность вы увидите на телефоне — кнопка вверху.</p>
