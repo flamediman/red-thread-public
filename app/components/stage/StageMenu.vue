@@ -123,6 +123,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <span class="case-row__sub">{{ c.subtitle }}</span>
             <span class="case-row__meta">{{ c.meta }}</span>
           </button>
+          <NuxtLink v-for="s in world.solo" :key="s.id" :to="{ path: '/solo', query: { story: s.id } }" class="case-row" :class="{ 'case-row--off': !s.ready }">
+            <span class="case-row__stamp">{{ s.date }}</span>
+            <span class="case-row__title">{{ s.title }}</span>
+            <span class="case-row__go" aria-hidden="true">→</span>
+            <span class="case-row__sub">{{ s.subtitle }}</span>
+            <span class="case-row__meta">одиночная игра · компьютер или планшет · {{ s.minutes }} минут</span>
+          </NuxtLink>
         </div>
       </section>
     </Transition>

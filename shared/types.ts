@@ -631,7 +631,7 @@ export interface PublicState {
   caseInfo: CaseInfo
   setting: SettingInfo
   /** каталог для меню: сеттинги и их дела (готовые и «скоро») */
-  catalog: { setting: SettingInfo; cases: CaseInfo[]; detectives: string[] }[]
+  catalog: { setting: SettingInfo; cases: CaseInfo[]; detectives: string[]; solo: import('./solo').SoloInfo[] }[]
   /** история сыгранных партий этого дела (только в лобби, последние записи) */
   history: GameRecord[]
   /** варианты для голосования — списки без ответа */
@@ -761,3 +761,4 @@ export type ServerMessage =
   /** телефон в сети: комнаты нет (или код не указан) */
   | { type: 'noRoom'; reason: string }
   | { type: 'kicked'; reason: string }
+export * from './solo'

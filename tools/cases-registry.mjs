@@ -33,10 +33,11 @@ export function writeCaseRegistry(root = ROOT) {
   }
   const code = [
     '// Сгенерировано tools/cases-registry.mjs из папки дел — не править руками, в git не попадает.',
-    "import type { CaseInfo, CaseScenario } from '../../shared/types'",
+    "import type { CaseInfo, CaseScenario, SoloInfo, SoloStory } from '../../shared/types'",
     ...ids.map(id => `import * as ${name(id)} from '${from(id)}'`),
     '',
-    'export const CASE_MODULES: Record<string, { INFO: CaseInfo; SCENARIO: CaseScenario }> = {',
+    '/** дело для компании (INFO + SCENARIO) или одиночная история (SOLO_INFO + SOLO) */',
+    'export const CASE_MODULES: Record<string, { INFO?: CaseInfo; SCENARIO?: CaseScenario; SOLO_INFO?: SoloInfo; SOLO?: SoloStory }> = {',
     ...ids.map(id => `  '${id}': ${name(id)},`),
     '}',
     ''
