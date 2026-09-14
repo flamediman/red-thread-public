@@ -86,8 +86,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <header class="menu__brand">
       <span class="menu__logo">Красная нить</span>
       <span class="menu__tag">кооперативный детектив</span>
-      <ProjectLinks />
-      <span v-if="roomCode" class="menu__room">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
+      <div class="menu__aside">
+        <ProjectLinks />
+        <span v-if="roomCode" class="menu__room">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
+      </div>
     </header>
 
     <section v-if="!worlds.length" class="menu__empty">

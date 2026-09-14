@@ -1,4 +1,4 @@
-// Боты «Красной нити»: node tools/simulate.mjs <число сыщиков> [код ведущего]
+// Боты «Красной нити»: node tools/simulate.mjs <число сыщиков>
 //   ORIGIN=http://127.0.0.1:3100  MODE=random|smart  GAMES=1  FAST=1 (проматывать реплики сразу)
 //   ONLINE=1 — сервер в режиме «в сети»: экран открывает свою комнату, боты входят по её коду
 //   (нагрузка: запустить несколько процессов параллельно — у каждого своя комната)
@@ -6,7 +6,6 @@
 const ORIGIN = process.env.ORIGIN || 'http://127.0.0.1:3100'
 const WS = ORIGIN.replace(/^http/, 'ws') + '/_ws'
 const COUNT = Number(process.argv[2] || 6)
-const CODE = process.argv[3] || process.env.HOST_CODE || '1959'
 const MODE = process.env.MODE || 'random'
 const GAMES = Number(process.env.GAMES || 1)
 const FAST = process.env.FAST !== '0' && !process.env.SLOW
@@ -32,17 +31,17 @@ const TOKENS = []   // боты переподключаются под теми
 
 function runGame() {
   return new Promise(resolve => {
-    let host = null, hostState = null, started = false, finished = false, lastScreen = '', room = null, spawned = false, lastTutorial = -1
+    let host = null, hostState = null, started = false, finished = false, lastScreen = '', room = null, spawned = false
     const kicked = new Set()
     const bots = []
     const stats = { rounds: 0, wrongAccusations: 0 }
 
     host = connect(
-      ws => ws.send(JSON.stringify(process.env.ONLINE ? { type: 'hello', role: 'host', create: true } : { type: 'hello', role: 'host', code: CODE })),
+      ws => ws.send(JSON.stringify(process.env.ONLINE ? { type: 'hello', role: 'host', create: true } : { type: 'hello', role: 'host' })),
       (m, ws) => {
         if (m.type === 'room') { room = m.code; return }
         if (m.type === 'hostAuth') {
-          if (!m.ok) { console.error(process.env.ONLINE ? `комната не открылась: ${m.reason}` : 'код ведущего не подошёл'); process.exit(1) }
+          if (!m.ok) { console.error(`экран не пустили: ${m.reason ?? ''}`); process.exit(1) }
           if (!spawned) { spawned = true; spawnBots() }
           return
         }
@@ -69,7 +68,7 @@ function runGame() {
           setTimeout(() => ws.send(JSON.stringify({ type: 'start' })), 300)
         }
         // обучение перед прологом боты пролистывают
-        if (s.screen === 'tutorial' && s.tutorialStep !== lastTutorial) { lastTutorial = s.tutorialStep; setTimeout(() => ws.send(JSON.stringify({ type: 'tutorial', step: 99 })), 200) }
+        if (s.screen === 'tutorial') setTimeout(() => ws.send(JSON.stringify({ type: 'tutorial', step: 99 })), 200)
         // экран сам шлёт beatsDone, когда реплики дочитаны; тут — ускоренно
         if ((FAST || s.settings.stepping === 'manual') && ['prologue', 'resolve', 'verdict', 'epilogue'].includes(s.screen) && !s.beatsDoneSent && !process.env.WATCH) {
           s.beatsDoneSent = true

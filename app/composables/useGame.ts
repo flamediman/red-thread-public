@@ -11,6 +11,8 @@ const kicked = ref<string | null>(null)
 
 const hostAuthorized = ref<boolean | null>(null)
 const hostPending = ref(false)
+/** сервер уже ответил экрану — до этого не показываем ни «Открыть комнату», ни «Начать игру», иначе кнопки мигают */
+const hostChecked = ref(false)
 /** почему экран не пустили (в сети): комната закрыта, слишком много попыток… */
 const hostReason = ref<string | null>(null)
 const ready = ref(false)
@@ -33,12 +35,10 @@ function uploadPhoto(token: string, dataUrl: string) {
   void $fetch('/api/photo', { method: 'POST', body: { token, dataUrl } }).catch(() => { /* повторим при следующем состоянии */ })
 }
 
-let lastSentCode = ''
 let build = ''
 
 const TOKEN_KEY = 'party-token'
 const NAME_KEY = 'party-name'
-const CODE_KEY = 'party-host-code'
 const PHOTO_KEY = 'party-photo'
 /** экран в сети: { code, key } своей комнаты */
 const HOST_ROOM_KEY = 'rt-host-room'
@@ -61,11 +61,10 @@ const tokenKey = () => (role === 'player' && roomCode.value ? `${TOKEN_KEY}:${ro
 function hello(): ClientMessage {
   const s = storage()
   if (role === 'host') {
-    lastSentCode = s?.getItem(CODE_KEY) || ''
     const room = savedHostRoom()
     if (room) roomCode.value = room.code
-    hostPending.value = lastSentCode !== '' || !!room
-    return { type: 'hello', role, code: lastSentCode, room: room?.code, key: room?.key }
+    hostPending.value = true
+    return { type: 'hello', role, room: room?.code, key: room?.key }
   }
   return {
     type: 'hello',
@@ -111,12 +110,12 @@ function open() {
       return
     }
     if (msg.type === 'hostAuth') {
-      const tried = !!lastSentCode || !!savedHostRoom()
+      const tried = !!savedHostRoom()
       hostAuthorized.value = msg.ok ? true : tried ? false : null
       hostPending.value = false
+      hostChecked.value = true
       hostReason.value = msg.ok ? null : msg.reason ?? null
       if (!msg.ok) {
-        storage()?.removeItem(CODE_KEY)
         storage()?.removeItem(HOST_ROOM_KEY)
         roomCode.value = null
       }
@@ -190,6 +189,7 @@ export function useGame(as: 'host' | 'player' = 'player') {
     ready,
     hostAuthorized,
     hostPending,
+    hostChecked,
     hostReason,
     noRoom,
     roomCode,
@@ -217,11 +217,6 @@ export function useGame(as: 'host' | 'player' = 'player') {
       roomCode.value = clean || null
       if (clean) storage()?.setItem(PLAYER_ROOM_KEY, clean)
       if (reconnect) send(hello())
-    },
-
-    authorize(code: string) {
-      storage()?.setItem(CODE_KEY, code.trim())
-      send(hello())
     },
 
     joinGame(name: string, ink: number, photo: string | null) {

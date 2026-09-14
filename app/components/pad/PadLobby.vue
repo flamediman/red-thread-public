@@ -6,6 +6,8 @@ const props = defineProps<{ you: YouState; state: PublicState }>()
 const emit = defineEmits<{ send: [ClientMessage]; edit: [] }>()
 
 const readyCount = computed(() => props.state.players.filter(p => p.ready).length)
+const rulesOpen = ref(false)
+const { config } = useConfig()
 const roles = computed(() => props.state.detectives.map((d, i) => {
   const owner = props.state.players.find(p => p.detectiveId === d.id)
   return { ...d, num: i + 1, art: ART.detective(d.id), mine: owner?.id === props.you.id, takenBy: owner && owner.id !== props.you.id ? owner.name : null }
@@ -23,6 +25,8 @@ function pick(id: string) {
     <p class="label" style="text-align:center">Вы в бригаде</p>
     <h1 class="display pad-lobby__name">{{ you.name }}</h1>
     <p class="pad-lobby__wait">Собрались: <b class="tabnum">{{ state.players.length }}</b> · готовы: <b class="tabnum">{{ readyCount }}</b></p>
+    <button class="pad-lobby__rules" type="button" @click="rulesOpen = true"><i>?</i>Правила игры</button>
+    <RulesDialog v-model="rulesOpen" variant="pad" />
 
     <p class="label">Кем вы будете</p>
     <p v-if="state.settings.roles === 'random'" class="pad-lobby__random">Роли раздаст случай при старте. Своего сыщика и его способность вы увидите на телефоне — кнопка вверху.</p>
@@ -56,6 +60,6 @@ function pick(id: string) {
     >
       {{ you.ready ? 'Готов — отменить' : 'Я готов' }}
     </button>
-    <button class="pad-lobby__edit" type="button" @click="emit('edit')">Изменить фото, имя или краску</button>
+    <button class="pad-lobby__edit" type="button" @click="emit('edit')">{{ config.photos ? 'Изменить фото, имя или краску' : 'Изменить имя или краску' }}</button>
   </div>
 </template>

@@ -23,7 +23,7 @@
 
 ## Архитектура
 
-- **Режимы** (`server/utils/mode.ts`): `GAME_MODE=local` — одна комната `LOCAL`, экран по коду ведущего,
+- **Режимы** (`server/utils/mode.ts`): `GAME_MODE=local` — одна комната `LOCAL`, экран — любой открывший главную,
   снимок `.data/game.json`, фото можно; `public` — комнаты (`server/utils/rooms.ts`): экран открывает комнату
   (`hello {create}` → `room {code, key}`), возвращается по ключу; телефон входит по коду (`?r=` в ссылке QR или
   форма `PadRoom`). Снимок комнаты `.data/rooms/<код>.json` пишется с задержкой в 1 с; пустые комнаты
@@ -52,7 +52,9 @@
   Взлом, нетраннер и авторитет срабатывают внутри хода. Текст закрытого вопроса на телефон не уходит, вместо требования —
   тип нужной карточки (`reqHint`).
 - Разбор: реплика несёт `facts`/`links` — карточки доски на экране и телефонах открываются вместе с ней (`unrevealed`).
-- Обучение: экран `tutorial` перед прологом (`StageTutorial.vue`, `PadTutorial.vue`, шаги — `app/utils/tutorial.ts`).
+- Правила: кнопка в лобби экрана и телефона (`RulesDialog.vue`, текст с примерами — `app/utils/rules.ts`).
+  Обучение перед прологом — экран `tutorial` (`StageTutorial.vue`, `PadTutorial.vue`, шаги — `app/utils/tutorial.ts`).
+  Кода ведущего нет (по просьбе заказчика).
 - Оформление: темы `data-setting` = `brand`, `noir`, `neon` в `main.scss`. Меню — карусель миров `StageMenu.vue`;
   тема и музыка меняются после ухода старого мира. Ссылки проекта — `ProjectLinks.vue` (QR в меню) и `PadFinal.vue`.
 - Звуки мира `public/sfx/<мир>/<роль>.m4a` с откатом на `public/sfx/<роль>.m4a`; темы музыки дела с запасными
@@ -63,7 +65,7 @@
 - Дома: `PORT=3100 docker compose up -d --build` (контекст сборки дел — `CASES_DIR`, дела и `media/` подмонтированы).
 - В сети: https://redthread-game.ru. Сервер, его адрес, обновление и файлы запуска — `red-thread-secret/ops/deploy/DEPLOY.md`
   (адрес сервера в открытый репозиторий не пишем: он спрятан за Cloudflare).
-- Боты: `FAST=1 CASE=<id> node tools/simulate.mjs 5 0228`; `ONLINE=1` — против сервера «в сети».
+- Боты: `FAST=1 CASE=<id> node tools/simulate.mjs 5`; `ONLINE=1` — против сервера «в сети».
 - Генераторы: `tools/gigachat-art.mjs` (GigaChat, лучший по качеству; сертификат Минцифры в `tools/certs`, один запрос
   за раз, варианты в `.variants`), `tools/flux.mjs` (FLUX на HF, квота 2–3 картинки), `tools/trim-borders.mjs`
   (белые рамки), `tools/voice.ts`, `tools/music.mjs`, `tools/sfx.mjs`. Пути — `tools/paths.mjs`.

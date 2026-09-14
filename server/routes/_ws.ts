@@ -1,4 +1,3 @@
-import { checkHostCode } from '../utils/host-code'
 import { dropPhoto, restorePhoto } from '../utils/photos'
 import { IS_PUBLIC, clientIp } from '../utils/mode'
 import { LOCAL_ROOM, createRoom, getRoom, normalizeCode, onRoomChange, touch, verifyHost, type Room } from '../utils/rooms'
@@ -160,10 +159,9 @@ function helloHost(id: string, entry: Entry, msg: Hello) {
   if (hostFails.blocked(session.ip)) return deny('Слишком много неверных попыток. Подождите десять минут.')
 
   let room: Room | undefined
-  if (!IS_PUBLIC) {
-    if (checkHostCode(msg.code)) room = getRoom(LOCAL_ROOM)
-    else if (msg.code) hostFails.take(session.ip)
-  } else if (msg.create) {
+  // дома экран — любой, кто открыл главную страницу: кода ведущего больше нет
+  if (!IS_PUBLIC) room = getRoom(LOCAL_ROOM)
+  else if (msg.create) {
     if (!roomCreates.take(session.ip)) return deny('С этого адреса уже открыто много комнат. Попробуйте позже.')
     room = createRoom() ?? undefined
     if (!room) return deny('Сейчас играет слишком много компаний. Попробуйте через несколько минут.')

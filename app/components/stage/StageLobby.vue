@@ -52,6 +52,7 @@ const canStart = computed(() => players.value.length >= 2)
 const notReady = computed(() => players.value.filter(p => !p.ready).map(p => p.name))
 const noRole = computed(() => props.state.settings.roles === 'random' ? [] : players.value.filter(p => !p.detectiveId).map(p => p.name))
 const confirm = ref(false)
+const rulesOpen = ref(false)
 
 /* ── дело и история ── */
 const gameDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -90,7 +91,10 @@ function tryStart() {
   <div class="lobby">
     <div class="lobby__intro">
       <div class="lobby__top">
-        <button class="lobby__back" type="button" @click="emit('send', { type: 'toMenu' })">← Все дела</button>
+        <span class="lobby__nav">
+          <button class="lobby__back" type="button" @click="emit('send', { type: 'toMenu' })">← Все дела</button>
+          <button class="lobby__rules" type="button" @click="rulesOpen = true"><i>?</i>Правила</button>
+        </span>
         <span class="stamp">{{ state.setting.title }} · {{ state.caseInfo.stamp }}</span>
       </div>
       <h1 class="display lobby__title">{{ state.caseInfo.title }}</h1>
@@ -196,5 +200,6 @@ function tryStart() {
         </div>
       </div>
     </div>
+    <RulesDialog v-model="rulesOpen" variant="stage" />
   </div>
 </template>

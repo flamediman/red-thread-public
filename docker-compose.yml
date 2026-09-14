@@ -10,7 +10,6 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       GAME_MODE: ${GAME_MODE:-local}
-      HOST_CODE: ${HOST_CODE:-0228}
       GAME_URL: ${GAME_URL:-}
       TELEGRAM_URL: ${TELEGRAM_URL:-}
       DONATE_URL: ${DONATE_URL:-}

@@ -5,22 +5,16 @@ import { formatRoom } from '~/utils/room'
 
 useHead({ title: 'Красная нить — экран' })
 
-const { state, connected, ready, hostAuthorized, hostPending, hostReason, roomCode, send, authorize, createRoom } = useGame('host')
+const { state, connected, ready, hostAuthorized, hostPending, hostChecked, hostReason, roomCode, send, createRoom } = useGame('host')
 const { config, loaded: configLoaded } = useConfig()
 const audio = useAudio()
 
-/* ── ворота: код ведущего ── */
-const digits = ref(['', '', '', ''])
-const boxes = ref<HTMLInputElement[]>([])
-function onDigit(i: number, e: Event) {
-  const v = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(-1)
-  digits.value[i] = v
-  if (v && i < 3) boxes.value[i + 1]?.focus()
-  if (digits.value.every(d => d)) authorize(digits.value.join(''))
-}
-function onKey(i: number, e: KeyboardEvent) {
-  if (e.key === 'Backspace' && !digits.value[i] && i > 0) boxes.value[i - 1]?.focus()
-}
+/** что показать под названием на заставке: пока сервер не ответил — ничего, чтобы кнопки не сменяли друг друга */
+const gateAction = computed<'wait' | 'open' | 'start'>(() => {
+  if (!configLoaded.value || !hostChecked.value) return 'wait'
+  if (hostAuthorized.value === true) return 'start'
+  return config.value.mode === 'public' ? 'open' : 'wait'
+})
 
 /* ── время ── */
 const deadline = computed(() => state.value?.deadline ?? null)
@@ -184,57 +178,35 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
 
   <BrandBackdrop v-if="brand" />
 
-  <div v-if="hostAuthorized !== true && configLoaded && config.mode === 'public'" class="gate gate--cover">
+  <div v-if="hostAuthorized !== true || !started" class="gate gate--cover">
     <div class="gate__inner">
       <span class="eyebrow">Кооперативный детектив</span>
       <h1 class="display gate__title">Красная нить</h1>
       <p class="gate__lede">Один экран, телефоны вместо блокнотов, одна ночь на правду.</p>
-      <button class="btn btn--stamp" style="margin-top: 0.6rem" :disabled="hostPending" @click="openRoom">
-        {{ hostPending ? 'Открываю…' : 'Открыть комнату' }}
-      </button>
-      <p class="gate__hint">{{ hostReason || 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.' }}</p>
-    </div>
-  </div>
-
-  <div v-else-if="hostAuthorized !== true" class="gate">
-    <div v-if="configLoaded" class="gate__inner">
-      <span class="eyebrow">Экран ведущего</span>
-      <h1 class="gate__title">Код из терминала</h1>
-      <div class="gate__code">
-        <input
-          v-for="(d, i) in digits"
-          :key="i"
-          :ref="el => { if (el) boxes[i] = el as HTMLInputElement }"
-          class="gate__digit"
-          type="tel"
-          inputmode="numeric"
-          maxlength="1"
-          :value="d"
-          @input="onDigit(i, $event)"
-          @keydown="onKey(i, $event)"
-        >
+      <!-- заставка одна и та же, меняется только кнопка: пока сервер не ответил, место под неё просто пустое -->
+      <div class="gate__action">
+        <!-- без Transition: в фоновой вкладке переход «выход-вход» ждёт кадра и кнопка не появлялась бы -->
+        <button v-if="gateAction === 'start'" key="start" class="btn btn--stamp gate__appear" @click="begin">Начать игру</button>
+        <div v-else-if="gateAction === 'open'" key="open" class="gate__open gate__appear">
+          <button class="btn btn--stamp" :disabled="hostPending" @click="openRoom">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
+          <p class="gate__hint">{{ hostReason || 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.' }}</p>
+        </div>
+        <span v-else key="wait" class="gate__wait" aria-hidden="true" />
       </div>
-      <p class="gate__hint">
-        <template v-if="hostPending">Проверяю…</template>
-        <template v-else-if="hostAuthorized === false">Код не подошёл — посмотрите в терминале или в .env</template>
-        <template v-else>Четыре цифры, которые сервер печатает при запуске</template>
-      </p>
-    </div>
-  </div>
-
-  <div v-else-if="!started" class="gate gate--cover">
-    <div class="gate__inner">
-      <span class="eyebrow">Кооперативный детектив</span>
-      <h1 class="display gate__title">Красная нить</h1>
-      <p class="gate__lede">Один экран, телефоны вместо блокнотов, одна ночь на правду.</p>
-      <button class="btn btn--stamp" style="margin-top: 0.6rem" @click="begin">Начать игру</button>
     </div>
   </div>
 
   <div v-else class="stage" :class="{ 'stage--menu': shownScreen === 'menu' }">
     <TheLoader v-if="!ready" />
     <p v-if="!connected" class="stage__offline">Нет связи с сервером — переподключаюсь…</p>
-    <Transition name="fade"><div v-if="state?.paused" class="stage__pause">Пауза</div></Transition>
+    <Transition name="fade">
+      <!-- пауза закрывает весь экран, поэтому кнопка «Продолжить» — прямо на ней -->
+      <div v-if="state?.paused" class="stage__pause" @click.self="hostSend({ type: 'pause', paused: false })">
+        <span class="stage__pause-title">Пауза</span>
+        <button class="btn btn--stamp" type="button" @click="hostSend({ type: 'pause', paused: false })">Продолжить</button>
+        <span class="stage__pause-hint">или клавиша P</span>
+      </div>
+    </Transition>
 
     <header v-if="shownScreen !== 'menu'" class="stage__bar">
       <span class="stage__title">{{ state?.caseInfo.title }}</span>

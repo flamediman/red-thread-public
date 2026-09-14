@@ -1122,7 +1122,7 @@ export class Game {
       for (const p of d.players) this.players.set(p.id, { ...p, connected: false, plan: p.plan ?? null, bonus: p.bonus ?? null, locationId: this.b.LOC.has(p.locationId) ? p.locationId : this.startLoc() })
       this.screen = d.screen ?? 'menu'; this.round = d.round ?? 0; this.roundsTotal = d.roundsTotal ?? roundsFor(6); this.brigade = d.brigade ?? 0; this.phaseMs = d.phaseMs ?? null; this.startedAt = d.startedAt ?? 0
       this.paused = !!d.paused; this.pauseLeft = d.pauseLeft ?? 0
-      this.settings = { ...this.settings, ...(d.settings ?? {}) }
+      for (const k of Object.keys(this.settings) as (keyof PublicState['settings'])[]) if (d.settings?.[k]) (this.settings as Record<string, string>)[k] = d.settings[k]
       this.board = new Map(d.board ?? []); this.pins = new Set(d.pins ?? []); this.links = new Set(d.links ?? []); this.items = new Set(d.items ?? [])
       this.searched = new Set(d.searched ?? []); this.hiddenDone = new Set(d.hiddenDone ?? []); this.memoryDone = new Set(d.memoryDone ?? []); this.asked = new Set(d.asked ?? [])
       this.presented = new Set(d.presented ?? []); this.unlocked = new Set(d.unlocked ?? []); this.greeted = new Set(d.greeted ?? []); this.confronted = new Set(d.confronted ?? []); this.tutorialStep = d.tutorialStep ?? 0

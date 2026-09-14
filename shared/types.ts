@@ -594,9 +594,9 @@ export type PlanAction =
   | { type: 'wait' }
 
 export type ClientMessage =
-  /** дома экран шлёт code (код ведущего); в сети — create (новая комната) или room + key (своя комната);
+  /** дома экран просто здоровается; в сети — create (новая комната) или room + key (своя комната);
       телефон в сети — room (код комнаты) */
-  | { type: 'hello'; role: 'host' | 'player'; token?: string; name?: string; ink?: number; code?: string; room?: string; key?: string; create?: boolean }
+  | { type: 'hello'; role: 'host' | 'player'; token?: string; name?: string; ink?: number; room?: string; key?: string; create?: boolean }
   | { type: 'setName'; name: string; ink: number }
   | { type: 'ready'; ready: boolean }
   | { type: 'leave' }
