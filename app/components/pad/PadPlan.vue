@@ -40,7 +40,11 @@ const summary = computed(() => {
   return parts.length ? `Здесь: ${parts.join(' · ')}` : 'Здесь больше нечего делать — можно просто понаблюдать'
 })
 
-const STAGE: Record<string, string> = { new: 'новое', second: 'второй осмотр', memory: 'запись памяти', done: 'осмотрено' }
+/** пометка места: неосмотренное без пометки — «новое» стояло бы на всём подряд */
+const STAGE: Record<string, string> = { new: '', second: 'второй осмотр', memory: 'запись памяти', done: 'осмотрено' }
+/** пометка вопроса: «новое» — только у открывшихся в прошлом разборе */
+const qState = (q: { asked: boolean; locked: string | null; canForce: boolean; fresh: boolean }) =>
+  q.asked ? { cls: 'done', label: 'спросили' } : q.locked ? (q.canForce ? { cls: 'force', label: 'можно' } : { cls: 'locked', label: 'закрыто' }) : q.fresh ? { cls: 'new', label: 'новое' } : null
 
 function plan(action: PlanAction, at = locId.value ?? props.you.locationId) {
   emit('send', { type: 'plan', locationId: at, action })
@@ -97,7 +101,7 @@ watch(() => props.you.planned, p => { if (!p) pendingAsk.value = null })
           <p class="plan__tag">{{ l.name }}</p>
           <button v-for="s in l.spots" :key="s.id" type="button" class="plan__act" @click="bonus({ type: 'drone', spotId: s.id })">
             <span>{{ s.name }} <small>{{ s.glance }}</small></span>
-            <em class="plan__state" :class="`plan__state--${s.stage}`">{{ STAGE[s.stage] }}</em>
+            <em v-if="STAGE[s.stage]" class="plan__state" :class="`plan__state--${s.stage}`">{{ STAGE[s.stage] }}</em>
           </button>
         </section>
       </div>
@@ -137,7 +141,7 @@ watch(() => props.you.planned, p => { if (!p) pendingAsk.value = null })
           >
             <span v-if="q.locked" class="plan__secret"><i class="plan__blur" :style="{ width: blurWidth(q.id) }" /><small>{{ q.locked }}</small></span>
             <span v-else>{{ q.text }}</span>
-            <em class="plan__state" :class="`plan__state--${q.locked ? 'locked' : 'new'}`">{{ q.locked ? 'закрыто' : 'новое' }}</em>
+            <em v-if="q.locked || q.fresh" class="plan__state" :class="`plan__state--${q.locked ? 'locked' : 'new'}`">{{ q.locked ? 'закрыто' : 'новое' }}</em>
           </button>
           <p v-if="!w.questions.some(x => !x.asked)" class="plan__hint">Спросить больше нечего.</p>
         </section>
@@ -214,7 +218,7 @@ watch(() => props.you.planned, p => { if (!p) pendingAsk.value = null })
             @click="plan({ type: 'search', spotId: s.id, force: !!s.locked && s.canUnlock })"
           >
             <span>{{ s.name }} <small>{{ s.locked ? s.locked : s.glance }}</small></span>
-            <em class="plan__state" :class="`plan__state--${s.locked ? (s.canUnlock ? 'force' : 'locked') : s.stage}`">{{ s.locked ? (s.canUnlock ? 'вскрыть' : 'заперто') : STAGE[s.stage] }}</em>
+            <em v-if="s.locked || STAGE[s.stage]" class="plan__state" :class="`plan__state--${s.locked ? (s.canUnlock ? 'force' : 'locked') : s.stage}`">{{ s.locked ? (s.canUnlock ? 'вскрыть' : 'заперто') : STAGE[s.stage] }}</em>
           </button>
         </section>
 
@@ -255,7 +259,7 @@ watch(() => props.you.planned, p => { if (!p) pendingAsk.value = null })
               <small>{{ q.locked }}{{ q.canForce ? ' — или открыть авторитетом' : '' }}</small>
             </span>
             <span v-else>{{ q.text }}</span>
-            <em class="plan__state" :class="`plan__state--${q.asked ? 'done' : q.locked ? (q.canForce ? 'force' : 'locked') : 'new'}`">{{ q.asked ? 'спросили' : q.locked ? (q.canForce ? 'можно' : 'закрыто') : 'новое' }}</em>
+            <em v-if="qState(q)" class="plan__state" :class="`plan__state--${qState(q)!.cls}`">{{ qState(q)!.label }}</em>
           </button>
 
           <template v-if="w.presents.length">

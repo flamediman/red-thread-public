@@ -101,7 +101,7 @@ watch(() => [ordered.value.map(c => c.id).join(), f.visibleLinks.value.length, p
             <span v-if="c.pinned" class="card__star" title="команда отметила как важное">★</span>
             <div class="card__title">{{ c.title }}</div>
             <div v-if="mode === 'full'" class="card__detail">{{ c.detail }}</div>
-            <div class="card__meta">{{ nameOf(c.witnessId) || nameOf(c.locationId) || c.by }} · раунд {{ c.round + 1 }}</div>
+            <div class="card__meta">{{ nameOf(c.witnessId) || nameOf(c.locationId) || c.by }} · {{ c.time ?? `раунд ${c.round + 1}` }}</div>
             <span v-if="c.verdict" class="card__verdict" :class="c.verdict.lie ? 'card__verdict--lie' : 'card__verdict--truth'">{{ c.verdict.lie ? 'ложь' : 'правда' }}</span>
           </div>
         </template>

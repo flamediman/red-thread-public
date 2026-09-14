@@ -41,7 +41,9 @@ const idle = computed(() => !walk.value && !busy.value && !props.state.paused)
 
 /* ── здесь ── */
 const here = computed(() => props.you.options.find(o => o.locationId === props.you.locationId) ?? null)
-const STAGE: Record<string, string> = { new: 'новое', second: 'ещё раз', memory: 'запись', done: 'осмотрено' }
+const STAGE: Record<string, string> = { new: '', second: 'ещё раз', memory: 'запись', done: 'осмотрено' }
+const qState = (q: { asked: boolean; locked: string | null; canForce: boolean; fresh: boolean }) =>
+  q.asked ? { cls: 'done', label: 'спросили' } : q.locked ? (q.canForce ? { cls: 'force', label: 'можно' } : { cls: 'locked', label: 'закрыто' }) : q.fresh ? { cls: 'new', label: 'новое' } : null
 const act = (action: PlanAction) => { if (idle.value) send({ type: 'act', action }) }
 const blurWidth = (id: string) => `${55 + ([...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 40)}%`
 const lockedItem = ref<string | null>(null)
@@ -240,7 +242,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
             @click="act({ type: 'search', spotId: s.id, force: !!s.locked && s.canUnlock })"
           >
             <span>{{ s.name }} <small>{{ s.locked ? s.locked : s.glance }}</small></span>
-            <em class="plan__state" :class="`plan__state--${s.locked ? (s.canUnlock ? 'force' : 'locked') : s.stage}`">{{ s.locked ? (s.canUnlock ? 'вскрыть' : 'заперто') : STAGE[s.stage] }}</em>
+            <em v-if="s.locked || STAGE[s.stage]" class="plan__state" :class="`plan__state--${s.locked ? (s.canUnlock ? 'force' : 'locked') : s.stage}`">{{ s.locked ? (s.canUnlock ? 'вскрыть' : 'заперто') : STAGE[s.stage] }}</em>
           </button>
         </section>
 
@@ -257,7 +259,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
           >
             <span v-if="q.locked" class="plan__secret"><i class="plan__blur" :style="{ width: blurWidth(q.id) }" /><small>{{ q.locked }}{{ q.canForce ? ' — или авторитетом' : '' }}</small></span>
             <span v-else>{{ q.text }}</span>
-            <em class="plan__state" :class="`plan__state--${q.asked ? 'done' : q.locked ? (q.canForce ? 'force' : 'locked') : 'new'}`">{{ q.asked ? 'спросили' : q.locked ? (q.canForce ? 'можно' : 'закрыто') : 'новое' }}</em>
+            <em v-if="qState(q)" class="plan__state" :class="`plan__state--${qState(q)!.cls}`">{{ qState(q)!.label }}</em>
           </button>
           <template v-if="w.presents.length">
             <p class="plan__tag">Показать улику</p>

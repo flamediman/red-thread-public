@@ -216,7 +216,8 @@ export function useAudio() {
     musicWanted = wanted
     if (!wanted || !name) { music?.stop(MUSIC_FADE); music = null; return }
     // у дела может не быть всех тем: берём ближайшую по настроению из тех, что есть
-    const chain = name.startsWith('/') ? [wanted] : [name, ...(THEME_FALLBACK[name] ?? [])].map(n => `/music/${currentCase.value}/${n}.mp3`)
+    // у нового дела музыки может не быть совсем — тогда тема мира из меню, лишь бы не тишина
+    const chain = name.startsWith('/') ? [wanted] : [...[name, ...(THEME_FALLBACK[name] ?? [])].map(n => `/music/${currentCase.value}/${n}.mp3`), `/music/settings/${currentSetting.value}.mp3`]
     for (const key of chain) {
       if (music?.name === key) return
       const buf = await load(key)

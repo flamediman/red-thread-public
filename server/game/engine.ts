@@ -26,6 +26,7 @@ const FIELD_WRONG_MS = 45_000       // неверные карточки на в
 const FIELD_COOLDOWN_MS = 20_000    // вопрос «остывает» после неверной попытки
 const FIELD_ACCUSE_PENALTY_MS = 5 * 60_000
 const FIELD_FEED = 40, FIELD_LOG = 40, FIELD_MOMENTS = 8
+const FIELD_FRESH_MS = 2 * 60_000   // «новое» у вопроса, открывшегося за последние две минуты
 /* Баланс по составу. Ходов за партию = сыщики × раунды: двое — 36, шестеро — 84, десятеро — 100.
    Разбор растёт с числом сыщиков, поэтому у больших бригад раундов меньше — партия остаётся в 75–90 минутах. */
 const SMALL_BRIGADE = 3
@@ -140,6 +141,8 @@ export class Game {
   lieMarks = new Map<string, Record<string, boolean>>()
   /** кого каким противоречием уже уличали: «свидетель:противоречие» */
   confronted = new Set<string>()
+  /** когда вопрос впервые стал доступен: шаг партии (раунд×2, разбор — нечётный) и время («на время») — для пометки «новое» */
+  openedAt = new Map<string, { step: number; at: number }>()
 
   private _beats: Beat[] = []
   /** какая реплика сейчас на экране — ведущий сообщает, чтобы после перезагрузки продолжить с неё */
@@ -365,7 +368,7 @@ export class Game {
     this.paused = false
     this.board.clear(); this.pins.clear(); this.links.clear(); this.items.clear()
     this.searched.clear(); this.hiddenDone.clear(); this.memoryDone.clear(); this.asked.clear(); this.presented.clear()
-    this.unlocked.clear(); this.greeted.clear(); this.lieMarks.clear(); this.confronted.clear(); this.tutorialStep = 0
+    this.unlocked.clear(); this.greeted.clear(); this.lieMarks.clear(); this.confronted.clear(); this.openedAt.clear(); this.tutorialStep = 0
     this.beats = []; this.proceedVotes.clear(); this.accusation = null; this.verdict = null
     this.attemptsLeft = 2; this.hintsUsed = 0; this.hintsFired.clear(); this.eventsFired.clear(); this.outcome = null
     this.emit()
@@ -1168,7 +1171,7 @@ export class Game {
         questions: this.S.questions.filter(q => q.witnessId === w.id && (q.initial || this.unlocked.has(q.id))).map(q => {
           const locked = this.asked.has(q.id) ? null : this.reqHint(q.requires)
           // текст закрытого вопроса — сам по себе подсказка: до открытия телефон его не получает
-          return { id: q.id, text: locked ? '' : q.text, asked: this.asked.has(q.id), locked, canForce: kind === 'inspector' && (p.usesLeft ?? 0) > 0 }
+          return { id: q.id, text: locked ? '' : q.text, asked: this.asked.has(q.id), locked, canForce: kind === 'inspector' && (p.usesLeft ?? 0) > 0, fresh: !locked && this.isFresh(q.id) }
         }),
         presents: [...this.items].reverse().map(itemId => {
           const pr = this.S.presentations.find(x => x.witnessId === w.id && x.itemId === itemId)
@@ -1456,8 +1459,29 @@ export class Game {
   /* ── снимок на диск: партия переживает перезапуск ───────────── */
 
   private emit() {
+    this.markOpened()
     this.onChange()
     this.persist()
+  }
+
+  /** шаг партии: план раунда — чётный, разбор и совещание после него — нечётный */
+  private get step() { return this.round * 2 + (['resolve', 'discuss', 'accuse', 'verdict'].includes(this.screen) ? 1 : 0) }
+
+  /** запоминаем, когда вопрос открылся: «новое» — только у тех, что появились в прошлом разборе, а не у всех незаданных */
+  private markOpened() {
+    if (this.screen === 'menu') return
+    const now = Date.now()
+    for (const q of this.S.questions) {
+      if (this.openedAt.has(q.id) || !(q.initial || this.unlocked.has(q.id)) || !this.reqOk(q.requires)) continue
+      this.openedAt.set(q.id, { step: this.step, at: this.screen === 'field' ? now : 0 })
+    }
+  }
+
+  private isFresh(questionId: string) {
+    const o = this.openedAt.get(questionId)
+    if (!o || this.asked.has(questionId)) return false
+    if (this.realtime) return o.at > 0 && Date.now() - o.at < FIELD_FRESH_MS
+    return o.step === this.step - 1 || (o.step === this.step && this.step % 2 === 1)
   }
 
   /** комнату закрыли: таймер больше не нужен, снимок дописан */
@@ -1473,7 +1497,7 @@ export class Game {
         caseId: this.S.id, screen: this.screen, round: this.round, roundsTotal: this.roundsTotal, brigade: this.brigade, phaseMs: this.phaseMs, startedAt: this.startedAt, deadline: this.deadline, paused: this.paused, pauseLeft: this.pauseLeft,
         settings: this.settings, board: [...this.board.entries()], pins: [...this.pins], links: [...this.links], items: [...this.items],
         searched: [...this.searched], hiddenDone: [...this.hiddenDone], memoryDone: [...this.memoryDone], asked: [...this.asked], presented: [...this.presented],
-        unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()], confronted: [...this.confronted], tutorialStep: this.tutorialStep,
+        unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()], confronted: [...this.confronted], openedAt: [...this.openedAt], tutorialStep: this.tutorialStep,
         beats: this.beats, beatIndex: this.beatIndex, proceedVotes: [...this.proceedVotes], accusation: this.accusation, verdict: this.verdict,
         attemptsLeft: this.attemptsLeft, hintsUsed: this.hintsUsed, hintsFired: [...this.hintsFired], eventsFired: [...this.eventsFired], outcome: this.outcome, pausedAt: this.pausedAt,
         fieldTotalMs: this.fieldTotalMs, fieldPenaltyMs: this.fieldPenaltyMs, fieldLeftMs: this.fieldLeftMs, solved: [...this.solved], solveCooldown: [...this.solveCooldown],
@@ -1500,7 +1524,7 @@ export class Game {
       for (const k of Object.keys(this.settings) as (keyof PublicState['settings'])[]) if (d.settings?.[k]) (this.settings as Record<string, string>)[k] = d.settings[k]
       this.board = new Map(d.board ?? []); this.pins = new Set(d.pins ?? []); this.links = new Set(d.links ?? []); this.items = new Set(d.items ?? [])
       this.searched = new Set(d.searched ?? []); this.hiddenDone = new Set(d.hiddenDone ?? []); this.memoryDone = new Set(d.memoryDone ?? []); this.asked = new Set(d.asked ?? [])
-      this.presented = new Set(d.presented ?? []); this.unlocked = new Set(d.unlocked ?? []); this.greeted = new Set(d.greeted ?? []); this.confronted = new Set(d.confronted ?? []); this.tutorialStep = d.tutorialStep ?? 0
+      this.presented = new Set(d.presented ?? []); this.unlocked = new Set(d.unlocked ?? []); this.greeted = new Set(d.greeted ?? []); this.confronted = new Set(d.confronted ?? []); this.openedAt = new Map(d.openedAt ?? []); this.tutorialStep = d.tutorialStep ?? 0
       this.lieMarks = new Map(d.lieMarks ?? []); this.beats = d.beats ?? []; this.beatIndex = d.beatIndex ?? 0; this.proceedVotes = new Set(d.proceedVotes ?? [])
       this.accusation = d.accusation ?? null; this.verdict = d.verdict ?? null
       this.attemptsLeft = d.attemptsLeft ?? 2; this.hintsUsed = d.hintsUsed ?? 0; this.hintsFired = new Set(d.hintsFired ?? []); this.eventsFired = new Set(d.eventsFired ?? []); this.outcome = d.outcome ?? null

@@ -22,9 +22,16 @@ const grade = computed(() => {
     <h1 class="display final__title">{{ grade.title }}</h1>
     <p class="final__sub">{{ grade.sub }}</p>
     <div class="final__stats">
-      <div><b class="tabnum">{{ state.round + 1 }}</b>раундов</div>
-      <div><b class="tabnum">{{ state.board.cards.length }}</b>улик на доске</div>
-      <div><b class="tabnum">{{ state.board.links.length }}</b>противоречий</div>
+      <template v-if="state.field">
+        <div><b class="tabnum">{{ state.field.questions.filter(q => q.solved).length }}</b>вопросов доски закрыто</div>
+        <div><b class="tabnum">{{ state.board.cards.length }}</b>улик на доске</div>
+        <div><b class="tabnum">{{ Math.round(state.field.penaltyMs / 1000) }}</b>секунд штрафа</div>
+      </template>
+      <template v-else>
+        <div><b class="tabnum">{{ state.round + 1 }}</b>раундов</div>
+        <div><b class="tabnum">{{ state.board.cards.length }}</b>улик на доске</div>
+        <div><b class="tabnum">{{ state.board.links.length }}</b>противоречий</div>
+      </template>
       <div><b class="tabnum">{{ state.hintsUsed }}</b>подсказок</div>
       <div><b class="tabnum">{{ 2 - state.attemptsLeft }}</b>ошибочных обвинений</div>
     </div>

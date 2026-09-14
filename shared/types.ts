@@ -684,7 +684,9 @@ export interface LocationOptions {
     id: string
     name: string
     /** у закрытого вопроса текст не приходит (в нём подсказка) — только что нужно, чтобы его открыть */
-    questions: { id: string; text: string; asked: boolean; locked: string | null; canForce: boolean }[]
+    questions: { id: string; text: string; asked: boolean; locked: string | null; canForce: boolean
+      /** вопрос открылся только что: в прошлом разборе (раунды) или за последние две минуты («на время») */
+      fresh: boolean }[]
     /** любая улика бригады: locked — чего не хватает, чтобы свидетелю было что сказать */
     presents: { itemId: string; name: string; done: boolean; locked: string | null }[]
     /** найденные противоречия, в которых замешаны слова этого свидетеля */

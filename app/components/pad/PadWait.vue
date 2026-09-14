@@ -83,7 +83,7 @@ const confirmAccuse = ref(false)
             <i class="mcard__kind" :title="KIND_LABEL[c.kind]" />
             <span class="mcard__title">{{ c.title }}</span>
             <span class="mcard__meta">
-              {{ sourceOf(c) }} · раунд {{ c.round + 1 }}
+              {{ sourceOf(c) }} · {{ c.time ?? `раунд ${c.round + 1}` }}
               <template v-if="c.verdict?.lie"> · <b class="mcard__lie">{{ c.verdict.by.toLowerCase() }}: ложь</b></template>
               <template v-else-if="c.verdict"> · <b class="mcard__truth">{{ c.verdict.by.toLowerCase() }}: правда</b></template>
             </span>

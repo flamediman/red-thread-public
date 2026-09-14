@@ -17,8 +17,11 @@ const floorIndex = (floor: number) => Math.max(0, props.state.floors.findIndex(f
 const rect = (id: string) => {
   const l = props.state.locations.find(x => x.id === id)
   if (!l) return { left: 0, top: 0, width: 0, height: 0 }
-  const top = floorIndex(l.floor) * band.value
-  return { left: l.x, top: top + (l.y * band.value) / 100, width: l.w, height: (l.h * band.value) / 100 }
+  // сверху полосы — место под подпись этажа, чтобы она не наезжала на названия комнат
+  const label = band.value * 0.16
+  const top = floorIndex(l.floor) * band.value + label
+  const inner = band.value - label
+  return { left: l.x, top: top + (l.y * inner) / 100, width: l.w, height: (l.h * inner) / 100 }
 }
 /** где стоят фигурки: правее середины и ниже названия — название и люди в комнате остаются читаемыми */
 const center = (id: string) => { const r = rect(id); return { x: r.left + r.width * 0.62, y: r.top + r.height * 0.66 } }
