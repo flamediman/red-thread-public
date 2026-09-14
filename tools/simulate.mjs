@@ -90,7 +90,7 @@ function runGame() {
     function spawnBots() {
     for (let i = 0; i < COUNT; i++) {
       const name = NAMES[i % NAMES.length]
-      let planKey = null, votedKey = null, picked = false, pickedAt = 0, lastHello = 0
+      let planKey = null, votedKey = null, picked = false, pickedAt = 0, lastHello = 0, last = null
       const ws = connect(
         ws => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] })),
         async (m, ws) => {
@@ -105,6 +105,7 @@ function runGame() {
           }
           if (m.type !== 'state' || !m.you) return
           const { state, you } = m
+          last = m
           if (state.screen === 'lobby') {
             // ведущий сменил дело — роли и готовность сброшены, выбираем заново
             if (picked && !you.ready && !you.detectiveId && Date.now() - pickedAt > 2000) picked = false
@@ -116,6 +117,16 @@ function runGame() {
               ws.send(JSON.stringify({ type: 'pickDetective', detectiveId: free[i % free.length]?.id ?? null }))
               await sleep(200)
               ws.send(JSON.stringify({ type: 'ready', ready: true }))
+              // два бота взяли одну роль или состав сбросили без новых рассылок — через пару секунд пробуем ещё раз
+              setTimeout(() => {
+                const s2 = last?.state, y2 = last?.you
+                if (s2?.screen !== 'lobby' || y2?.detectiveId) return
+                picked = false; pickedAt = Date.now()
+                const free2 = s2.detectives.filter(d => !s2.players.some(p => p.detectiveId === d.id))
+                ws.send(JSON.stringify({ type: 'pickDetective', detectiveId: free2[(i + 1) % Math.max(1, free2.length)]?.id ?? null }))
+                setTimeout(() => ws.send(JSON.stringify({ type: 'ready', ready: true })), 200)
+                picked = true
+              }, 2500)
             }
             return
           }

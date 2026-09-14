@@ -157,12 +157,30 @@ export interface Answer {
   sfx?: string[]
 }
 
+/** Ответ вместо лжи, которую бригада уже раскрыла: свидетель не повторяет то, в чём его уличили или в чём он сам признался.
+    Лживую карточку такой ответ не кладёт. Варианты проверяются по порядку. */
+export interface HonestAnswer {
+  /** достаточно любой из этих карточек на доске */
+  when: string[]
+  text: string
+  voice?: string
+  mood: Mood
+  sfx?: string[]
+  /** карточки, которые ложатся с ответом, — выводы из противоречий лживой карточки, чтобы они не потерялись */
+  facts?: string[]
+}
+
+/** id реплики честного ответа: первый вариант — `<id>_h`, дальше `<id>_h2`, `<id>_h3` */
+export const honestBeatId = (id: string, index: number) => index ? `${id}_h${index + 1}` : `${id}_h`
+
 export interface Question {
   id: string
   witnessId: string
   /** формулировка, которую выбирает сыщик */
   text: string
   answer: Answer
+  /** если answer — ложь, которую уже раскрыли */
+  honest?: HonestAnswer[]
   /** без этого вопрос заперт */
   requires?: Requirement
   /** какой факт ложится на доску */
@@ -178,6 +196,7 @@ export interface Presentation {
   witnessId: string
   itemId: string
   answer: Answer
+  honest?: HonestAnswer[]
   factId?: string
   requires?: Requirement
   unlocks?: string[]

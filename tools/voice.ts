@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { SCENARIO as S } from '../server/scenario/index'
-import type { Beat } from '../shared/types'
+import { honestBeatId, type Beat, type Presentation, type Question } from '../shared/types'
 // @ts-expect-error — обычный .mjs без типов
 import { voiceDir } from './paths.mjs'
 
@@ -27,8 +27,13 @@ const add = (b: Beat) => lines.push({ id: b.id, speaker: b.speaker, text: b.voic
 
 for (const b of S.prologue) add(b)
 for (const w of S.witnesses) { add(w.greeting); add(w.idle) }
-for (const q of S.questions) lines.push({ id: q.id, speaker: q.witnessId, text: q.answer.voice ?? q.answer.text })
-for (const p of S.presentations) lines.push({ id: p.id, speaker: p.witnessId, text: p.answer.voice ?? p.answer.text })
+// ответ и его честные варианты — после того как ложь раскрыта
+const talk = (x: Question | Presentation) => {
+  lines.push({ id: x.id, speaker: x.witnessId, text: x.answer.voice ?? x.answer.text })
+  for (const [i, h] of (x.honest ?? []).entries()) lines.push({ id: honestBeatId(x.id, i), speaker: x.witnessId, text: h.voice ?? h.text })
+}
+for (const q of S.questions) talk(q)
+for (const p of S.presentations) talk(p)
 for (const h of S.hints) add(h.beat)
 for (const e of S.events ?? []) add(e.beat)
 for (const o of S.overheard) add(o.beat)

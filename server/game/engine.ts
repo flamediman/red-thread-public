@@ -6,8 +6,9 @@ import { CASES, DEFAULT_CASE, SETTINGS, catalog, type CaseEntry } from '../scena
 import type { GameStore } from './store'
 import { INKS } from '../../shared/inks'
 import { TUTORIAL_STEPS } from '../../shared/tutorial'
+import { honestBeatId } from '../../shared/types'
 import type {
-  Beat, BoardCard, BoardLink, CaseInfo, ClientMessage, DetectiveRole, Fact, GameRecord, Item, Location, LocationOptions, PlanAction, PlanSummary, Presentation,
+  Beat, BoardCard, BoardLink, CaseInfo, ClientMessage, DetectiveRole, Fact, GameRecord, HonestAnswer, Item, Location, LocationOptions, PlanAction, PlanSummary, Presentation,
   PublicState, Question, Scenario, Screen, Spot, Verdict, Witness, YouState
 } from '../../shared/types'
 
@@ -840,11 +841,15 @@ export class Game {
     }
     if (!this.greeted.has(w.id)) { this.greeted.add(w.id); out.push(w.greeting) }
     this.asked.add(q.id)
-    this.addFact(q.factId, p.id, { witnessId: w.id, locationId: this.witnessAt(w.id) })
+    const honest = this.honestOf(q)
+    const from = { witnessId: w.id, locationId: this.witnessAt(w.id) }
+    if (honest) for (const f of honest.answer.facts ?? []) this.addFact(f, p.id, from)
+    else this.addFact(q.factId, p.id, from)
     for (const u of q.unlocks ?? []) this.unlocked.add(u)
-    if (kind === 'psychologist' && q.factId) { this.lieMarks.set(p.id, { ...(this.lieMarks.get(p.id) ?? {}), [q.factId]: q.answer.lie }); const e = this.board.get(q.factId); if (e) e.verdict = { lie: q.answer.lie, by: this.roleOf(p)?.title ?? 'психолог' } }
+    if (!honest && kind === 'psychologist' && q.factId) { this.lieMarks.set(p.id, { ...(this.lieMarks.get(p.id) ?? {}), [q.factId]: q.answer.lie }); const e = this.board.get(q.factId); if (e) e.verdict = { lie: q.answer.lie, by: this.roleOf(p)?.title ?? 'психолог' } }
     out.push(this.narrate(`ask_${q.id}`, `${p.name} спрашивает: «${q.text}»`, undefined, 200))
-    out.push({ id: q.id, speaker: w.id, text: q.answer.text, voice: q.answer.voice, mood: q.answer.mood, sfx: q.answer.sfx, pauseAfter: 600 })
+    const a = honest?.answer ?? q.answer
+    out.push({ id: honest ? honestBeatId(q.id, honest.index) : q.id, speaker: w.id, text: a.text, voice: a.voice, mood: a.mood, sfx: a.sfx, pauseAfter: 600 })
     return out
   }
 
@@ -861,12 +866,38 @@ export class Game {
     if (!this.reqOk(pr.requires)) { out.push(this.narrate(`pr_${p.id}_${this.round}`, `Улика на столе: «${item.name}». ${w.name} смотрит на неё и молчит — пока ему нечего к этому добавить.`)); return out }
     if (!this.greeted.has(w.id)) { this.greeted.add(w.id); out.push(w.greeting) }
     this.presented.add(pr.id)
-    this.addFact(pr.factId, p.id, { witnessId: w.id, locationId: this.witnessAt(w.id) })
+    const honest = this.honestOf(pr)
+    const from = { witnessId: w.id, locationId: this.witnessAt(w.id) }
+    if (honest) for (const f of honest.answer.facts ?? []) this.addFact(f, p.id, from)
+    else this.addFact(pr.factId, p.id, from)
     for (const u of pr.unlocks ?? []) this.unlocked.add(u)
-    if (this.roleOf(p)?.ability.kind === 'psychologist' && pr.factId) { this.lieMarks.set(p.id, { ...(this.lieMarks.get(p.id) ?? {}), [pr.factId]: pr.answer.lie }); const e = this.board.get(pr.factId); if (e) e.verdict = { lie: pr.answer.lie, by: this.roleOf(p)?.title ?? 'психолог' } }
+    if (!honest && this.roleOf(p)?.ability.kind === 'psychologist' && pr.factId) { this.lieMarks.set(p.id, { ...(this.lieMarks.get(p.id) ?? {}), [pr.factId]: pr.answer.lie }); const e = this.board.get(pr.factId); if (e) e.verdict = { lie: pr.answer.lie, by: this.roleOf(p)?.title ?? 'психолог' } }
     out.push({ ...this.narrate(`show_${pr.id}`, `${p.name} выкладывает на стол улику «${item.name}». ${w.name} смотрит на неё.`, ['drawer'], 300), itemId: item.id, itemName: item.name })
-    out.push({ id: pr.id, speaker: w.id, text: pr.answer.text, voice: pr.answer.voice, mood: pr.answer.mood, sfx: pr.answer.sfx, pauseAfter: 600 })
+    const a = honest?.answer ?? pr.answer
+    out.push({ id: honest ? honestBeatId(pr.id, honest.index) : pr.id, speaker: w.id, text: a.text, voice: a.voice, mood: a.mood, sfx: a.sfx, pauseAfter: 600 })
     return out
+  }
+
+  /** Честный ответ вместо лжи, которую бригада уже раскрыла. Лживая карточка при этом не ложится, поэтому вариант годится,
+      только если выводы из её противоречий не потеряются: уже на доске, приходят с ответом или добываются другим противоречием,
+      которое ещё может сойтись (его карточки не сгорели в чужом честном ответе). */
+  private honestOf(x: Question | Presentation): { answer: HonestAnswer; index: number } | null {
+    if (!x.answer.lie || !x.honest?.length) return null
+    const lieFact = x.factId
+    const burned = (f: string) => {
+      const src = this.sourceOf(f)
+      return !!src && !this.board.has(f) && ('text' in src ? this.asked.has(src.id) : this.presented.has(src.id))
+    }
+    for (const [index, h] of x.honest.entries()) {
+      if (!h.when.some(f => this.board.has(f))) continue
+      const safe = !lieFact || this.S.contradictions.every(c => {
+        const y = c.yieldsFactId
+        if (!y || !c.facts.includes(lieFact) || this.board.has(y) || h.facts?.includes(y)) return true
+        return this.S.contradictions.some(o => o.yieldsFactId === y && !o.facts.includes(lieFact) && !o.facts.some(burned))
+      })
+      if (safe) return { answer: h, index }
+    }
+    return null
   }
 
   /* ── обвинение ──────────────────────────────────────────────── */

@@ -42,6 +42,16 @@ for (const p of S.presentations) {
   for (const u of p.unlocks ?? []) if (!qs.has(u)) errors.push(`предъявление ${p.id}: unlocks ${u} не существует`)
   checkReq(`предъявление ${p.id}`, p.requires)
 }
+// честные варианты: только у лжи, карточки существуют, id реплик не пересекаются
+for (const x of [...S.questions, ...S.presentations]) {
+  if (!x.honest?.length) continue
+  if (!x.answer.lie) errors.push(`${x.id}: честный вариант у правдивого ответа`)
+  for (const h of x.honest) {
+    if (!h.when.length) errors.push(`${x.id}: у честного варианта пустой when`)
+    for (const f of [...h.when, ...(h.facts ?? [])]) if (!facts.has(f)) errors.push(`${x.id}: честный вариант ссылается на несуществующий факт ${f}`)
+    if (x.factId && h.when.includes(x.factId)) errors.push(`${x.id}: честный вариант ждёт собственную лживую карточку`)
+  }
+}
 for (const c of S.contradictions) {
   for (const f of c.facts) if (!facts.has(f)) errors.push(`противоречие ${c.id}: нет факта ${f}`)
   if (c.yieldsFactId && !facts.has(c.yieldsFactId)) errors.push(`противоречие ${c.id}: нет факта ${c.yieldsFactId}`)
@@ -80,6 +90,7 @@ for (const sp of S.spots) { src(sp.primary.factId, 'осмотр ' + sp.id); src
 for (const e of S.events ?? []) src(e.factId, 'событие')
 for (const q of S.questions) src(q.factId, 'вопрос ' + q.id)
 for (const p of S.presentations) src(p.factId, 'предъявление ' + p.id)
+for (const x of [...S.questions, ...S.presentations]) for (const h of x.honest ?? []) for (const f of h.facts ?? []) src(f, 'честный ответ ' + x.id)
 for (const c of S.contradictions) src(c.yieldsFactId, 'противоречие ' + c.id)
 for (const o of S.overheard) src(o.factId, 'подслушано')
 for (const b of Object.values(S.backgrounds)) src(b.factId, 'прошлое')
@@ -232,6 +243,8 @@ console.log('── Сценарий:', S.title)
 console.log(`локаций ${S.locations.length} · свидетелей ${S.witnesses.length} · мест осмотра ${S.spots.length} (скрытых слоёв ${S.spots.filter(s => s.hidden).length}, запертых ${S.spots.filter(s => s.locked).length})`)
 console.log(`предметов ${S.items.length} · вопросов ${S.questions.length} · предъявлений ${S.presentations.length} · фактов ${S.facts.length} (ключевых ${S.facts.filter(f => f.key).length}) · противоречий ${S.contradictions.length}`)
 console.log(`единиц контента: ${S.spots.length + S.spots.filter(s => s.hidden).length + S.questions.length + S.presentations.length}`)
+const lies = [...S.questions, ...S.presentations].filter(x => x.answer.lie)
+console.log(`лживых ответов ${lies.length} · с честным вариантом ${lies.filter(x => x.honest?.length).length}`)
 console.log()
 console.log('── Достижимость без способностей')
 console.log(`  действий до исчерпания: ${plain.actions} · фактов ${plain.facts} · предметов ${plain.items}`)
