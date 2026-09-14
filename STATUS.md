@@ -61,9 +61,8 @@
 ## Инструменты
 
 - Дома: `PORT=3100 docker compose up -d --build` (контекст сборки дел — `CASES_DIR`, дела и `media/` подмонтированы).
-- В сети: https://redthread-game.ru — Timeweb Cloud + Cloudflare, файлы запуска и инструкция — `red-thread-secret/ops/deploy`.
-  Обновить движок: `ssh root@176.57.218.253 'cd /opt/red-thread/red-thread-public && git pull && cd ../deploy && docker compose up -d --build'`;
-  дела — `rsync -az --delete --exclude .git --exclude .variants red-thread-secret/ root@176.57.218.253:/opt/red-thread/red-thread-secret/`.
+- В сети: https://redthread-game.ru. Сервер, его адрес, обновление и файлы запуска — `red-thread-secret/ops/deploy/DEPLOY.md`
+  (адрес сервера в открытый репозиторий не пишем: он спрятан за Cloudflare).
 - Боты: `FAST=1 CASE=<id> node tools/simulate.mjs 5 0228`; `ONLINE=1` — против сервера «в сети».
 - Генераторы: `tools/gigachat-art.mjs` (GigaChat, лучший по качеству; сертификат Минцифры в `tools/certs`, один запрос
   за раз, варианты в `.variants`), `tools/flux.mjs` (FLUX на HF, квота 2–3 картинки), `tools/trim-borders.mjs`
