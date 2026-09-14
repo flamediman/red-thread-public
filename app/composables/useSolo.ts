@@ -57,7 +57,8 @@ function open() {
       error.value = null
       setCurrentCase(msg.view.info.id)
       setCurrentSetting(msg.view.info.settingId)
-      if (msg.view.encounter) clockOffset.value = msg.view.encounter.serverNow - Date.now()
+      const timed = msg.view.chase ?? msg.view.encounter
+      if (timed) clockOffset.value = timed.serverNow - Date.now()
       view.value = msg.view
     }
   }

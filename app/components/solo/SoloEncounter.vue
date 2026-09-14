@@ -33,7 +33,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div class="solo-enc" role="alertdialog" aria-modal="true">
-    <img class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" alt="">
+    <img class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
     <div class="solo-enc__panel">

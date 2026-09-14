@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { resolve } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
 import type {
-  SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
+  SoloChase, SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
   SoloPlace, SoloSpawn, SoloStory, SoloView
 } from '../../shared/types'
 
@@ -18,6 +18,7 @@ const LIGHT_DRAIN = 2
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
 interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string }
+interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string }
 
 /** всё, что переживает перезагрузку страницы и сохранения */
 interface Run {
@@ -51,6 +52,7 @@ interface Run {
 
 interface Live {
   encounter: Encounter | null
+  chase?: Chase | null
   puzzle: string | null
   dialogue: { id: string; node: string } | null
   scene: { seq: number; lines: SoloLine[] } | null
@@ -70,10 +72,11 @@ export class SoloGame {
   private HOT: Map<string, SoloHotspot>
   private MON: Map<string, SoloMonster>
   private SPAWN: Map<string, SoloSpawn>
+  private CHASE: Map<string, SoloChase>
   private DIALOG: Map<string, SoloDialogue>
 
   private run: Run | null = null
-  private live: Live = { encounter: null, puzzle: null, dialogue: null, scene: null, dead: false }
+  private live: Live = { encounter: null, chase: null, puzzle: null, dialogue: null, scene: null, dead: false }
   private slots: (Slot | null)[] = Array(SAVE_SLOTS).fill(null)
   private feed: { seq: number; text: string; sfx?: string[]; voice?: string }[] = []
   /** номера событий растут и после перезапуска сервера: клиент по ним решает, что уже прозвучало */
@@ -86,6 +89,7 @@ export class SoloGame {
     this.S = story
     this.PLACE = byId(story.places); this.ITEM = byId(story.items); this.HOT = byId(story.hotspots)
     this.MON = byId(story.monsters); this.SPAWN = byId(story.spawns); this.DIALOG = byId(story.dialogues)
+    this.CHASE = byId(story.chases ?? [])
     this.file = resolve(DATA_DIR, 'solo', story.id, `${token}.json`)
     this.load()
   }
@@ -131,9 +135,10 @@ export class SoloGame {
       case 'heal': return this.healWith(msg.item)
       case 'equip': return this.equip(msg.item)
       case 'act': return this.act(msg.action)
+      case 'run': return this.run_(msg.index)
     }
-    // остальное — только когда герой свободен: не в бою, не в разговоре, не над головоломкой, не в сцене
-    if (this.live.encounter || this.live.scene) return
+    // остальное — только когда герой свободен: не в бою, не в погоне, не в разговоре, не над головоломкой, не в сцене
+    if (this.live.encounter || this.live.chase || this.live.scene) return
     if (msg.type === 'choose') return this.choose(msg.index)
     if (msg.type === 'closePuzzle') { this.live.puzzle = null; return this.changed() }
     if (msg.type === 'solve') return this.solve(msg.hotspot, msg.answer)
@@ -156,7 +161,7 @@ export class SoloGame {
       ammo: st.ammo, weapon: null, looked: [], used: [], killed: [], passed: [], opened: [], tried: [], otherworld: false,
       score: {}, playMs: 0, deaths: 0, kills: 0, saves: 0, ending: null
     }
-    this.live = { encounter: null, puzzle: null, dialogue: null, scene: null, dead: false }
+    this.live = { encounter: null, chase: null, puzzle: null, dialogue: null, scene: null, dead: false }
     this.feed = []
     this.activeSince = Date.now()
     if (this.timer) clearTimeout(this.timer)
@@ -178,6 +183,8 @@ export class SoloGame {
     if (c.items && !c.items.every(i => this.has(i))) return false
     if (c.notItems && c.notItems.some(i => this.has(i))) return false
     if (c.otherworld !== undefined && c.otherworld !== r.otherworld) return false
+    if (c.score && !Object.entries(c.score).every(([k, v]) => (r.score[k] ?? 0) >= v)) return false
+    if (c.scoreBelow && !Object.entries(c.scoreBelow).every(([k, v]) => (r.score[k] ?? 0) < v)) return false
     return true
   }
 
@@ -216,6 +223,8 @@ export class SoloGame {
     if (this.live.dead) return
     if (e.goto && this.PLACE.has(e.goto)) this.enter(e.goto, false)
     if (e.encounter) this.startEncounter(e.encounter)
+    if (e.chase) this.startChase(e.chase)
+    if (e.talk) this.startTalk(e.talk)
     if (e.ending) this.finish(e.ending)
   }
 
@@ -226,6 +235,7 @@ export class SoloGame {
     r.deaths++
     this.live.dead = true
     this.live.encounter = null
+    this.live.chase = null
     this.live.puzzle = null
     this.live.dialogue = null
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
@@ -279,7 +289,7 @@ export class SoloGame {
     if (first) r.visited.push(to)
     const p = this.PLACE.get(to)!
     if (first && p.enter) this.apply(p.enter)
-    if (this.live.dead || this.live.encounter) return
+    if (this.live.dead || this.live.encounter || this.live.chase) return
     const spawn = this.S.spawns.find(s => s.place === to && this.spawnActive(s))
     if (spawn) this.startEncounter(spawn.id)
   }
@@ -345,11 +355,7 @@ export class SoloGame {
       return this.changed()
     }
     if (h.talk) {
-      const d = this.DIALOG.get(h.talk)
-      if (!d) return
-      this.live.dialogue = { id: d.id, node: d.start }
-      const node = d.nodes[d.start]
-      if (node?.effect) this.apply(node.effect)
+      this.startTalk(h.talk)
       return this.changed()
     }
     if (!h.look) return
@@ -405,6 +411,14 @@ export class SoloGame {
     this.changed()
   }
 
+  private startTalk(id: string) {
+    const d = this.DIALOG.get(id)
+    if (!d || this.live.dead) return
+    this.live.dialogue = { id: d.id, node: d.start }
+    const node = d.nodes[d.start]
+    if (node?.effect) this.apply(node.effect)
+  }
+
   private choose(index: number) {
     const dl = this.live.dialogue
     if (!dl) return
@@ -438,7 +452,7 @@ export class SoloGame {
 
   private arm() {
     if (this.timer) clearTimeout(this.timer)
-    const e = this.live.encounter
+    const e = this.live.chase ?? this.live.encounter
     if (!e) return
     this.timer = setTimeout(() => this.onTimeout(), Math.max(0, e.deadline - Date.now()) + 50)
     this.timer.unref?.()
@@ -446,6 +460,7 @@ export class SoloGame {
 
   /** время вышло — существо бьёт само */
   private onTimeout() {
+    if (this.live.chase) return this.chaseTimeout()
     const e = this.live.encounter
     if (!e || Date.now() < e.deadline) return this.arm()
     if (this.live.scene) return this.refreshWindow()
@@ -456,10 +471,13 @@ export class SoloGame {
 
   /** полное окно на решение с этой секунды */
   private refreshWindow() {
+    const now = Date.now()
+    const c = this.live.chase
+    const spec = c && this.CHASE.get(c.id)
+    if (c && spec) { c.startedAt = now; c.deadline = now + spec.windowMs; return this.arm() }
     const e = this.live.encounter
     const m = e && this.MON.get(this.SPAWN.get(e.spawn)?.monster ?? '')
     if (!e || !m) return
-    const now = Date.now()
     e.startedAt = now
     e.deadline = now + m.windowMs
     this.arm()
@@ -504,8 +522,7 @@ export class SoloGame {
     }
     switch (action) {
       case 'fight': {
-        const w = r.weapon ? this.ITEM.get(r.weapon)?.weapon : null
-        const melee = w && !w.usesAmmo ? w : HANDS
+        const melee = this.melee()?.weapon ?? HANDS
         hit(melee.damage, melee.accuracy, false)
         break
       }
@@ -540,6 +557,67 @@ export class SoloGame {
     this.changed()
   }
 
+  /** чем бить вблизи: то, что в руках, если это не ствол; иначе любое оружие ближнего боя из карманов */
+  private melee(): SoloItem | null {
+    const r = this.run!
+    const held = r.weapon ? this.ITEM.get(r.weapon) : null
+    if (held?.weapon && !held.weapon.usesAmmo) return held
+    return Object.keys(r.items).map(i => this.ITEM.get(i)).find((i): i is SoloItem => !!i?.weapon && !i.weapon.usesAmmo && this.has(i.id)) ?? null
+  }
+
+  /* ── погони ───────────────────────────────────────────────── */
+
+  private startChase(id: string) {
+    const spec = this.CHASE.get(id)
+    if (!spec || !spec.steps.length) return
+    const now = Date.now()
+    this.live.puzzle = null
+    this.live.dialogue = null
+    this.live.encounter = null
+    this.live.chase = { id, step: 0, startedAt: now, deadline: now + spec.windowMs, text: spec.steps[0]!.text }
+    this.say('', [spec.sfx.near])
+    this.arm()
+  }
+
+  private chaseTimeout() {
+    const c = this.live.chase!
+    if (Date.now() < c.deadline) return this.arm()
+    if (this.live.scene) return this.refreshWindow()
+    const spec = this.CHASE.get(c.id)!
+    this.chaseHit(spec, spec.late)
+    this.changed()
+  }
+
+  /** удар в погоне: шаг тот же, окно заново */
+  private chaseHit(spec: SoloChase, text: string) {
+    const c = this.live.chase!
+    this.hurt(spec.damage)
+    this.say('', [spec.sfx.hit])
+    if (this.live.dead) { this.say(text); return }
+    c.text = `${text} ${spec.steps[c.step]!.text}`
+    this.refreshWindow()
+  }
+
+  private run_(index: number) {
+    const c = this.live.chase
+    const spec = c && this.CHASE.get(c.id)
+    if (!c || !spec || this.live.scene) return
+    const option = spec.steps[c.step]?.options[index]
+    if (!option) return
+    if (!option.right) { this.chaseHit(spec, option.text ?? spec.late); return this.changed() }
+    this.say('', [spec.sfx.run])
+    c.step++
+    if (c.step >= spec.steps.length) {
+      this.live.chase = null
+      if (this.timer) { clearTimeout(this.timer); this.timer = null }
+      this.apply(spec.success)
+      return this.changed()
+    }
+    c.text = spec.steps[c.step]!.text
+    this.refreshWindow()
+    this.changed()
+  }
+
   /* ── финал ─────────────────────────────────────────────────── */
 
   private finish(id: string) {
@@ -551,6 +629,7 @@ export class SoloGame {
     }
     r.ending = ending
     this.live.encounter = null
+    this.live.chase = null
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
   }
 
@@ -559,7 +638,7 @@ export class SoloGame {
   private saveSlot(slot: number) {
     const r = this.run
     if (!r || !Number.isInteger(slot) || slot < 0 || slot >= SAVE_SLOTS) return
-    if (!this.place().save || this.live.encounter || this.live.dead || r.ending) return
+    if (!this.place().save || this.live.encounter || this.live.chase || this.live.dead || r.ending) return
     this.tickPlay()
     r.saves++
     this.slots[slot] = { run: structuredClone(r), place: this.place().name, at: new Date().toISOString() }
@@ -573,7 +652,7 @@ export class SoloGame {
     const deaths = this.run?.deaths ?? s.run.deaths
     this.run = structuredClone(s.run)
     this.run.deaths = Math.max(deaths, this.run.deaths)
-    this.live = { encounter: null, puzzle: null, dialogue: null, scene: null, dead: false }
+    this.live = { encounter: null, chase: null, puzzle: null, dialogue: null, scene: null, dead: false }
     this.feed = []
     this.activeSince = Date.now()
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
@@ -592,7 +671,7 @@ export class SoloGame {
   private radio(): 0 | 1 | 2 {
     const r = this.run!
     if (!this.has('radio')) return 0
-    if (this.live.encounter) return 2
+    if (this.live.encounter || this.live.chase) return 2
     const here = this.place()
     const active = (placeId: string) => this.S.spawns.some(s => s.place === placeId && this.spawnActive(s))
     if (active(here.id)) return 2
@@ -602,8 +681,8 @@ export class SoloGame {
   view(): SoloView {
     const r = this.run
     const empty: SoloView = {
-      build: BUILD, info: this.info, started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
-      ammo: 0, radio: 0, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, puzzle: null,
+      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
+      ammo: 0, radio: 0, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }
     if (!r) return empty
@@ -624,7 +703,7 @@ export class SoloGame {
     return {
       ...empty,
       started: true,
-      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, save: p.save ?? null, hide: p.hide ?? null, ambience: p.ambience ?? [], surface: p.surface ?? 'asphalt' },
+      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt' },
       exits: p.exits.filter(x => this.ok(x.when)).map(x => ({
         to: x.to, label: x.label,
         locked: x.lock && !this.exitOpen(p.id, x) && !(x.lock.item && this.has(x.lock.item)) && !(x.lock.flag && this.flag(x.lock.flag)) ? x.lock.text : null,
@@ -655,7 +734,7 @@ export class SoloGame {
       encounter: e && m ? {
         monster: m.id, name: m.name, hp: Math.max(0, e.hp), maxHp: m.hp, round: e.round, startedAt: e.startedAt, deadline: e.deadline, serverNow: now, text: e.text,
         options: [
-          { id: 'fight' as const, label: r.weapon ? `Ударить: ${this.ITEM.get(r.weapon)?.name}` : 'Отбиваться руками', enabled: true },
+          { id: 'fight' as const, label: this.melee() ? `Ударить: ${this.melee()!.name}` : 'Отбиваться руками', enabled: true },
           // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт
           ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0 }] : []),
           { id: 'flee' as const, label: 'Бежать назад', enabled: !!r.prev },
@@ -668,10 +747,23 @@ export class SoloGame {
         id: dl.id, npc: this.DIALOG.get(dl.id)!.npc, name: this.S.npcs.find(n => n.id === this.DIALOG.get(dl.id)!.npc)?.name ?? '',
         lines: dNode.lines, choices: (dNode.choices ?? []).filter(c => this.ok(c.when)).map((c, index) => ({ index, text: c.text }))
       } : null,
+      chase: this.chaseView(now),
       dead: this.live.dead,
       ending: ending ? { id: ending.id, title: ending.title, lines: ending.scene, stats: { minutes: Math.round(r.playMs / 60000), saves: r.saves, deaths: r.deaths, kills: r.kills } } : null,
       saves: this.saveList(),
-      canSave: !!p.save && !e && !this.live.dead
+      canSave: !!p.save && !e && !this.live.chase && !this.live.dead
+    }
+  }
+
+  private chaseView(now: number): SoloView['chase'] {
+    const c = this.live.chase
+    const spec = c && this.CHASE.get(c.id)
+    const step = spec?.steps[c!.step]
+    if (!c || !spec || !step) return null
+    return {
+      name: spec.name, art: spec.art, step: c.step, total: spec.steps.length, text: c.text,
+      startedAt: c.startedAt, deadline: c.deadline, serverNow: now,
+      options: step.options.map((o, index) => ({ index, label: o.label }))
     }
   }
 
@@ -732,14 +824,20 @@ export class SoloGame {
       if (!existsSync(this.file)) return
       const d = JSON.parse(readFileSync(this.file, 'utf8')) as Disk
       this.run = d.run && this.PLACE.has(d.run.place) ? d.run : null
+      // история дописана: концовки, до которой дошёл игрок, больше нет (была промежуточной) — возвращаем его к последнему осмотру
+      if (this.run?.ending && !this.S.endings.some(x => x.id === this.run!.ending)) {
+        this.run.ending = null
+        this.run.looked = this.run.looked.slice(0, -1)
+        d.live = null
+      }
       this.slots = Array.from({ length: SAVE_SLOTS }, (_, i) => d.slots?.[i] && this.PLACE.has(d.slots[i]!.run.place) ? d.slots[i]! : null)
       if (this.run && d.live) {
         this.live = { ...d.live }
         // простой сервера во встрече не засчитывается: у игрока снова полное окно на решение
-        if (this.live.encounter) {
-          if (this.MON.has(this.SPAWN.get(this.live.encounter.spawn)?.monster ?? '')) this.refreshWindow()
-          else this.live.encounter = null
-        }
+        if (this.live.chase && !this.CHASE.has(this.live.chase.id)) this.live.chase = null
+        if (this.live.encounter && !this.MON.has(this.SPAWN.get(this.live.encounter.spawn)?.monster ?? '')) this.live.encounter = null
+        this.live.chase ??= null
+        this.refreshWindow()
       }
     } catch (e) { console.warn('одиночная партия не прочиталась:', (e as Error).message) }
   }

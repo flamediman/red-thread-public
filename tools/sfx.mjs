@@ -112,7 +112,22 @@ const PACKS = {
     'solo-heal': ['Tearing a paper wrapper of a bandage and wrapping gauze, a small glass bottle cap unscrewed, close, no music', 2.5],
     'solo-combine': ['Small mechanical click of parts snapping together, then a portable radio crackling to life, close, no music', 1.8],
     'solo-wrong': ['A dial lock clicking without opening, a dull metallic denial clunk, close, no music', 1],
-    'solo-save': ['An old telephone receiver placed back on its hook with a heavy click and a short soft dial tone ring, close, no music', 2]
+    'solo-save': ['An old telephone receiver placed back on its hook with a heavy click and a short soft dial tone ring, close, no music', 2],
+    // главы 2–3: санаторий и лагерь
+    'other-hum': ['Oppressive industrial ambience of a flooded rusted building: deep low metallic groan, distant dripping pipes, slow resonant creaks of iron, no music, seamless ambience loop', 14, true],
+    'flag-rope': ['A metal flagpole rope slapping against the hollow pole in slow gusts of wind, irregular metallic clinks, empty camp, fog, no music, seamless ambience loop', 12, true],
+    'lantern-chain': ['A heavy slow figure walking on gravel: big boots crunching, an old kerosene lantern creaking on its handle, a chain clinking at every step, getting closer, horror, no music', 4],
+    'hook-hit': ['A heavy wooden boathook pole with an iron hook striking a man hard: whoosh, dull thud, a pained grunt, close, no music', 1.5],
+    'door-bang': ['A heavy iron grate on stairs slammed and then violently shaken from outside, rattling metal, horror, no music', 2.5],
+    'tape-play': ['An old reel-to-reel tape recorder switched on: mechanical clunk, reels starting to spin, soft tape hiss and a faint microphone click, no voices, no music', 3],
+    'siren-bugle': ['A long off-key bugle note blown badly somewhere far above in a big empty building, wavering like a siren, then lights buzzing and dying out with electrical clicks, horror, no melody', 5],
+    'water-drain': ['Old pipes groaning and shuddering, then a large pool of water draining through a floor drain with a long deep gurgling swirl and a final sucking sound, echoing tiled room, no music', 5],
+    'radio-tune': ['Turning the tuning dial of an old tube radio transmitter: sweeping static, whistles and warbles, then a loud click as a loudspeaker system switches on with a hum, no voices, no music', 3],
+    'whistle-near': ['A sports referee whistle blown in short sharp rhythmic blasts somewhere down a dark corridor, getting closer fast, footsteps of hard shoes, horror, no music', 3],
+    'whistle-blast': ['A shrill deafening referee whistle blast right at the ear, distorted and painful, with a body slammed against a wooden wall, horror, no music', 2],
+    'counselor-hurt': ['A metal pipe hitting a tall body in a starched cotton blouse: dull thud, a whistle choking with a wet gurgle, close, no music', 1.2],
+    'counselor-die': ['A tall body collapsing onto wooden floor like an empty coat, then a small metal whistle rolling slowly across floorboards and stopping, silence, no music', 3],
+    'bugle-far-full': ['A lone bugle far away across a calm lake at dawn playing a slow gentle lights-out call cleanly from start to end, soft echo over water, peaceful and sad', 8]
   }
 }
 
@@ -125,7 +140,7 @@ mkdirSync(OUT, { recursive: true })
    петли атмосферы тише, одиночные звуки громче, пики — не выше -1 дБ. `--normalize` — только выровнять готовые файлы. */
 const LEVEL = { tuman: { loop: -30, shot: -21 } }
 /** удары и крики громче ровного уровня, мелочи вроде щелчка фонаря — тише */
-const ACCENT = { 'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -6, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
+const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -2, 'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -6, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']
   if (base == null) return

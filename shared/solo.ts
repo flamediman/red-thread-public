@@ -11,6 +11,10 @@ export interface SoloCond {
   notItems?: string[]
   /** только на изнанке (true) или только в обычном мире (false) */
   otherworld?: boolean
+  /** метрики концовок: не меньше указанного */
+  score?: Record<string, number>
+  /** метрики концовок: строго меньше указанного */
+  scoreBelow?: Record<string, number>
 }
 
 /** реплика сцены или разговора; speaker — 'narrator', 'hero' или id персонажа */
@@ -44,6 +48,10 @@ export interface SoloEffect {
   score?: Record<string, number>
   /** сразу — встреча с существом (id появления) */
   encounter?: string
+  /** сразу — погоня (id погони) */
+  chase?: string
+  /** начать разговор (id разговора) — после сцены */
+  talk?: string
   /** перенос в другое место */
   goto?: string
   /** включить или выключить изнанку */
@@ -81,6 +89,8 @@ export interface SoloPlace {
   dark?: boolean
   surface?: 'asphalt' | 'wood' | 'tile' | 'water' | 'grass'
   ambience?: string[]
+  /** звуки места на изнанке; без них — обычные */
+  otherAmbience?: string[]
   /** здесь можно сохраниться: что это за место */
   save?: string
   /** здесь можно спрятаться: где */
@@ -155,6 +165,22 @@ export interface SoloMonster {
   text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string }
 }
 
+/** Погоня: от этого не отбиться. Несколько шагов подряд, на каждом — секунды, чтобы выбрать, куда бежать.
+    Неверный выбор или промедление — удар, шаг повторяется; последний шаг пройден — эффект success. */
+export interface SoloChase {
+  id: string
+  name: string
+  /** картинка на весь экран: m_<art> */
+  art: string
+  windowMs: number
+  damage: number
+  sfx: { near: string; hit: string; run: string }
+  /** что происходит, если игрок медлит */
+  late: string
+  steps: { text: string; options: { label: string; right?: boolean; text?: string }[] }[]
+  success: SoloEffect
+}
+
 export interface SoloSpawn {
   id: string
   monster: string
@@ -186,6 +212,7 @@ export interface SoloStory {
   notes: SoloNote[]
   monsters: SoloMonster[]
   spawns: SoloSpawn[]
+  chases?: SoloChase[]
   npcs: SoloNpc[]
   dialogues: SoloDialogue[]
   endings: SoloEnding[]
@@ -214,6 +241,8 @@ export interface SoloInfo {
 export interface SoloView {
   build: string
   info: SoloInfo
+  /** подписи к репликам сцен: id персонажа → имя */
+  speakers: Record<string, string>
   /** нет партии — только меню */
   started: boolean
   place: {
@@ -243,6 +272,11 @@ export interface SoloView {
     options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean }[]
   } | null
   puzzle: { hotspot: string; puzzle: SoloPublicPuzzle } | null
+  chase: {
+    name: string; art: string; step: number; total: number; text: string
+    startedAt: number; deadline: number; serverNow: number
+    options: { index: number; label: string }[]
+  } | null
   dialogue: { id: string; npc: string; name: string; lines: SoloLine[]; choices: { index: number; text: string }[] } | null
   dead: boolean
   ending: { id: string; title: string; lines: SoloLine[]; stats: { minutes: number; saves: number; deaths: number; kills: number } } | null
@@ -267,6 +301,7 @@ export type SoloClientMessage =
   | { type: 'equip'; item: string }
   | { type: 'heal'; item: string }
   | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide' }
+  | { type: 'run'; index: number }
 
 export type SoloServerMessage =
   | { type: 'view'; view: SoloView }

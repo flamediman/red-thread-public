@@ -126,18 +126,19 @@ const itemVerb = (kind: string) => kind === 'heal' ? 'Перевязаться' 
 
 /* ── оверлеи ── */
 const endingPlayed = ref<string | null>(null)
-const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'encounter' | 'dialogue' | 'puzzle' | null>(() => {
+const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'encounter' | 'dialogue' | 'puzzle' | null>(() => {
   const s = v.value
   if (!s?.started || !entered.value) return null
   if (s.scene) return 'scene'
   if (s.ending) return endingPlayed.value === s.ending.id ? 'ending' : 'ending-scene'
   if (s.dead) return 'dead'
+  if (s.chase) return 'chase'
   if (s.encounter) return 'encounter'
   if (s.dialogue) return 'dialogue'
   if (s.puzzle) return 'puzzle'
   return null
 })
-const speakers = computed(() => ({} as Record<string, string>))
+const speakers = computed(() => v.value?.speakers ?? {})
 const puzzleFail = computed(() => {
   const last = v.value?.feed.at(-1)
   return v.value?.puzzle && last && last.seq > lastPuzzleOpen.value && last.text === v.value.puzzle.puzzle.fail ? last.text : null
@@ -149,7 +150,7 @@ const sceneDone = () => { if (v.value?.scene) send({ type: 'sceneDone', seq: v.v
 const relay = (m: SoloClientMessage) => send(m)
 
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
-watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!v.value?.encounter, () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
+watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
   ([, radio, enc, low, inGame, ok, ended]) => {
     if (!ok) return
     if (!inGame || !v.value?.started || ended) { audio.ambience(['fog-wind'], { 'fog-wind': 0.5 }); return }
@@ -353,6 +354,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <!-- ── поверх всего ── -->
       <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :fallback="artOk ? artSrc : null" @done="sceneDone" />
       <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
+      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :offset="clockOffset" @send="relay" />
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :offset="clockOffset" :light="v.light" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :last-fail="puzzleFail" @send="relay" />

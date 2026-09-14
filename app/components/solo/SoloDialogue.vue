@@ -28,11 +28,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="solo-veil">
     <div class="solo-talk" role="dialog" aria-modal="true" @click="more">
-      <img class="solo-talk__face" :src="`/art/${story}/n_${data.npc}.jpg`" alt="">
+      <img class="solo-talk__face" :src="`/art/${story}/n_${data.npc}.jpg`" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
       <div class="solo-talk__body">
         <span class="solo-talk__name">{{ data.name }}</span>
         <TransitionGroup name="fade" tag="div" class="solo-talk__lines">
-          <p v-for="(l, i) in data.lines.slice(0, shown)" :key="`${data.id}-${i}-${l.text.slice(0, 12)}`" class="solo-talk__line" :class="{ 'solo-talk__line--hero': l.speaker === 'hero' }">
+          <p v-for="(l, i) in data.lines.slice(0, shown)" :key="`${data.id}-${i}-${l.text.slice(0, 12)}`" class="solo-talk__line" :class="{ 'solo-talk__line--hero': l.speaker === 'hero', 'solo-talk__line--narrator': l.speaker === 'narrator' }">
             <b v-if="who(l.speaker) && l.speaker === 'hero'">{{ who(l.speaker) }}: </b>{{ l.text }}
           </p>
         </TransitionGroup>

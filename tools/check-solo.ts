@@ -19,7 +19,7 @@ const warn = (m: string) => warns.push(m)
 
 /* ── уникальность ── */
 const ids = new Map<string, string>()
-const table = { place: S.places, hotspot: S.hotspots, item: S.items, note: S.notes, monster: S.monsters, spawn: S.spawns, npc: S.npcs, dialogue: S.dialogues, ending: S.endings, area: S.areas }
+const table = { place: S.places, hotspot: S.hotspots, item: S.items, note: S.notes, monster: S.monsters, spawn: S.spawns, chase: S.chases ?? [], npc: S.npcs, dialogue: S.dialogues, ending: S.endings, area: S.areas }
 for (const [kind, list] of Object.entries(table)) {
   for (const x of list as { id: string }[]) {
     const key = `${kind}:${x.id}`
@@ -35,8 +35,10 @@ const usedFlags = new Map<string, string>()
 const sfxUsed = new Map<string, string>()
 const artUsed = new Map<string, string>()
 
+const scoreConds: { where: string; score: Record<string, number> }[] = []
 function cond(c: SoloCond | undefined, where: string) {
   if (!c) return
+  if (c.score) scoreConds.push({ where, score: c.score })
   for (const f of [...(c.flags ?? []), ...(c.notFlags ?? [])]) if (!f.startsWith('solved:')) usedFlags.set(f, where)
   for (const i of [...(c.items ?? []), ...(c.notItems ?? [])]) if (!has('item', i)) err(`${where}: условие на неизвестный предмет ${i}`)
 }
@@ -53,6 +55,7 @@ function effect(e: SoloEffect | undefined, where: string) {
   for (const f of e.set ?? []) setFlags.add(f)
   if (e.note && !has('note', e.note)) err(`${where}: неизвестная записка ${e.note}`)
   if (e.encounter && !has('spawn', e.encounter)) err(`${where}: неизвестное появление ${e.encounter}`)
+  if (e.chase && !has('chase', e.chase)) err(`${where}: неизвестная погоня ${e.chase}`)
   if (e.goto && !has('place', e.goto)) err(`${where}: переход в неизвестное место ${e.goto}`)
   if (e.ending && e.ending !== 'auto' && !has('ending', e.ending)) err(`${where}: неизвестная концовка ${e.ending}`)
   for (const s of e.sfx ?? []) sfxUsed.set(s, where)
@@ -121,7 +124,7 @@ for (const it of S.items) {
     if (!has('item', c.result)) err(`предмет ${it.id}: получается неизвестный ${c.result}`)
   }
   if (it.kind === 'weapon' && !it.weapon) err(`предмет ${it.id}: оружие без характеристик`)
-  if (!it.icon) warn(`предмет ${it.id}: нет своего значка — в карманах будет общий по виду`)
+  if (!it.icon && it.kind !== 'ammo') warn(`предмет ${it.id}: нет своего значка — в карманах будет общий по виду`)
 }
 
 for (const m of S.monsters) {
@@ -135,6 +138,14 @@ for (const s of S.spawns) {
   cond(s.when, `появление ${s.id}`)
 }
 for (const n of S.npcs) artUsed.set(`n_${n.id}`, `персонаж ${n.id}`)
+for (const c of S.chases ?? []) {
+  const w = `погоня ${c.id}`
+  artUsed.set(`m_${c.art}`, w)
+  for (const s of Object.values(c.sfx)) sfxUsed.set(s, w)
+  effect(c.success, `${w} конец`)
+  if (c.windowMs < 3000) warn(`${w}: на выбор меньше 3 с`)
+  c.steps.forEach((st, i) => { if (st.options.filter(o => o.right).length !== 1) err(`${w}: на шаге ${i + 1} должен быть ровно один верный путь`) })
+}
 
 for (const d of S.dialogues) {
   const w = `разговор ${d.id}`
@@ -168,6 +179,7 @@ for (const [f, where] of usedFlags) if (!setFlags.has(f)) err(`${where}: фла�
 const got = { flags: new Set<string>(S.start.flags ?? []), items: new Set<string>(S.start.items), places: new Set<string>([S.start.place]), endings: new Set<string>(), score: {} as Record<string, number> }
 const okCond = (c?: SoloCond) => !c || ((c.flags ?? []).every(f => got.flags.has(f)) && (c.items ?? []).every(i => got.items.has(i)))
 const taken = new Set<string>()
+const talks = new Set<string>()
 function take(key: string, e: SoloEffect | undefined) {
   if (!e || taken.has(key)) return false
   taken.add(key)
@@ -175,6 +187,9 @@ function take(key: string, e: SoloEffect | undefined) {
   for (const f of e.set ?? []) got.flags.add(f)
   if (e.goto) got.places.add(e.goto)
   if (e.ending) got.endings.add(e.ending)
+  if (e.talk) talks.add(e.talk)
+  const chase = e.chase ? S.chases?.find(c => c.id === e.chase) : null
+  if (chase) take(`chase:${chase.id}`, chase.success)
   return true
 }
 let changed = true
@@ -195,10 +210,13 @@ while (changed && rounds++ < 200) {
     if (h.look && take(`look:${h.id}`, h.look)) changed = true
     if (h.puzzle && take(`solve:${h.id}`, { ...h.puzzle.success, set: [...(h.puzzle.success.set ?? []), `solved:${h.id}`] })) changed = true
     for (const u of h.use ?? []) if (got.items.has(u.item) && take(`use:${h.id}:${u.item}`, u.effect)) changed = true
-    const d = h.talk ? S.dialogues.find(x => x.id === h.talk) : null
-    for (const [nid, node] of Object.entries(d?.nodes ?? {})) {
-      if (take(`node:${d!.id}:${nid}`, node.effect)) changed = true
-      node.choices?.forEach((c, i) => { if (okCond(c.when) && take(`choice:${d!.id}:${nid}:${i}`, c.effect)) changed = true })
+    if (h.talk && !talks.has(h.talk)) { talks.add(h.talk); changed = true }
+  }
+  for (const d of S.dialogues) {
+    if (!talks.has(d.id)) continue
+    for (const [nid, node] of Object.entries(d.nodes)) {
+      if (take(`node:${d.id}:${nid}`, node.effect)) changed = true
+      node.choices?.forEach((c, i) => { if (okCond(c.when) && take(`choice:${d.id}:${nid}:${i}`, c.effect)) changed = true })
     }
   }
   for (const it of S.items) for (const c of it.combine ?? []) if (got.items.has(it.id) && got.items.has(c.with) && !got.items.has(c.result)) { got.items.add(c.result); changed = true }
@@ -225,12 +243,14 @@ const maxScore: Record<string, number> = {}
 const addScore = (e?: SoloEffect) => { for (const [k, v] of Object.entries(e?.score ?? {})) if (v > 0) maxScore[k] = (maxScore[k] ?? 0) + v }
 for (const p of S.places) addScore(p.enter)
 for (const h of S.hotspots) { addScore(h.look); addScore(h.puzzle?.success); h.use?.forEach(u => addScore(u.effect)) }
+for (const c of S.chases ?? []) addScore(c.success)
 for (const d of S.dialogues) for (const node of Object.values(d.nodes)) {
   addScore(node.effect)
   const best: Record<string, number> = {}
   for (const c of node.choices ?? []) for (const [k, v] of Object.entries(c.effect?.score ?? {})) best[k] = Math.max(best[k] ?? 0, v)
   for (const [k, v] of Object.entries(best)) maxScore[k] = (maxScore[k] ?? 0) + v
 }
+for (const c of scoreConds) for (const [k, v] of Object.entries(c.score)) if ((maxScore[k] ?? 0) < v) err(`${c.where}: условие ${k} ≥ ${v}, а набрать можно максимум ${maxScore[k] ?? 0}`)
 for (const r of S.endingRules) for (const [k, v] of Object.entries(r.score ?? {})) if ((maxScore[k] ?? 0) < v) err(`концовка ${r.ending}: нужно ${k} ≥ ${v}, а набрать можно максимум ${maxScore[k] ?? 0}`)
 
 /* ── файлы ── */

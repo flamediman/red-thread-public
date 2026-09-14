@@ -42,7 +42,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="solo-scene" role="dialog" aria-modal="true" @click="next">
     <Transition name="fade" :duration="400">
-      <img v-if="art" :key="art" class="solo-scene__art" :src="art" alt="">
+      <img v-if="art" :key="art" class="solo-scene__art" :src="art" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     </Transition>
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.6" />
