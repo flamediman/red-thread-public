@@ -6,8 +6,13 @@
 //   node tools/telegram.mjs post <файл.md>                   — опубликовать пост (разметка HTML Telegram)
 //   node tools/telegram.mjs poll "Вопрос" "Вариант 1" "Вариант 2" [...]  — голосование (анонимное, в канале иначе нельзя)
 //   node tools/telegram.mjs poll-file <файл.json>            — голосование из файла { question, options, multiple }
-//   node tools/telegram.mjs updates                          — новые комментарии и итоги голосований
+//   node tools/telegram.mjs goals <goals.json>               — пост сборов со шкалами; повторный запуск обновляет тот же пост
+//   node tools/telegram.mjs updates                          — новые комментарии и итоги голосований (только пока бот
+//                                                              не слушает на сервере: там входящие — .data/telegram/inbox.jsonl)
 //   node tools/telegram.mjs --dry post …                     — показать, что уйдёт, ничего не отправляя
+//
+// В тексте поста подставляются {{SITE_URL}}, {{DONATE_URL}} и {{BOT_URL}} из .env — ссылки с реквизитами в файлы не пишем.
+// Шапка поста до строки «---» (необязательна): «preview: on» — показать превью ссылки, «button: Текст | ссылка» — кнопка под постом.
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { readEnv, root } from './paths.mjs'
@@ -31,6 +36,37 @@ async function api(method, body = {}) {
   const data = await r.json().catch(() => ({ ok: false, description: `HTTP ${r.status}` }))
   if (!data.ok) throw new Error(`${method}: ${data.description}`)
   return data.result
+}
+
+const SITE_URL = (env.SITE_URL || 'https://redthread-game.ru').replace(/\/+$/, '')
+const vars = { SITE_URL, DONATE_URL: env.DONATE_URL || '', BOT_URL: env.TELEGRAM_BOT_URL || '' }
+/** {{ИМЯ}} → значение из .env; пустое значение — ошибка, чтобы в канал не ушла пустая ссылка */
+const fill = (text) => text.replace(/\{\{(\w+)\}\}/g, (_, k) => {
+  if (!vars[k]) throw new Error(`в .env нет значения для {{${k}}}`)
+  return vars[k]
+})
+/** шапка поста: превью ссылки и кнопки-ссылки под постом */
+function parsePost(raw) {
+  const parts = raw.split(/^---$/m)
+  const head = parts.length > 1 ? parts.shift() : ''
+  const text = fill(parts.join('---').trim())
+  const buttons = [...head.matchAll(/^button:\s*(.+?)\s*\|\s*(\S+)\s*$/gm)].map(m => [{ text: m[1], url: fill(m[2]) }])
+  return { text, preview: /^preview:\s*on\s*$/m.test(head), buttons }
+}
+const rub = (n) => `${Math.round(n).toLocaleString('ru-RU')} ₽`
+/** пост сборов: у каждой цели шкала из десяти делений */
+function renderGoals(g) {
+  const lines = [`<b>${g.title}</b>`, '']
+  for (const goal of g.goals) {
+    const share = Math.max(0, Math.min(1, goal.raised / goal.target))
+    const cells = Math.round(share * 10)
+    lines.push(`<b>${goal.name}</b> — ${rub(goal.target)}`)
+    if (goal.note) lines.push(goal.note)
+    lines.push(`${'▰'.repeat(cells)}${'▱'.repeat(10 - cells)}  ${rub(goal.raised)} · ${Math.floor(share * 100)}%`, '')
+  }
+  if (g.footer) lines.push(g.footer)
+  if (g.updated) lines.push('', `<i>Обновлено ${g.updated}</i>`)
+  return fill(lines.join('\n').trim())
 }
 
 /** где помнить, до какого обновления уже прочитали */
@@ -60,10 +96,31 @@ switch (cmd) {
   case 'post': {
     const file = rest[0]
     if (!file || !existsSync(file)) throw new Error('укажите файл поста')
-    const text = readFileSync(file, 'utf8').trim()
-    if (dry) { console.log(text); break }
-    const m = await api('sendMessage', { chat_id: CHANNEL, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
+    const { text, preview, buttons } = parsePost(readFileSync(file, 'utf8'))
+    const body = { chat_id: CHANNEL, text, parse_mode: 'HTML', link_preview_options: { is_disabled: !preview }, ...(buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}) }
+    if (dry) { console.log(text); if (buttons.length) console.log('\nкнопки:', buttons.map(b => b[0].text).join(' · ')); console.log(`превью ссылки: ${preview ? 'да' : 'нет'}`); break }
+    const m = await api('sendMessage', body)
     console.log(`пост опубликован: сообщение ${m.message_id}`)
+    break
+  }
+  case 'goals': {
+    const file = rest[0]
+    if (!file || !existsSync(file)) throw new Error('укажите файл сборов')
+    const g = JSON.parse(readFileSync(file, 'utf8'))
+    g.updated = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    const text = renderGoals(g)
+    const reply_markup = g.button ? { inline_keyboard: [[{ text: g.button, url: fill('{{DONATE_URL}}') }]] } : undefined
+    if (dry) { console.log(text); if (g.button) console.log(`\nкнопка: ${g.button}`); break }
+    if (g.message_id) {
+      await api('editMessageText', { chat_id: CHANNEL, message_id: g.message_id, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup })
+      console.log(`сборы обновлены: сообщение ${g.message_id}`)
+    } else {
+      const m = await api('sendMessage', { chat_id: CHANNEL, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup })
+      g.message_id = m.message_id
+      console.log(`сборы опубликованы: сообщение ${m.message_id}`)
+    }
+    delete g.updated
+    writeFileSync(file, JSON.stringify(g, null, 2) + '\n')
     break
   }
   case 'poll': {
@@ -97,5 +154,5 @@ switch (cmd) {
     break
   }
   default:
-    console.log('команды: me, post <файл>, poll "вопрос" "вариант"…, poll-file <файл.json>, updates')
+    console.log('команды: me, post <файл>, goals <файл.json>, poll "вопрос" "вариант"…, poll-file <файл.json>, updates')
 }

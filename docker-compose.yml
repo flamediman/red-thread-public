@@ -13,6 +13,7 @@ services:
       GAME_URL: ${GAME_URL:-}
       TELEGRAM_URL: ${TELEGRAM_URL:-}
       DONATE_URL: ${DONATE_URL:-}
+      TELEGRAM_BOT_URL: ${TELEGRAM_BOT_URL:-}
     # состояние партии и фото — на диске хоста; дела и арт миров подмонтированы,
     # чтобы перерисованные картинки, озвучка и музыка подхватывались без пересборки
     volumes:

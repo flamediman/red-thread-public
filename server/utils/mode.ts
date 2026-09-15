@@ -21,7 +21,9 @@ export const CLIENT_CONFIG = {
   /** канал игры в Telegram — ссылка в меню и в финале */
   telegram: url(process.env.TELEGRAM_URL),
   /** страница доната (Boosty, CloudTips…) — ссылка и QR в меню */
-  donate: url(process.env.DONATE_URL)
+  donate: url(process.env.DONATE_URL),
+  /** бот обратной связи (https://t.me/…_bot) — баги, идеи и отзывы; пусто — не показывать */
+  bot: url(process.env.TELEGRAM_BOT_URL)
 }
 
 export function clientIp(headers: Headers | undefined, fallback: string | undefined): string {

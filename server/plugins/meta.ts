@@ -74,6 +74,10 @@ export default defineNitroPlugin((nitroApp) => {
       meta('name', 'twitter:description', page.description),
       meta('name', 'twitter:image', image)
     ]
+    // подтверждение прав в Google Search Console и Яндекс Вебмастере — код из их кабинетов, в переменных окружения
+    const google = process.env.GOOGLE_SITE_VERIFICATION?.trim(), yandex = process.env.YANDEX_VERIFICATION?.trim()
+    if (google) tags.push(meta('name', 'google-site-verification', google))
+    if (yandex) tags.push(meta('name', 'yandex-verification', yandex))
     if (page.game) {
       const ld = {
         '@context': 'https://schema.org', '@type': 'VideoGame', name: SITE, url, image, description: DESCRIPTION,

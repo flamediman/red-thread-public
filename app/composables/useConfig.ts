@@ -2,7 +2,7 @@ import type { ClientConfig } from '#shared/types'
 
 /* Режим сервера и ссылки проекта. Грузится один раз; до ответа — домашний режим, но экран ждёт loaded,
    чтобы не мигнуть воротами с кодом там, где нужна кнопка «Открыть комнату». */
-const config = ref<ClientConfig>({ mode: 'local', photos: true, telegram: '', donate: '' })
+const config = ref<ClientConfig>({ mode: 'local', photos: true, telegram: '', donate: '', bot: '' })
 const loaded = ref(false)
 let pending: Promise<void> | null = null
 

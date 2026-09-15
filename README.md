@@ -79,6 +79,9 @@ node .output/server/index.mjs     # переменные — из окружен
 | `DONATE_URL` | — | страница поддержки: ссылка и QR в меню |
 | `TRUST_PROXY` | — | `1` за обратным прокси: адрес игрока берётся из заголовка |
 | `SITE_URL` | — | адрес сайта для превью ссылок и `sitemap.xml`; без него — из запроса |
+| `GOOGLE_SITE_VERIFICATION`, `YANDEX_VERIFICATION` | — | коды подтверждения сайта в Google Search Console и Яндекс Вебмастере (метатег) |
+| `TELEGRAM_BOT_URL` | — | бот обратной связи (`https://t.me/…_bot`): ссылка в меню и на телефоне в финале |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHANNEL` | — | в сети: бот принимает баги и отзывы и пересылает создателю канала (`server/plugins/telegram-bot.ts`) |
 | `REAL_IP_HEADER` | `x-forwarded-for` | заголовок с адресом игрока (`cf-connecting-ip` за Cloudflare) |
 | `MAX_ROOMS` | `300` | предел одновременных комнат (в сети) |
 | `MAX_SOCKETS_PER_IP` | `150` в сети | предел соединений с одного адреса |
