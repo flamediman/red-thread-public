@@ -7,6 +7,8 @@
 //   node tools/telegram.mjs poll "Вопрос" "Вариант 1" "Вариант 2" [...]  — голосование (анонимное, в канале иначе нельзя)
 //   node tools/telegram.mjs poll-file <файл.json>            — голосование из файла { question, options, multiple }
 //   node tools/telegram.mjs goals <goals.json>               — пост сборов со шкалами; повторный запуск обновляет тот же пост
+//   node tools/telegram.mjs pin <номер сообщения>            — закрепить пост в канале без уведомления
+//   node tools/telegram.mjs edit <номер> <файл.md>           — заменить текст опубликованного поста (превью ссылки перечитается)
 //   node tools/telegram.mjs updates                          — новые комментарии и итоги голосований (только пока бот
 //                                                              не слушает на сервере: там входящие — .data/telegram/inbox.jsonl)
 //   node tools/telegram.mjs --dry post …                     — показать, что уйдёт, ничего не отправляя
@@ -97,7 +99,7 @@ switch (cmd) {
     const file = rest[0]
     if (!file || !existsSync(file)) throw new Error('укажите файл поста')
     const { text, preview, buttons } = parsePost(readFileSync(file, 'utf8'))
-    const body = { chat_id: CHANNEL, text, parse_mode: 'HTML', link_preview_options: { is_disabled: !preview }, ...(buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}) }
+    const body = { chat_id: CHANNEL, text, parse_mode: 'HTML', link_preview_options: preview ? { prefer_large_media: true } : { is_disabled: true }, ...(buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}) }
     if (dry) { console.log(text); if (buttons.length) console.log('\nкнопки:', buttons.map(b => b[0].text).join(' · ')); console.log(`превью ссылки: ${preview ? 'да' : 'нет'}`); break }
     const m = await api('sendMessage', body)
     console.log(`пост опубликован: сообщение ${m.message_id}`)
@@ -133,6 +135,25 @@ switch (cmd) {
     await sendPoll(question, options, !!multiple)
     break
   }
+  case 'edit': {
+    const id = Number(rest[0]), file = rest[1]
+    if (!id || !file || !existsSync(file)) throw new Error('укажите номер сообщения и файл поста')
+    const { text, preview, buttons } = parsePost(readFileSync(file, 'utf8'))
+    const link = preview ? (text.match(/https?:\/\/\S+/)?.[0] ?? '') : ''
+    const body = { chat_id: CHANNEL, message_id: id, text, parse_mode: 'HTML', link_preview_options: preview ? { url: link, prefer_large_media: true } : { is_disabled: true }, ...(buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}) }
+    if (dry) { console.log(JSON.stringify(body, null, 2)); break }
+    await api('editMessageText', body)
+    console.log(`пост обновлён: сообщение ${id}`)
+    break
+  }
+  case 'pin': {
+    const id = Number(rest[0])
+    if (!id) throw new Error('укажите номер сообщения')
+    if (dry) { console.log(`закрепить сообщение ${id}`); break }
+    await api('pinChatMessage', { chat_id: CHANNEL, message_id: id, disable_notification: true })
+    console.log(`закреплено сообщение ${id}`)
+    break
+  }
   case 'updates': {
     const updates = await api('getUpdates', { offset: offset(), timeout: 0, allowed_updates: ['message', 'channel_post', 'poll', 'edited_message'] })
     for (const u of updates) {
@@ -154,5 +175,5 @@ switch (cmd) {
     break
   }
   default:
-    console.log('команды: me, post <файл>, goals <файл.json>, poll "вопрос" "вариант"…, poll-file <файл.json>, updates')
+    console.log('команды: me, post <файл>, goals <файл.json>, pin <номер>, edit <номер> <файл>, poll "вопрос" "вариант"…, poll-file <файл.json>, updates')
 }
