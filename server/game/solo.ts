@@ -79,7 +79,7 @@ export class SoloGame {
   private run: Run | null = null
   private live: Live = { encounter: null, chase: null, puzzle: null, dialogue: null, scene: null, dead: false }
   private slots: (Slot | null)[] = Array(SAVE_SLOTS).fill(null)
-  private feed: { seq: number; text: string; sfx?: string[]; voice?: string }[] = []
+  private feed: SoloView['feed'] = []
   /** номера событий растут и после перезапуска сервера: клиент по ним решает, что уже прозвучало */
   private seq = Math.floor(Date.now() / 1000)
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -190,10 +190,11 @@ export class SoloGame {
     return true
   }
 
-  private say(text?: string, sfx?: string[], voice?: string) {
-    if (!text && !sfx?.length) return
-    this.feed = [...this.feed, { seq: ++this.seq, text: text ?? '', sfx, voice }].slice(-FEED)
+  private say(text?: string, sfx?: string[], voice?: string, extra: { art?: string; found?: SoloView['feed'][number]['found'] } = {}) {
+    if (!text && !sfx?.length && !extra.art && !extra.found) return
+    this.feed = [...this.feed, { seq: ++this.seq, text: text ?? '', sfx, voice, ...extra }].slice(-FEED)
   }
+  private artOf(item: SoloItem) { return item.art ?? `i_${item.id}` }
 
   private showScene(lines?: SoloLine[]) {
     if (!lines?.length) return
@@ -210,6 +211,8 @@ export class SoloGame {
       if (item.kind === 'ammo') r.ammo += item.amount ?? 1
       else r.items[i] = (r.items[i] ?? 0) + 1
       if (item.kind === 'weapon' && !r.weapon) r.weapon = i
+      // карточка находки: клиент покажет её, когда закончатся сцена и разговор
+      this.say(undefined, undefined, undefined, { found: { id: item.id, name: item.name, description: item.description, art: this.artOf(item) } })
     }
     for (const f of e.set ?? []) if (!r.flags.includes(f)) r.flags.push(f)
     if (e.unset) r.flags = r.flags.filter(f => !e.unset!.includes(f))
@@ -219,7 +222,7 @@ export class SoloGame {
     if (e.ammo) r.ammo = Math.max(0, r.ammo + e.ammo)
     for (const [k, v] of Object.entries(e.score ?? {})) r.score[k] = (r.score[k] ?? 0) + v
     if (e.otherworld !== undefined) r.otherworld = e.otherworld
-    this.say(e.text, e.sfx, e.voice)
+    this.say(e.text, e.sfx, e.voice, { art: e.art })
     this.showScene(e.scene)
     if (e.hurt) this.hurt(e.hurt)
     if (this.live.dead) return
@@ -362,7 +365,7 @@ export class SoloGame {
       return this.changed()
     }
     if (!h.look) return
-    if (h.look.once && r.looked.includes(h.id)) { this.say(h.look.after ?? 'Больше здесь ничего нет.'); return this.changed() }
+    if (h.look.once && r.looked.includes(h.id)) { this.say(h.look.after ?? 'Больше здесь ничего нет.', undefined, undefined, { art: h.look.art }); return this.changed() }
     if (!r.looked.includes(h.id)) r.looked.push(h.id)
     this.apply(h.look)
     this.changed()
@@ -718,7 +721,7 @@ export class SoloGame {
       })),
       inventory: Object.entries(r.items).filter(([, n]) => n > 0).map(([id, count]) => {
         const it = this.ITEM.get(id)!
-        return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon' }
+        return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, art: this.artOf(it), count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon' }
       }),
       notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x),
       health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, radio: this.radio(), otherworld: r.otherworld,
@@ -727,7 +730,7 @@ export class SoloGame {
         areas: this.S.areas,
         links: this.mapLinks(visited, p),
         places: this.S.places.filter(x => visited.has(x.id) || p.exits.some(ex => ex.to === x.id && this.ok(ex.when))).map(x => ({
-          id: x.id, area: x.area, name: x.name, x: x.x, y: x.y, w: x.w, h: x.h, visited: visited.has(x.id), here: x.id === p.id, save: !!x.save,
+          id: x.id, area: x.area, name: x.name, x: x.x, y: x.y, w: x.w, h: x.h, outdoor: !!x.outdoor, surface: x.surface ?? 'asphalt', poi: x.poi ?? (x.outdoor ? 'road' : 'door'), visited: visited.has(x.id), here: x.id === p.id, save: !!x.save,
           locked: r.tried.some(t => t.endsWith(`>${x.id}`)) && !r.opened.some(o => o.split('|').includes(x.id))
         }))
       },
@@ -791,10 +794,10 @@ export class SoloGame {
   private publicPuzzle(h: SoloHotspot): NonNullable<SoloView['puzzle']>['puzzle'] {
     const p = h.puzzle!
     switch (p.kind) {
-      case 'code': return { kind: 'code', prompt: p.prompt, length: p.length, alphabet: p.alphabet, fail: p.fail }
-      case 'dials': return { kind: 'dials', prompt: p.prompt, dials: p.dials, fail: p.fail }
-      case 'sequence': return { kind: 'sequence', prompt: p.prompt, buttons: p.buttons, fail: p.fail }
-      case 'word': return { kind: 'word', prompt: p.prompt, fail: p.fail }
+      case 'code': return { kind: 'code', prompt: p.prompt, length: p.length, alphabet: p.alphabet, fail: p.fail, art: p.art }
+      case 'dials': return { kind: 'dials', prompt: p.prompt, dials: p.dials, fail: p.fail, art: p.art }
+      case 'sequence': return { kind: 'sequence', prompt: p.prompt, buttons: p.buttons, fail: p.fail, art: p.art }
+      case 'word': return { kind: 'word', prompt: p.prompt, fail: p.fail, art: p.art }
     }
   }
 

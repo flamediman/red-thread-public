@@ -90,13 +90,21 @@ interface Bundle {
   info: CaseInfo; S: Scenario
   DET: Map<string, DetectiveRole>; LOC: Map<string, Location>; WIT: Map<string, Witness>; SPOT: Map<string, Spot>
   ITEM: Map<string, Item>; Q: Map<string, Question>; FACT: Map<string, Fact>
+  /** факт → вещдок, который находят вместе с ним: на доске у такой карточки фото вещи */
+  FACT_ITEM: Map<string, string>
   /** чьи слова кладут карточку: вопрос или предъявление по id факта */
   SRC: Map<string, Question | Presentation>
   night: number
 }
+function factItems(S: Scenario) {
+  const out = new Map<string, string>()
+  const finds = [...S.spots.flatMap(s => [s.primary, s.hidden, s.memory]), ...(S.events ?? [])]
+  for (const f of finds) if (f?.factId && f.itemId && !out.has(f.factId)) out.set(f.factId, f.itemId)
+  return out
+}
 function bundle(entry: CaseEntry): Bundle {
   const S = entry.scenario
-  return { info: entry.info, S, DET: byId(S.detectives), LOC: byId(S.locations), WIT: byId(S.witnesses), SPOT: byId(S.spots), ITEM: byId(S.items), Q: byId(S.questions), FACT: byId(S.facts), SRC: new Map([...S.questions, ...S.presentations].filter(x => x.factId).map(x => [x.factId!, x])), night: nightMinutes(S) }
+  return { info: entry.info, S, DET: byId(S.detectives), LOC: byId(S.locations), WIT: byId(S.witnesses), SPOT: byId(S.spots), ITEM: byId(S.items), Q: byId(S.questions), FACT: byId(S.facts), FACT_ITEM: factItems(S), SRC: new Map([...S.questions, ...S.presentations].filter(x => x.factId).map(x => [x.factId!, x])), night: nightMinutes(S) }
 }
 const shuffle = <T>(arr: T[]) => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j]!, a[i]!] } return a }
 
@@ -1064,7 +1072,8 @@ export class Game {
   private cards(): BoardCard[] {
     return [...this.board.entries()].map(([id, e]) => {
       const f = this.b.FACT.get(id)!
-      return { id, title: f.title, detail: f.detail, kind: f.kind, by: this.players.get(e.by)?.name ?? e.by, round: e.round, witnessId: e.witnessId, locationId: e.locationId, pinned: this.pins.has(id), verdict: e.verdict, time: e.time }
+      const itemId = this.b.FACT_ITEM.get(id)
+      return { id, title: f.title, detail: f.detail, kind: f.kind, by: this.players.get(e.by)?.name ?? e.by, round: e.round, witnessId: e.witnessId, locationId: e.locationId, itemId: itemId && this.items.has(itemId) ? itemId : undefined, pinned: this.pins.has(id), verdict: e.verdict, time: e.time }
     }).sort((a, b) => a.round - b.round)
   }
 

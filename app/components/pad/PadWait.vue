@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { ClientMessage, PublicState, YouState } from '#shared/types'
-import { ART, tilt } from '~/utils/art'
+import { ART, cardPhoto, tilt } from '~/utils/art'
 import { KIND_LABEL } from '~/composables/useBoardFilter'
+
+const hideImg = (e: Event) => { (e.target as HTMLImageElement).hidden = true }
 
 const props = defineProps<{ you: YouState; state: PublicState; secondsLeft: number | null }>()
 const emit = defineEmits<{ send: [ClientMessage] }>()
@@ -80,13 +82,15 @@ const confirmAccuse = ref(false)
           :class="[`mcard--${c.kind}`, { 'mcard--open': open.has(c.id), 'mcard--linked': f.linked.value.has(c.id), 'mcard--new': c.round === f.lastRound.value }]"
         >
           <button type="button" class="mcard__main" @click="toggle(c.id)">
-            <i class="mcard__kind" :title="KIND_LABEL[c.kind]" />
+            <img v-if="cardPhoto(c)" class="mcard__thumb" :class="`mcard__thumb--${cardPhoto(c)!.kind}`" :src="cardPhoto(c)!.src" :title="KIND_LABEL[c.kind]" alt="" loading="lazy" @error="hideImg">
+            <i v-else class="mcard__kind" :title="KIND_LABEL[c.kind]" />
             <span class="mcard__title">{{ c.title }}</span>
             <span class="mcard__meta">
               {{ sourceOf(c) }} · {{ c.time ?? `раунд ${c.round + 1}` }}
               <template v-if="c.verdict?.lie"> · <b class="mcard__lie">{{ c.verdict.by.toLowerCase() }}: ложь</b></template>
               <template v-else-if="c.verdict"> · <b class="mcard__truth">{{ c.verdict.by.toLowerCase() }}: правда</b></template>
             </span>
+            <img v-if="open.has(c.id) && c.itemId" class="mcard__photo" :src="ART.item(c.itemId)" alt="" @error="hideImg">
             <span v-if="open.has(c.id)" class="mcard__detail">{{ c.detail }}</span>
           </button>
           <button type="button" class="mcard__pin" :class="{ 'mcard__pin--on': c.pinned }" :aria-label="c.pinned ? 'Снять отметку' : 'Отметить как важное'" @click="emit('send', { type: 'pin', factId: c.id })">★</button>

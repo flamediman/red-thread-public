@@ -2,7 +2,7 @@
 /* Головоломки: кодовый замок (колёсики), диски, последовательность кнопок, слово. Ответ проверяет сервер. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
-const props = defineProps<{ data: NonNullable<SoloView['puzzle']>; lastFail: string | null }>()
+const props = defineProps<{ data: NonNullable<SoloView['puzzle']>; story: string; lastFail: string | null }>()
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
 const p = computed(() => props.data.puzzle)
 
@@ -106,6 +106,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="solo-veil" @click.self="close">
     <div class="solo-puzzle" role="dialog" aria-modal="true">
+      <!-- крупный план того, что открываем: без цифр и букв, ответ не подсказывает -->
+      <img v-if="p.art" :key="p.art" class="solo-puzzle__art" :src="`/art/${story}/${p.art}.jpg`" alt="" @error="($event.target as HTMLImageElement).hidden = true">
       <p class="solo-puzzle__prompt">{{ p.prompt }}</p>
 
       <div v-if="p.kind === 'code'" class="solo-wheels">

@@ -40,9 +40,18 @@ function askNew() {
 
 /* ── место ── */
 const place = computed(() => v.value?.place ?? null)
+/* крупный план: если последнее, что игрок узнал, — осмотр с картинкой, большой кадр места на время сменяется ею.
+   Следующее действие, шаг в другое место или щелчок по кадру — обратно к месту */
+const closeDismissed = ref(0)
+const closeup = computed(() => {
+  const last = (v.value?.feed ?? []).filter(f => f.seq > feedFloor.value && (f.text || f.art)).at(-1)
+  return last?.art && last.seq > closeDismissed.value ? last : null
+})
+const shownArt = computed(() => closeup.value?.art ?? place.value?.art ?? '')
 const artOk = ref(true)
-watch(() => place.value?.art, () => { artOk.value = true })
-const artSrc = computed(() => place.value && story.value ? `/art/${story.value}/${place.value.art}.jpg` : '')
+const artSrc = computed(() => place.value && story.value && shownArt.value ? `/art/${story.value}/${shownArt.value}.jpg` : '')
+watch(artSrc, () => { artOk.value = true })
+const backToPlace = () => { if (closeup.value) closeDismissed.value = closeup.value.seq }
 const darkness = computed(() => !place.value ? 'none' : !place.value.dark ? 'none' : place.value.lit ? 'torch' : 'black')
 
 /* фонарь следует за курсором или пальцем */
@@ -74,12 +83,13 @@ watch(view, (nv, ov) => {
   for (const f of nv.feed) {
     if (f.seq <= lastPlayed) continue
     for (const s of f.sfx ?? []) void audio.sfx(s, 0.9)
+    if (f.found) found.value = [...found.value, f.found]
   }
   lastPlayed = maxSeq
   if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('groan-m', 0.5) }
   if (nv.dead && !ov?.dead) void audio.sfx('sting-soft', 0.9)
   lastHealth = nv.health
-  if (!nv.started) { lastPlace = ''; feedFloor.value = 0 }
+  if (!nv.started) { lastPlace = ''; feedFloor.value = 0; found.value = [] }
 })
 const feed = computed(() => (v.value?.feed ?? []).filter(f => f.seq > feedFloor.value && f.text).slice(-4))
 
@@ -128,7 +138,10 @@ const itemVerb = (kind: string) => kind === 'heal' ? 'Перевязаться' 
 
 /* ── оверлеи ── */
 const endingPlayed = ref<string | null>(null)
-const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'encounter' | 'dialogue' | 'puzzle' | null>(() => {
+/** находки ждут своей очереди: карточка — когда закончились сцена, разговор и головоломка */
+const found = ref<NonNullable<SoloView['feed'][number]['found']>[]>([])
+const nextFound = () => { found.value = found.value.slice(1) }
+const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
   const s = v.value
   if (!s?.started || !entered.value) return null
   if (s.scene) return 'scene'
@@ -138,6 +151,7 @@ const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' 
   if (s.encounter) return 'encounter'
   if (s.dialogue) return 'dialogue'
   if (s.puzzle) return 'puzzle'
+  if (found.value.length) return 'found'
   return null
 })
 const speakers = computed(() => v.value?.speakers ?? {})
@@ -280,11 +294,14 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         <div
           class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk, 'solo-view--weak': v.battery < 15 }]"
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
-          @pointermove="onPointer" @pointerdown="onPointer"
+          @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
         >
           <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
           <Transition name="solo-cut" :duration="{ enter: 1400, leave: 900 }">
-            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :src="artSrc" :style="{ objectPosition: place ? v.artFocus[place.art] : undefined }" alt="" @error="artOk = false">
+            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
+          </Transition>
+          <Transition name="fade">
+            <button v-if="closeup && artOk" type="button" class="solo-view__back" @click.stop="backToPlace">← {{ place?.name }}</button>
           </Transition>
           <i class="solo-tint" aria-hidden="true" />
           <SoloFog :density="place?.ambience.includes('room-hum') ? 0.45 : 1" :other="v.otherworld" />
@@ -368,6 +385,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
             ><SoloIcon :name="it.icon" /><span>{{ it.name }}</span><b v-if="it.count > 1" class="tabnum">×{{ it.count }}</b></button>
           </div>
           <div v-if="pickedItem && !mode" class="solo-detail">
+            <img :key="pickedItem.art" class="solo-detail__art" :src="`/art/${story}/${pickedItem.art}.jpg`" alt="" @error="($event.target as HTMLImageElement).hidden = true">
             <p>{{ pickedItem.description }}</p>
             <div class="solo-detail__actions">
               <button v-if="pickedItem.usable && !pickedItem.equipped" type="button" class="solo-btn solo-btn--small" @click="useSelf">{{ itemVerb(pickedItem.kind) }}</button>
@@ -411,7 +429,8 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
-      <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :last-fail="puzzleFail" @send="relay" />
+      <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" />
+      <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].id}`" :item="found[0]" :story="story" :more="found.length - 1" @done="nextFound" />
 
       <div v-if="overlay === 'dead'" class="solo-end solo-end--dead" role="alertdialog">
         <SoloFog :density="1.2" other />

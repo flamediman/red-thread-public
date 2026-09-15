@@ -15,6 +15,14 @@ export const ART = {
   item: (id: string) => `${base()}/i_${id}.jpg`
 }
 
+/** Снимок у карточки на доске: вещдок — фото вещи, слова свидетеля — лицо, находка в комнате — кадр комнаты. */
+export function cardPhoto(c: { itemId?: string; witnessId?: string; locationId?: string }): { src: string; kind: 'item' | 'face' | 'place' } | null {
+  if (c.itemId) return { src: ART.item(c.itemId), kind: 'item' }
+  if (c.witnessId) return { src: ART.witness(c.witnessId), kind: 'face' }
+  if (c.locationId) return { src: ART.location(c.locationId), kind: 'place' }
+  return null
+}
+
 /** Небольшой детерминированный наклон «приколотой» карточки или фото — от id. */
 export function tilt(id: string, max = 2): string {
   let h = 7

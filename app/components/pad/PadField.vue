@@ -3,7 +3,7 @@
    находки ложатся на общую доску, а вопросы доски команда закрывает, прикалывая к ним карточки. */
 import type { BoardCard, ClientMessage, FieldLogEntry, PlanAction, PublicState, YouState } from '#shared/types'
 import { INKS } from '#shared/inks'
-import { ART } from '~/utils/art'
+import { ART, cardPhoto } from '~/utils/art'
 import { KIND_LABEL } from '~/composables/useBoardFilter'
 
 const props = defineProps<{ you: YouState; state: PublicState }>()
@@ -345,9 +345,11 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
       <template v-else-if="boardView === 'cards'">
         <div v-for="c in [...state.board.cards].reverse()" :key="c.id" class="mcard" :class="`mcard--${c.kind}`">
           <div class="mcard__main">
-            <i class="mcard__kind" :title="KIND_LABEL[c.kind]" />
+            <img v-if="cardPhoto(c)" class="mcard__thumb" :class="`mcard__thumb--${cardPhoto(c)!.kind}`" :src="cardPhoto(c)!.src" :title="KIND_LABEL[c.kind]" alt="" loading="lazy" @error="($event.target as HTMLImageElement).hidden = true">
+            <i v-else class="mcard__kind" :title="KIND_LABEL[c.kind]" />
             <span class="mcard__title">{{ c.title }}</span>
             <span class="mcard__meta">{{ c.by }}<template v-if="c.time"> · {{ c.time }}</template></span>
+            <img v-if="c.itemId" class="mcard__photo" :src="ART.item(c.itemId)" alt="" loading="lazy" @error="($event.target as HTMLImageElement).hidden = true">
             <span class="mcard__detail">{{ c.detail }}</span>
           </div>
           <button type="button" class="mcard__pin" :class="{ 'mcard__pin--on': c.pinned }" @click="send({ type: 'pin', factId: c.id })">★</button>

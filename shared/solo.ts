@@ -35,6 +35,8 @@ export interface SoloLine {
 /** последствие действия игрока */
 export interface SoloEffect {
   text?: string
+  /** крупный план: пока это последнее, что игрок узнал, большой кадр места сменяется этой картинкой */
+  art?: string
   voice?: string
   sfx?: string[]
   /** сцена на весь экран — несколько реплик подряд */
@@ -80,6 +82,26 @@ export interface SoloArea {
   name: string
   /** пропорции плана района или здания (ширина/высота) */
   aspect: number
+  /** местность для карты: вода, лес, улицы, дома без входа, подписи; места рисуются сами по своим прямоугольникам */
+  map?: SoloAreaMap
+}
+
+/** Схема района в духе городского навигатора. Координаты — проценты плана (0–100 по ширине и по высоте), как у мест. */
+export interface SoloAreaMap {
+  /** вода, лес, газоны: контуры в синтаксисе SVG path */
+  water?: string[]
+  forest?: string[]
+  grass?: string[]
+  /** улицы и дороги: ломаные «x,y x,y …» */
+  roads?: string[]
+  /** тропы и дорожки */
+  paths?: string[]
+  /** дома, куда не зайти, — чтобы посёлок выглядел посёлком: [x, y, ширина, высота] */
+  blocks?: [number, number, number, number][]
+  /** этажи здания: подложка с подписью */
+  floors?: { x: number; y: number; w: number; h: number; label: string }[]
+  /** подписи местности; rotate — в градусах */
+  labels?: { x: number; y: number; text: string; kind?: 'water' | 'street' | 'area'; rotate?: number }[]
 }
 
 export interface SoloPlace {
@@ -108,13 +130,16 @@ export interface SoloPlace {
   other?: boolean
   /** первое посещение */
   enter?: SoloEffect
+  /** значок места на карте: post, shop, food, culture, radio, phone, road, barrier, bridge, monument, yard, anchor, gate, door, book, stairs, medical, office, bed, water, tunnel, boat, flag */
+  poi?: string
 }
 
 export type SoloPuzzle =
-  | { kind: 'code'; prompt: string; length: number; alphabet: 'digits' | 'letters'; answer: string; success: SoloEffect; fail: string }
-  | { kind: 'dials'; prompt: string; dials: { label: string; values: string[] }[]; answer: string[]; success: SoloEffect; fail: string }
-  | { kind: 'sequence'; prompt: string; buttons: { id: string; label: string }[]; answer: string[]; success: SoloEffect; fail: string }
-  | { kind: 'word'; prompt: string; answers: string[]; success: SoloEffect; fail: string }
+  | { kind: 'code'; prompt: string; length: number; alphabet: 'digits' | 'letters'; answer: string; success: SoloEffect; fail: string; art?: string }
+  | { kind: 'dials'; prompt: string; dials: { label: string; values: string[] }[]; answer: string[]; success: SoloEffect; fail: string; art?: string }
+  | { kind: 'sequence'; prompt: string; buttons: { id: string; label: string }[]; answer: string[]; success: SoloEffect; fail: string; art?: string }
+  | { kind: 'word'; prompt: string; answers: string[]; success: SoloEffect; fail: string; art?: string }
+/* art у головоломки — крупный план того, что открываем; без цифр и букв, чтобы картинка не подсказывала ответ */
 
 /** головоломка без ответа — то, что уходит клиенту */
 export type SoloPublicPuzzle = SoloPuzzle extends infer P ? P extends SoloPuzzle ? Omit<P, 'answer' | 'answers' | 'success'> : never : never
@@ -148,6 +173,8 @@ export interface SoloItem {
   kind: SoloItemKind
   /** значок в карманах (flashlight, radio, key, letter, pipe, bandage, pills, battery); без него — по виду предмета */
   icon?: string
+  /** картинка предмета для карточки находки и карманов; без неё — i_<id> */
+  art?: string
   /** расходник: сколько лечит / сколько заряда / сколько патронов */
   amount?: number
   weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean }
@@ -270,7 +297,7 @@ export interface SoloView {
   } | null
   exits: { to: string; label: string; locked: string | null; known: boolean }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]
-  inventory: { id: string; name: string; description: string; kind: SoloItemKind; icon: string; count: number; equipped: boolean; usable: boolean }[]
+  inventory: { id: string; name: string; description: string; kind: SoloItemKind; icon: string; art: string; count: number; equipped: boolean; usable: boolean }[]
   notes: SoloNote[]
   health: number
   battery: number
@@ -280,9 +307,9 @@ export interface SoloView {
   radio: 0 | 1 | 2
   otherworld: boolean
   weapon: string | null
-  map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; visited: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
-  /** последствия последнего действия — показать и озвучить */
-  feed: { seq: number; text: string; sfx?: string[]; voice?: string }[]
+  map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; visited: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
+  /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
+  feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string } }[]
   scene: { seq: number; lines: SoloLine[] } | null
   encounter: {
     monster: string; name: string; hp: number; maxHp: number; round: number

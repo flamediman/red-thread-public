@@ -101,6 +101,9 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 .solo-view { position: absolute; inset: 0; overflow: hidden;
   &__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: var(--photo-filter); animation: kenburns 70s ease-in-out infinite alternate; }
   &--noart { background: radial-gradient(ellipse at 50% 40%, #3a403e 0%, #151918 70%); }
+  /* крупный план осмотра: кнопка обратно к месту — над текстом места */
+  &__back { position: absolute; left: 1rem; top: 1rem; z-index: 7; padding: 0.45rem 0.85rem; border-radius: 999px; font-family: var(--font-ui); font-size: 0.78rem; font-weight: 600; color: var(--paper-2);
+    background: rgba(6, 7, 7, 0.72); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.14); transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease; }
   &__dark { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: background 0.8s ease, opacity 0.8s ease;
     background: radial-gradient(ellipse 120% 90% at 50% 40%, transparent 40%, rgba(4, 5, 5, 0.7) 100%), linear-gradient(180deg, rgba(6, 7, 7, 0.4) 0%, transparent 25%, transparent 45%, rgba(6, 7, 7, 0.94) 100%); }
   &--black &__art { filter: brightness(0.12) saturate(0.2); }
@@ -163,7 +166,7 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &__bar { height: 4px; border-radius: 2px; background: rgba(230, 227, 218, 0.1); overflow: hidden;
     i { display: block; height: 100%; background: var(--paper-faint); transform-origin: left; transition: transform 0.5s ease; } }
   &.on { color: #efe2b0; .solo-light__bar i { background: #efe2b0; box-shadow: 0 0 8px rgba(239, 226, 176, 0.6); } } }
-@media (hover: hover) { .solo-light:hover { background: rgba(230, 227, 218, 0.06); } }
+@media (hover: hover) { .solo-light:hover { background: rgba(230, 227, 218, 0.06); } .solo-view__back:hover { background: rgba(6, 7, 7, 0.9); color: var(--paper); } }
 .solo-radio { display: flex; align-items: center; gap: 0.6rem; color: var(--paper-faint);
   span { display: flex; align-items: flex-end; gap: 3px; height: 1rem; }
   i { width: 4px; border-radius: 1px; background: rgba(230, 227, 218, 0.14); height: 30%; }
@@ -205,8 +208,22 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &--target { box-shadow: inset 0 0 0 1px rgba(184, 73, 59, 0.6); animation: target 1.6s ease-in-out infinite; } }
 @media (hover: hover) { .solo-item:hover { background: rgba(230, 227, 218, 0.08); } }
 .solo-detail { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.3rem; padding: 0.75rem; border-radius: 8px; background: rgba(0, 0, 0, 0.3);
+  &__art { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; filter: var(--photo-filter); background: #0b0d0d; }
   p { font-family: var(--font-story); font-size: 0.9rem; line-height: 1.5; color: var(--paper-2); }
   &__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; } }
+
+/* ── находка: предмет крупно, как снимок улики ── */
+.solo-found { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); width: min(52rem, 100%); overflow: hidden; border-radius: 14px; background: #121515; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.08), 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.35s var(--ease-out) both;
+  &__art { width: 100%; height: 100%; min-height: 16rem; aspect-ratio: 4 / 3; object-fit: cover; filter: var(--photo-filter); background: #0b0d0d; }
+  &__body { display: flex; flex-direction: column; justify-content: center; gap: 0.7rem; padding: clamp(1.2rem, 3vw, 2rem); }
+  &__name { font-family: var(--font-display); font-weight: 700; font-size: var(--step-2); line-height: 1.1; color: var(--paper); }
+  &__text { font-family: var(--font-story); font-size: 1rem; line-height: 1.55; color: var(--paper-2); }
+  &__next { margin-top: 0.4rem; font-family: var(--font-ui); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.04em; color: var(--paper-faint); }
+  &--noart { grid-template-columns: minmax(0, 1fr); width: min(30rem, 100%); }
+}
+@media (max-width: 720px) { .solo-found { grid-template-columns: minmax(0, 1fr); width: min(30rem, 100%); &__art { min-height: 0; } } }
+.solo-puzzle__art { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; filter: var(--photo-filter); background: #0b0d0d; }
 
 /* ── заставка, смерть, финал ── */
 .solo-title, .solo-end { position: relative; grid-column: 1 / -1; display: grid; align-items: end; min-height: 100vh; overflow: hidden; background: #060707; }
@@ -297,7 +314,7 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 @keyframes enc-breathe { 0%, 100% { transform: scale(1.04); } 50% { transform: scale(1.09) translateY(-0.5%); } }
 
 /* головоломка */
-.solo-puzzle { display: flex; flex-direction: column; align-items: center; gap: 1.1rem; width: min(34rem, 100%); padding: 1.6rem; border-radius: 14px; background: #121515; box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.08), 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.3s var(--ease-out) both;
+.solo-puzzle { display: flex; flex-direction: column; align-items: center; gap: 1.1rem; width: min(34rem, 100%); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.6rem; border-radius: 14px; background: #121515; box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.08), 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.3s var(--ease-out) both;
   &__prompt { font-family: var(--font-story); font-size: 1.02rem; line-height: 1.55; color: var(--paper-2); text-align: center; }
   &__fail { color: #e07a6b; font-family: var(--font-story); font-size: 0.95rem; text-align: center; animation: shake 0.35s ease; }
   &__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; } }
@@ -347,22 +364,56 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 }
 @media (hover: hover) { .solo-talk__choice:hover { background: rgba(230, 227, 218, 0.1); color: var(--paper); } }
 
-/* карта: старый план на пожелтевшей бумаге */
-.solo-map { position: relative; display: flex; flex-direction: column; gap: 0.8rem; width: min(58rem, 100%); padding: 1rem; border-radius: 14px; background: #121515; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.3s var(--ease-out) both;
+@keyframes map-pulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(1.5); opacity: 0; } }
+/* карта: ночной навигатор в тумане — векторная схема района */
+.solo-map { position: relative; display: flex; flex-direction: column; gap: 0.8rem; width: min(64rem, 100%); max-height: calc(100dvh - 2rem); padding: 1rem; border-radius: 14px; background: #121515; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.3s var(--ease-out) both;
   &__tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; padding-right: 2.6rem;
     button:not(.solo-map__close) { padding: 0.45rem 0.9rem; border-radius: 999px; font-family: var(--font-ui); font-size: 0.82rem; font-weight: 600; color: var(--paper-faint); &.on { background: var(--stamp); color: var(--accent-ink); } } }
-  &__paper { position: relative; width: 100%; max-height: 70vh; border-radius: 4px; overflow: hidden;
-    background-color: #d6d0bd; background-image: repeating-linear-gradient(0deg, transparent 0 23px, rgba(60, 70, 80, 0.09) 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, rgba(60, 70, 80, 0.09) 23px 24px);
-    box-shadow: inset 0 0 60px rgba(90, 70, 40, 0.35); }
-  &__roads { position: absolute; inset: 0; width: 100%; height: 100%;
-    line { stroke: rgba(47, 46, 42, 0.45); stroke-width: 2; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; } }
-  &__place { position: absolute; display: grid; place-items: center; padding: 0.2rem; border: 1.5px dashed rgba(40, 40, 36, 0.35); color: rgba(40, 40, 36, 0.5); text-align: center; background: #d6d0bd;
-    font-family: var(--font-mono); font-size: clamp(0.72rem, 0.6rem + 0.35vw, 0.92rem); line-height: 1.2; overflow: hidden;
-    &--seen { border-style: solid; border-color: #2f2e2a; color: #2a2926; background: #cdc7b3; }
-    &--here { border-color: var(--stamp); background: #d4b5a5; color: #6d1f18; font-weight: 700; &::after { content: ''; position: absolute; inset: -5px; border: 2px solid rgba(143, 43, 34, 0.6); animation: low-pulse 1.6s ease-in-out infinite; } }
-    &--locked { border-color: #a0332a; border-style: solid; background: #d6d0bd repeating-linear-gradient(45deg, transparent 0 6px, rgba(160, 51, 42, 0.14) 6px 8px); } }
-  &__save { position: absolute; top: 2px; right: 4px; font-style: normal; font-size: 0.72rem; color: #6d1f18; }
-  &__legend { font-family: var(--font-ui); font-size: 0.74rem; color: var(--paper-faint); }
+  &__frame { display: grid; place-items: center; min-height: 0; border-radius: 10px; overflow: hidden; background: #171b1e; box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.07); }
+  &__svg { display: block; width: 100%; height: auto; max-height: calc(100dvh - 11rem); font-family: var(--font-ui);
+    .m-land { fill: #1b1f23; }
+    .m-grass { fill: #1f2923; }
+    .m-forest { fill: #1b2721; }
+    .m-tree { fill: #22342a; }
+    .m-water { fill: #172d3a; stroke: #24465a; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+    .m-floor { fill: #20252a; stroke: #353b42; stroke-width: 0.3; }
+    .m-floor-label { fill: #6b737c; font-size: 1.9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+    .m-path { fill: none; stroke: #3a3f44; stroke-width: 0.55; stroke-dasharray: 1.2 0.9; stroke-linecap: round; }
+    .m-road-casing { fill: none; stroke: #0e1012; stroke-width: 3.1; stroke-linecap: round; stroke-linejoin: round; }
+    .m-road { fill: none; stroke: #444a51; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .m-block { fill: #292e34; stroke: #33393f; stroke-width: 0.25; }
+    .m-block-shadow, .m-place__shadow { fill: #101214; }
+    .m-place__body { stroke-width: 0.35; }
+    .m-place--building .m-place__body { fill: #30363c; stroke: #414850; }
+    .m-place--building.m-place--seen .m-place__body { fill: #3f464e; stroke: #58616b; }
+    .m-place--asphalt .m-place__body, .m-place--tile .m-place__body { fill: #262b30; stroke: #30363c; }
+    .m-place--wood .m-place__body { fill: #332c25; stroke: #463c32; }
+    .m-place--grass .m-place__body { fill: #222d25; stroke: #2c3a30; }
+    .m-place--water .m-place__body { fill: #1b3442; stroke: #24465a; }
+    .m-place--seen:not(.m-place--building) .m-place__body { filter: brightness(1.18); }
+    .m-place--here .m-place__body { stroke: #e2b84f; stroke-width: 0.55; }
+    .m-place--locked .m-place__body { stroke: #b5463b; stroke-width: 0.5; stroke-dasharray: 1.4 0.9; }
+    .m-fog__base { fill: #0c0e0f; opacity: 0.8; }
+    .m-label { font-weight: 600; paint-order: stroke; stroke: #111416; stroke-width: 0.55px; }
+    .m-label--water { fill: #4f7d96; font-size: 2.2px; font-style: italic; }
+    .m-label--street { fill: #7d858e; font-size: 1.8px; }
+    .m-label--area { fill: #4a6152; font-size: 2px; letter-spacing: 0.3em; text-transform: uppercase; }
+    .m-route { fill: none; stroke: rgba(226, 184, 79, 0.32); stroke-width: 0.4; stroke-dasharray: 0.9 0.8; stroke-linecap: round; }
+    .m-pin__dot { stroke: #0e1012; stroke-width: 0.5; }
+    .m-pin__icon { fill: none; stroke: #f3f0e8; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .m-pin__q { fill: #8a929b; font-size: 2.8px; font-weight: 700; }
+    .m-pin__label { fill: #d5d9dd; font-size: 2.1px; font-weight: 600; paint-order: stroke; stroke: #0f1113; stroke-width: 0.6px; }
+    .m-pin--unknown .m-pin__label { fill: #8a929b; }
+    .m-pin--here .m-pin__dot { stroke: #e2b84f; stroke-width: 0.6; }
+    .m-pin__pulse { fill: rgba(226, 184, 79, 0.18); stroke: #e2b84f; stroke-width: 0.35; transform-box: fill-box; transform-origin: center; animation: map-pulse 1.8s ease-out infinite; }
+    .m-pin__badge { fill: #e2b84f; stroke: #0e1012; stroke-width: 0.3; }
+    .m-pin__lock { fill: #b5463b; stroke: #0e1012; stroke-width: 0.3; }
+    .m-pin__badge-icon { fill: none; stroke: #16191c; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; } }
+  &__key { display: inline-block; width: 0.62rem; height: 0.62rem; margin-right: 0.35rem; border-radius: 50%; vertical-align: -0.05rem;
+    &--here { background: rgba(226, 184, 79, 0.25); box-shadow: inset 0 0 0 1.5px #e2b84f; }
+    &--save { background: #e2b84f; }
+    &--lock { background: #b5463b; } }
+  &__legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; font-family: var(--font-ui); font-size: 0.74rem; color: var(--paper-faint); }
   &__close { position: absolute; top: 0.8rem; right: 0.8rem; width: 2.2rem; height: 2.2rem; border-radius: 50%; font-size: 1.3rem; line-height: 1; color: var(--paper-dim); background: rgba(230, 227, 218, 0.06); }
 }
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PublicState } from '#shared/types'
-import { ART, tilt } from '~/utils/art'
+import { ART, cardPhoto, tilt } from '~/utils/art'
 
 const props = withDefaults(defineProps<{ state: PublicState; mode?: 'strip' | 'full'; beatAt?: number | null }>(), { mode: 'full', beatAt: null })
 
@@ -12,6 +12,11 @@ const ordered = computed(() => {
   const list = props.mode === 'strip' ? [...f.cards.value].reverse() : f.visible.value
   return props.mode === 'strip' ? list : [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.round - b.round)
 })
+
+/* снимок у карточки: на доске у вещдока — фото сверху, у слов свидетеля и находок в комнате — маленький кадр у заголовка */
+const photos = computed(() => new Map(ordered.value.map(c => [c.id, cardPhoto(c)])))
+const bigPhoto = (id: string) => props.mode === 'full' && photos.value.get(id)?.kind === 'item'
+const hideImg = (e: Event) => { (e.target as HTMLImageElement).hidden = true }
 
 /* карточка, которой не было при прошлой отрисовке, въезжает; при смене фильтра ничего не анимируется — так быстрее */
 const seen = new Set<string>()
@@ -97,9 +102,13 @@ watch(() => [ordered.value.map(c => c.id).join(), f.visibleLinks.value.length, p
             :class="[`card--${c.kind}`, { 'card--linked': f.linked.value.has(c.id), 'card--fresh': mode === 'full' && c.round === f.lastRound.value, 'card--pinned': c.pinned, 'card--enter': entering.has(c.id) }]"
             :style="{ '--tilt': tilt(c.id, mode === 'full' ? 1.6 : 0.8) }"
           >
+            <img v-if="bigPhoto(c.id)" class="card__photo" :src="photos.get(c.id)!.src" alt="" loading="lazy" @error="hideImg">
             <i class="card__kind" />
             <span v-if="c.pinned" class="card__star" title="команда отметила как важное">★</span>
-            <div class="card__title">{{ c.title }}</div>
+            <div class="card__head">
+              <img v-if="photos.get(c.id) && !bigPhoto(c.id)" class="card__thumb" :class="`card__thumb--${photos.get(c.id)!.kind}`" :src="photos.get(c.id)!.src" alt="" loading="lazy" @error="hideImg">
+              <div class="card__title">{{ c.title }}</div>
+            </div>
             <div v-if="mode === 'full'" class="card__detail">{{ c.detail }}</div>
             <div class="card__meta">{{ nameOf(c.witnessId) || nameOf(c.locationId) || c.by }} · {{ c.time ?? `раунд ${c.round + 1}` }}</div>
             <span v-if="c.verdict" class="card__verdict" :class="c.verdict.lie ? 'card__verdict--lie' : 'card__verdict--truth'">{{ c.verdict.lie ? 'ложь' : 'правда' }}</span>

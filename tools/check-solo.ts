@@ -59,6 +59,7 @@ function effect(e: SoloEffect | undefined, where: string) {
   if (e.goto && !has('place', e.goto)) err(`${where}: переход в неизвестное место ${e.goto}`)
   if (e.ending && e.ending !== 'auto' && !has('ending', e.ending)) err(`${where}: неизвестная концовка ${e.ending}`)
   for (const s of e.sfx ?? []) sfxUsed.set(s, where)
+  if (e.art) artUsed.set(e.art, `${where}: крупный план`)
   lines(e.scene, where)
 }
 
@@ -95,8 +96,12 @@ for (const p of S.places) {
   }
 }
 
+// у каждого предмета — картинка для карточки находки и карманов
+for (const i of S.items) artUsed.set(i.art ?? `i_${i.id}`, `предмет ${i.id}`)
+
 for (const h of S.hotspots) {
   const w = `осмотр ${h.id}`
+  if (h.puzzle?.art) artUsed.set(h.puzzle.art, `${w}: головоломка`)
   if (!has('place', h.place)) err(`${w}: нет места ${h.place}`)
   cond(h.when, w); cond(h.hideWhen, w)
   effect(h.look, w)
