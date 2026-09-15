@@ -15,7 +15,8 @@ const worlds = computed(() => props.state.catalog.map(g => ({
     const games = props.state.history.filter(h => h.caseId === c.id)
     const last = games[0]
     const when = last ? new Date(last.finishedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : ''
-    return { ...c, meta: [c.mode === 'realtime' ? 'на время' : '', `${c.players} игроков`, `${c.minutes} минут`, last ? `сыграно: ${c.outcomes.short[last.outcome]}, ${when}` : ''].filter(Boolean).join(' · ') }
+    // режим — первым словом у каждого дела: без него «по раундам» не отличить от «на время»
+    return { ...c, modeLabel: c.mode === 'realtime' ? 'на время' : 'по раундам', meta: [`${c.players} игроков`, `${c.minutes} минут`, last ? `сыграно: ${c.outcomes.short[last.outcome]}, ${when}` : ''].filter(Boolean).join(' · ') }
   })
 })))
 
@@ -108,14 +109,14 @@ function openSolo(e: MouseEvent, id: string) {
             <span class="case-row__title">{{ c.title }}</span>
             <span class="case-row__go" aria-hidden="true">→</span>
             <span class="case-row__sub">{{ c.subtitle }}</span>
-            <span class="case-row__meta">{{ c.meta }}</span>
+            <span class="case-row__meta"><b>{{ c.modeLabel }}</b> · {{ c.meta }}</span>
           </button>
           <a v-for="s in world.solo" :key="s.id" :href="`/solo?story=${s.id}`" class="case-row" :class="{ 'case-row--off': !s.ready }" @click="openSolo($event, s.id)">
             <span class="case-row__stamp">{{ s.date }}</span>
             <span class="case-row__title">{{ s.title }}</span>
             <span class="case-row__go" aria-hidden="true">→</span>
             <span class="case-row__sub">{{ s.subtitle }}</span>
-            <span class="case-row__meta">одиночная игра · компьютер или планшет · {{ s.minutes }} минут</span>
+            <span class="case-row__meta"><b>одиночная игра</b> · компьютер или планшет · {{ s.minutes }} минут</span>
           </a>
         </div>
       </section>

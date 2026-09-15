@@ -234,7 +234,7 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 .solo-offline { position: fixed; left: 50%; top: 1rem; z-index: 90; transform: translateX(-50%); padding: 0.5rem 1rem; border-radius: 999px; background: rgba(8, 9, 9, 0.92); color: var(--paper-dim); font-family: var(--font-ui); font-size: 0.82rem; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.14); }
 
 /* ── оверлеи ── */
-.solo-veil { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 1rem; background: rgba(4, 5, 5, 0.74); backdrop-filter: blur(3px); animation: veil-fade 0.25s ease both; }
+.solo-veil { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 1rem; background: rgba(4, 5, 5, 0.82); animation: veil-fade 0.25s ease both; }
 @keyframes veil-fade { from { opacity: 0; } }
 .solo-card { display: flex; flex-direction: column; gap: 0.55rem; width: min(28rem, 100%); max-height: calc(100vh - 2rem); overflow-y: auto; padding: 1.4rem; border-radius: 14px; background: #121515; box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.08), 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.3s var(--ease-out) both;
   &__lede { font-family: var(--font-story); color: var(--paper-2); line-height: 1.5; margin-bottom: 0.4rem; } }

@@ -24,6 +24,7 @@ onBeforeUnmount(() => { if (import.meta.client) window.removeEventListener('keyd
             <h2 class="veil__title">Правила</h2>
             <button class="rules__close" type="button" aria-label="Закрыть" @click="open = false">×</button>
           </div>
+          <div class="rules__body">
           <ol class="rules__list">
             <li v-for="(r, i) in rules" :key="r.title" class="rules__item">
               <span class="rules__num tabnum">{{ i + 1 }}</span>
@@ -34,6 +35,7 @@ onBeforeUnmount(() => { if (import.meta.client) window.removeEventListener('keyd
               </div>
             </li>
           </ol>
+          </div>
           <div class="veil__actions"><button class="btn" type="button" @click="open = false">Понятно</button></div>
         </div>
       </div>

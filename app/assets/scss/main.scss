@@ -232,7 +232,8 @@ img { max-width: 100%; display: block; }
 /* ── шторка (диалог) ── */
 .veil {
   position: fixed; inset: 0; z-index: 40; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: var(--pad);
-  background: rgba(8, 10, 14, 0.78); backdrop-filter: blur(6px);
+  /* без backdrop-filter: размытие фона под шторкой в Chrome мерцало на весь экран, когда внутри карточки что-то прокручивается */
+  background: rgba(8, 10, 14, 0.86);
   &__card { width: min(36rem, 100%); padding: clamp(1.2rem, 3vw, 2rem); background: var(--paper); color: var(--ink); border-radius: var(--radius-lg); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); animation: veil-in 0.35s var(--ease-out) both; }
   &__title { font-family: var(--font-display); font-size: var(--step-2); line-height: 1.15; margin-bottom: 0.5em; }
   &__text { color: var(--ink-2); margin-bottom: 1.1em; line-height: 1.5; }
@@ -384,7 +385,7 @@ html, body { overscroll-behavior-x: none; }
     &:hover, &:focus-within { opacity: 1; }
     .btn { padding: 0.45em 0.85em; font-size: 0.8rem; font-weight: 600; background: transparent; color: var(--paper-dim); box-shadow: none; border-radius: 8px; } }
   &__offline { position: fixed; inset-inline: 0; top: 0; z-index: 50; padding: 0.5em; background: var(--stamp); color: #fff6f0; font-weight: 700; text-align: center; }
-  &__pause { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: rgba(8, 10, 14, 0.72); backdrop-filter: blur(6px); cursor: pointer; }
+  &__pause { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: rgba(8, 10, 14, 0.84); cursor: pointer; }
   &__pause-title { font-family: var(--font-display); font-size: var(--step-4); color: var(--paper); letter-spacing: 0.04em; }
   &__pause-hint { color: var(--paper-faint); font-size: var(--step--1); }
   &--menu { grid-template-rows: minmax(0, 1fr); background: transparent; }
@@ -396,7 +397,7 @@ html, body { overscroll-behavior-x: none; }
 @media (hover: hover) { .ctl:hover { background: rgba(241, 233, 216, 0.1); color: var(--paper); } }
 
 /* ── меню: карусель миров. Арт мира на весь экран, слева текст и дела, внизу стрелки ── */
-.menu { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(0.8rem, 2vh, 1.4rem); width: 100%; min-height: 0; user-select: none;
+.menu { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(1rem, 2.6vh, 1.6rem); width: 100%; min-height: 0; user-select: none;
   &__art { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--desk); }
   &__art-img { position: absolute; top: 0; right: 0; bottom: 0; width: 68%; height: 100%; object-fit: cover; object-position: center; filter: brightness(0.85); animation: kenburns 60s ease-in-out infinite alternate;
     mask-image: linear-gradient(90deg, transparent 0%, #000 38%); }
@@ -424,7 +425,8 @@ html, body { overscroll-behavior-x: none; }
   .menu__arrow:hover { background: rgba(241, 233, 216, 0.1); }
   .menu__dot:not(.menu__dot--on):hover { color: var(--paper); }
 }
-.world { display: flex; flex-direction: column; justify-content: center; gap: clamp(0.7rem, 1.6vh, 1.1rem); max-width: 40rem; min-height: 0;
+/* дел больше, чем влезает по высоте, — колонка прокручивается сама и не наезжает на переключатель миров */
+.world { display: flex; flex-direction: column; justify-content: safe center; gap: clamp(0.7rem, 1.6vh, 1.1rem); max-width: 40rem; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(241, 233, 216, 0.25) transparent;
   &__eyebrow { font-weight: 600; font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
   &__title { font-family: var(--font-display); font-weight: 700; font-size: min(var(--step-5), 12vh); line-height: 0.95; letter-spacing: -0.01em; color: var(--paper); }
   &__sub { color: var(--paper-2); font-size: var(--step-0); line-height: 1.55; max-width: 44ch; }
@@ -444,7 +446,8 @@ html, body { overscroll-behavior-x: none; }
   &__title { font-family: var(--font-display); font-weight: 700; font-size: var(--step-1); line-height: 1.15; }
   &__go { grid-row: 2 / span 2; grid-column: 2; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; color: var(--accent-ink); background: var(--accent); font-weight: 700; opacity: 0; transition: opacity 0.3s ease; }
   &__sub { grid-column: 1; color: var(--paper-dim); font-size: 0.88rem; line-height: 1.4; }
-  &__meta { grid-column: 1; font-size: 0.76rem; font-weight: 600; color: var(--paper-faint); }
+  &__meta { grid-column: 1; font-size: 0.76rem; font-weight: 600; color: var(--paper-faint);
+    b { font-weight: 700; color: var(--paper-2); } }
   &:disabled { opacity: 0.5; }
 }
 @media (hover: hover) {
@@ -1039,22 +1042,25 @@ img.img-missing { visibility: hidden; }
   &__card { width: min(72rem, 100%); max-height: calc(100vh - 2 * var(--pad)); max-height: calc(100dvh - 2 * var(--pad)); display: flex; flex-direction: column; }
   &__head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; .veil__title { margin: 0; } }
   &__close { width: 2.4rem; height: 2.4rem; border-radius: 50%; font-size: 1.6rem; line-height: 1; color: inherit; opacity: 0.6; transition: opacity var(--dur-fast) ease; }
-  &__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.6rem; margin: 1rem 0 1.2rem; padding: 0.2rem 0.4rem 1.6rem 0; overflow-y: auto; list-style: none;
-    /* низ списка растворяется — видно, что правил больше и их можно пролистать */
-    mask-image: linear-gradient(180deg, #000 calc(100% - 2.4rem), transparent); }
+  /* низ списка растворяется — видно, что правил больше и их можно пролистать. Затухание — неподвижный слой поверх,
+     а не mask-image на самом списке: маска на прокручиваемом блоке перерисовывается на каждом кадре прокрутки */
+  &__body { position: relative; display: flex; flex-direction: column; min-height: 0; margin: 1rem 0 1.2rem;
+    &::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2.4rem; pointer-events: none; background: linear-gradient(180deg, transparent, var(--rules-bg, var(--paper))); } }
+  &__list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.6rem; min-height: 0; padding: 0.2rem 0.4rem 1.6rem 0; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
   &__item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.8rem; align-items: start; }
   &__num { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; margin-top: 0.1rem; border-radius: 50%; background: var(--stamp); color: #fff6f0; font-family: var(--font-ui); font-weight: 700; font-size: 0.9rem; }
   &__title { font-family: var(--font-display); font-size: var(--step-1); line-height: 1.2; margin-bottom: 0.3rem; }
   &__text { line-height: 1.5; }
   &__example { margin-top: 0.45rem; padding: 0.55rem 0.75rem; border-radius: 8px; background: rgba(28, 26, 31, 0.06); font-size: 0.95em; line-height: 1.45; opacity: 0.9; }
   &--pad { padding: 0; align-items: stretch;
-    .rules__card { width: 100%; max-height: none; min-height: 100dvh; border-radius: 0; padding: calc(env(safe-area-inset-top) + 1rem) 1rem calc(env(safe-area-inset-bottom) + 1rem); }
+    .rules__card { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: calc(env(safe-area-inset-top) + 1rem) 1rem calc(env(safe-area-inset-bottom) + 1rem); }
     .rules__list { grid-template-columns: 1fr; gap: 1.1rem; }
     .veil__actions .btn { width: 100%; } }
 }
 @media (hover: hover) { .rules__close:hover { opacity: 1; } }
 @media (max-width: 900px) { .rules__list { grid-template-columns: 1fr; } }
 [data-setting='neon'] .rules__example { background: rgba(241, 233, 216, 0.06); }
+[data-setting='neon'] .rules { --rules-bg: var(--desk-2); }
 .lobby__rules, .pad-lobby__rules { display: inline-flex; align-items: center; gap: 0.45em; padding: 0.4em 0.9em; border-radius: 999px; font-family: var(--font-ui); font-weight: 600; font-size: var(--step--1); color: var(--paper); box-shadow: inset 0 0 0 1px rgba(241, 233, 216, 0.25); transition: box-shadow var(--dur-fast) ease, background-color var(--dur-fast) ease;
   i { display: grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--stamp); color: #fff6f0; font-style: normal; font-weight: 700; font-size: 0.75rem; } }
 @media (hover: hover) { .lobby__rules:hover { background: rgba(241, 233, 216, 0.08); box-shadow: inset 0 0 0 1px rgba(241, 233, 216, 0.45); } }
