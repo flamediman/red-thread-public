@@ -70,9 +70,22 @@ function open() {
   socket.onerror = () => socket?.close()
 }
 
+function onVisibility() { send({ type: 'away', on: document.visibilityState === 'hidden' }) }
+
 export function useSolo(storyId?: string) {
   if (storyId) story = storyId
-  onMounted(open)
-  onBeforeUnmount(() => { if (retryTimer) clearTimeout(retryTimer) })
+  onMounted(() => { open(); document.addEventListener('visibilitychange', onVisibility) })
+  // уход со страницы закрывает сокет без переподключения: сервер видит, что игрока нет, и останавливает часы встречи
+  onBeforeUnmount(() => {
+    document.removeEventListener('visibilitychange', onVisibility)
+    if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = null
+    const s = socket
+    socket = null
+    queue = []
+    if (s) { s.onclose = null; s.onerror = null; try { s.close() } catch { /* уже закрыт */ } }
+    connected.value = false
+    view.value = null
+  })
   return { view, connected, error, clockOffset, send }
 }

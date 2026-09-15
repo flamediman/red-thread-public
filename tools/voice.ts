@@ -1,5 +1,6 @@
 /* Озвучка сценария через ElevenLabs.
-   Запуск: node_modules/.bin/jiti tools/voice.ts [--dry] [--only id1,id2] [--force]
+   Запуск: CASE=<дело> node_modules/.bin/jiti tools/voice.ts [--dry] [--only id1,id2] [--speakers w1,w2] [--force]
+   --speakers — только реплики этих говорящих (сменили голос свидетелю — перегенерировать его с --force).
    Берёт ключ из .env, обходит все реплики сценария, кладёт cases/<дело>/voice/<id>.mp3,
    готовые пропускает. Печатает только id и числа. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -18,6 +19,7 @@ const args = process.argv.slice(2)
 const dry = args.includes('--dry')
 const force = args.includes('--force')
 const only = args.includes('--only') ? new Set(args[args.indexOf('--only') + 1]!.split(',')) : null
+const speakers = args.includes('--speakers') ? new Set(args[args.indexOf('--speakers') + 1]!.split(',')) : null
 const OUT = voiceDir(process.env.CASE || 'meridian')
 mkdirSync(OUT, { recursive: true })
 
@@ -44,9 +46,11 @@ for (const b of [...S.epilogue.truth, ...S.epilogue.branch.found, ...S.epilogue.
 // голос: свидетель — свой, иначе рассказчик/помощник дела. Дело выбирается переменной CASE
 const voiceOf = (speaker: string) => S.witnesses.find(w => w.id === speaker)?.voiceId ?? (speaker === 'inspector' ? S.voices.inspector : S.voices.narrator)
 
-const todo = lines.filter(l => (!only || only.has(l.id)) && (force || !existsSync(resolve(OUT, `${l.id}.mp3`))))
+const todo = lines.filter(l => (!only || only.has(l.id)) && (!speakers || speakers.has(l.speaker)) && (force || !existsSync(resolve(OUT, `${l.id}.mp3`))))
 const chars = todo.reduce((n, l) => n + l.text.length, 0)
 console.log(`реплик всего ${lines.length} · к генерации ${todo.length} · знаков ${chars}`)
+// --list: id и говорящий каждой реплики — чтобы сгруппировать файлы по голосу (например, для проверки шума)
+if (args.includes('--list')) for (const l of lines) console.log(`${l.id}\t${l.speaker}`)
 if (dry) process.exit(0)
 
 async function credits() {

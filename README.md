@@ -152,6 +152,10 @@ tools/          генерация озвучки, музыки, звуков и
   всё достижимо, способности ничего не запирают. Печатает только числа и id.
 - `STORY=<история> node_modules/.bin/jiti tools/check-solo.ts` — проверка одиночной истории: ссылки, замки,
   достижимость мест и концовок, картинки и звуки.
+- `STORY=<история> POLICY=truth|sink|neutral node_modules/.bin/jiti tools/play-solo.ts` — бот проходит историю
+  настоящим движком и печатает концовку.
+- `STORY=<история> node_modules/.bin/jiti tools/voice-solo.ts` — озвучка одиночной истории; `node tools/voice-noise.mjs <папка>` —
+  шумовой пол готовых файлов.
 - `CASE=<дело> node_modules/.bin/jiti tools/voice.ts` — озвучка (ElevenLabs).
 - `CASE=<дело> node tools/music.mjs` — музыкальные темы дела, `node tools/sfx.mjs <мир>` — звуки мира.
 - `NODE_EXTRA_CA_CERTS=tools/certs/russian_ca_bundle.pem CASE=<дело> SETTING=<мир> node tools/gigachat-art.mjs` —

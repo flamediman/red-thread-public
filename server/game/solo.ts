@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
+import { assignVoiceIds } from './solo-lines'
 import type {
   SoloChase, SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
   SoloPlace, SoloSpawn, SoloStory, SoloView
@@ -37,7 +38,7 @@ interface Run {
   looked: string[]
   used: string[]
   killed: string[]
-  /** существа, от которых спрятались или убежали на этот заход в место */
+  /** существа, от которых спрятались: ушли и не вернутся, если появление не караулит место (stays) */
   passed: string[]
   opened: string[]
   tried: string[]
@@ -90,6 +91,7 @@ export class SoloGame {
     this.PLACE = byId(story.places); this.ITEM = byId(story.items); this.HOT = byId(story.hotspots)
     this.MON = byId(story.monsters); this.SPAWN = byId(story.spawns); this.DIALOG = byId(story.dialogues)
     this.CHASE = byId(story.chases ?? [])
+    assignVoiceIds(story)
     this.file = resolve(DATA_DIR, 'solo', story.id, `${token}.json`)
     this.load()
   }
@@ -99,7 +101,7 @@ export class SoloGame {
     this.persist()
   }
 
-  /** последняя вкладка закрыта: существо не бьёт, пока игрока нет у экрана */
+  /** последняя вкладка закрыта или ушла в фон: существо не бьёт, пока игрока нет у экрана */
   detached() {
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
     this.tickPlay()
@@ -279,7 +281,6 @@ export class SoloGame {
     const r = this.run!
     r.prev = r.place
     r.place = to
-    r.passed = []
     // севшая батарейка не гасит фонарь совсем: он еле тлеет, в темноте видно только вплотную — но игра не запирается
     if (walked && r.light) {
       const before = r.battery
@@ -298,7 +299,7 @@ export class SoloGame {
 
   private spawnActive(s: SoloSpawn) {
     const r = this.run!
-    return !r.killed.includes(s.id) && !r.passed.includes(s.id) && this.ok(s.when)
+    return !r.killed.includes(s.id) && (s.stays || !r.passed.includes(s.id)) && this.ok(s.when)
   }
 
   /* ── свет, лечение, оружие ────────────────────────────────── */
@@ -539,7 +540,6 @@ export class SoloGame {
         const chance = m.evade * (r.health < 30 ? 0.7 : 1)
         if (!r.prev) return
         if (this.random() < chance) {
-          r.passed = []
           this.endEncounter(m.text.flee, ['solo-run'])
           this.enter(r.prev, true)
         } else {
@@ -705,7 +705,7 @@ export class SoloGame {
     return {
       ...empty,
       started: true,
-      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt' },
+      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt' },
       exits: p.exits.filter(x => this.ok(x.when)).map(x => ({
         to: x.to, label: x.label,
         locked: x.lock && !this.exitOpen(p.id, x) && !(x.lock.item && this.has(x.lock.item)) && !(x.lock.flag && this.flag(x.lock.flag)) ? x.lock.text : null,
@@ -763,7 +763,7 @@ export class SoloGame {
     const step = spec?.steps[c!.step]
     if (!c || !spec || !step) return null
     return {
-      name: spec.name, art: spec.art, step: c.step, total: spec.steps.length, text: c.text,
+      id: c.id, name: spec.name, art: spec.art, step: c.step, total: spec.steps.length, text: c.text,
       startedAt: c.startedAt, deadline: c.deadline, serverNow: now,
       options: step.options.map((o, index) => ({ index, label: o.label }))
     }

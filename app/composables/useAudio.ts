@@ -34,6 +34,8 @@ interface Loop { name: string; stop: (fade?: number) => void; gain: GainNode; wo
 const loops = new Map<string, Loop>()
 let music: Loop | null = null
 let musicWanted: string | null = null
+/** громкость темы относительно слоя музыки: под исследованием тише, на заставке и в погоне — в полную */
+let musicLevel = 1
 /** текущий голос — одновременно звучит только одна реплика */
 let voiceSrc: AudioBufferSourceNode | null = null
 
@@ -210,22 +212,23 @@ export function useAudio() {
 
   /** Музыка: одна тема; смена — перекрёстным затуханием. null — тишина.
       Имя темы ищется в папке активного дела; путь с «/» — файл как есть (музыка меню мира). */
-  async function theme(name: string | null) {
+  async function theme(name: string | null, level = 1) {
     const c = ensure(); if (!c) return
     const wanted = name ? (name.startsWith('/') ? name : `/music/${currentCase.value}/${name}.mp3`) : null
     musicWanted = wanted
+    musicLevel = level
     if (!wanted || !name) { music?.stop(MUSIC_FADE); music = null; return }
     // у дела может не быть всех тем: берём ближайшую по настроению из тех, что есть
     // у нового дела музыки может не быть совсем — тогда тема мира из меню, лишь бы не тишина
     const chain = name.startsWith('/') ? [wanted] : [...[name, ...(THEME_FALLBACK[name] ?? [])].map(n => `/music/${currentCase.value}/${n}.mp3`), `/music/settings/${currentSetting.value}.mp3`]
     for (const key of chain) {
-      if (music?.name === key) return
+      if (music?.name === key) { music.gain.gain.linearRampToValueAtTime(level, c.currentTime + 2); return }
       const buf = await load(key)
       if (musicWanted !== wanted) return
       if (!buf) continue
       if (music?.name === key) return
       music?.stop(MUSIC_FADE)
-      music = startLoop(key, buf, 1, gains.music!, MUSIC_FADE)
+      music = startLoop(key, buf, musicLevel, gains.music!, MUSIC_FADE)
       return
     }
   }

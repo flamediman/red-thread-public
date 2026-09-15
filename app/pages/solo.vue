@@ -75,7 +75,8 @@ watch(view, (nv, ov) => {
     for (const s of f.sfx ?? []) void audio.sfx(s, 0.9)
   }
   lastPlayed = maxSeq
-  if (nv.health < lastHealth) hurtFlash.value++
+  if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('groan-m', 0.5) }
+  if (nv.dead && !ov?.dead) void audio.sfx('sting-soft', 0.9)
   lastHealth = nv.health
   if (!nv.started) { lastPlace = ''; feedFloor.value = 0 }
 })
@@ -161,11 +162,52 @@ watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.v
     if (low) { names.push('heartbeat'); levels.heartbeat = 0.7 }
     audio.ambience(names, levels)
   }, { immediate: true })
-watch([() => place.value?.ambience.includes('room-hum'), () => audio.unlocked.value], ([indoor]) => audio.setOutdoors(!indoor), { immediate: true })
-watch([entered, () => audio.unlocked.value, () => !!v.value?.ending], ([inGame, ok, ended]) => {
-  if (!ok) return
-  audio.theme(!inGame || ended ? '/music/settings/tuman.mp3' : null)
-}, { immediate: true })
+watch([() => place.value?.outdoor, () => audio.unlocked.value], ([outdoor]) => audio.setOutdoors(!!outdoor), { immediate: true })
+
+/* музыка: тема по району и состоянию, под исследованием — тише ленты атмосферы, в погоне и на заставке — в полную.
+   Темы лежат в папке истории; которой нет — заменяется темой мира из меню */
+const themeName = computed<string | null>(() => {
+  const s = v.value
+  if (!s) return null
+  if (!entered.value || !s.started) return 'title'
+  if (s.ending) return s.ending.id
+  if (s.dead) return null
+  if (s.chase) return 'chase'
+  const area = place.value?.area
+  if (area === 'camp') return 'camp'
+  if (area === 'sana') return s.otherworld ? 'otherworld' : 'sanatorium'
+  return 'town'
+})
+const themeLevel = computed(() => {
+  const s = v.value
+  if (!s || !entered.value || !s.started || s.ending || s.chase) return 1
+  if (s.encounter) return 0.3
+  if (s.scene || s.dialogue) return 0.45
+  return 0.6
+})
+watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok) void audio.theme(t, lvl) }, { immediate: true })
+
+/* далёкие звуки: раз в минуту-полторы где-то в тумане что-то есть — горн, шёпот, цепь. Только когда герой просто идёт */
+const FAR: Record<string, string[]> = {
+  road: ['whisper-far', 'fog-drip', 'bugle-far-cut'],
+  town: ['bugle-far-cut', 'whisper-far', 'oarlocks', 'fog-drip'],
+  sana: ['lantern-chain', 'whisper-far', 'water-lap', 'door-locked'],
+  camp: ['bugle-far-cut', 'lantern-chain', 'whisper-far', 'flag-rope']
+}
+let farTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleFar() {
+  if (farTimer) clearTimeout(farTimer)
+  farTimer = setTimeout(() => {
+    const s = v.value
+    if (entered.value && s?.started && !overlay.value && !anyPanel.value && !s.ending && audio.unlocked.value && !audio.speaking.value) {
+      const pool = FAR[place.value?.area ?? ''] ?? FAR.town!
+      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.28)
+    }
+    scheduleFar()
+  }, 40_000 + Math.random() * 50_000)
+}
+onMounted(scheduleFar)
+onBeforeUnmount(() => { if (farTimer) clearTimeout(farTimer) })
 
 /* ── клавиатура ── */
 const anyPanel = computed(() => menuOpen.value || saveOpen.value || mapOpen.value || notesOpen.value)

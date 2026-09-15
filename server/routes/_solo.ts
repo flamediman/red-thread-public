@@ -87,6 +87,7 @@ export default defineWebSocketHandler({
 
     const g = session.key ? games.get(session.key) : null
     if (!g) return
+    if (msg.type === 'away') { if (msg.on) g.game.detached(); else g.game.attached(); return }
     g.game.handle(msg)
   },
 

@@ -130,21 +130,24 @@ for (const it of S.items) {
 for (const m of S.monsters) {
   for (const s of Object.values(m.sfx)) sfxUsed.set(s, `существо ${m.id}`)
   artUsed.set(`m_${m.id}`, `существо ${m.id}`)
-  if (m.windowMs < 2500) warn(`существо ${m.id}: на решение меньше 2,5 с — на планшете не успеть`)
+  if (m.windowMs < 4500) warn(`существо ${m.id}: на решение ${m.windowMs / 1000} с — прочитать текст и выбрать из пяти вариантов не успеть`)
 }
 for (const s of S.spawns) {
   if (!has('monster', s.monster)) err(`появление ${s.id}: нет существа ${s.monster}`)
   if (!has('place', s.place)) err(`появление ${s.id}: нет места ${s.place}`)
   cond(s.when, `появление ${s.id}`)
 }
-for (const n of S.npcs) artUsed.set(`n_${n.id}`, `персонаж ${n.id}`)
+for (const n of S.npcs) { artUsed.set(`n_${n.id}`, `персонаж ${n.id}`); if (!n.voiceId) warn(`персонаж ${n.id}: нет голоса — реплики прочитает рассказчик`) }
 for (const c of S.chases ?? []) {
   const w = `погоня ${c.id}`
   artUsed.set(`m_${c.art}`, w)
   for (const s of Object.values(c.sfx)) sfxUsed.set(s, w)
   effect(c.success, `${w} конец`)
-  if (c.windowMs < 3000) warn(`${w}: на выбор меньше 3 с`)
-  c.steps.forEach((st, i) => { if (st.options.filter(o => o.right).length !== 1) err(`${w}: на шаге ${i + 1} должен быть ровно один верный путь`) })
+  if (c.windowMs < 5000) warn(`${w}: на выбор ${c.windowMs / 1000} с — мало, чтобы прочитать шаг и варианты`)
+  c.steps.forEach((st, i) => {
+    if (st.options.filter(o => o.right).length !== 1) err(`${w}: на шаге ${i + 1} должен быть ровно один верный путь`)
+    if (st.text.length > 130) warn(`${w}: шаг ${i + 1} — ${st.text.length} знаков, за окно не прочитать`)
+  })
 }
 
 for (const d of S.dialogues) {

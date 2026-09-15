@@ -1,5 +1,6 @@
 <script setup lang="ts">
-/* Разговор: портрет, реплики по одной, потом варианты ответа (цифры — выбор). */
+/* Разговор: портрет, реплики по одной, потом варианты ответа (цифры — выбор).
+   С озвучкой реплики раскрываются сами в темпе голоса; щелчок — следующая сразу. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
 const props = defineProps<{ data: NonNullable<SoloView['dialogue']>; story: string; hero: string }>()
@@ -7,13 +8,33 @@ const emit = defineEmits<{ send: [SoloClientMessage] }>()
 const audio = useAudio()
 
 const shown = ref(1)
-// состояние с сервера приходит целиком и часто: сбрасываем показ реплик, только когда сменились сами реплики
-watch(() => props.data.lines.map(l => l.text).join('\n'), () => { shown.value = 1 })
 const allShown = computed(() => shown.value >= props.data.lines.length)
 const who = (s: string) => s === 'hero' ? props.hero : s === 'narrator' ? '' : props.data.name
+/* состояние с сервера приходит целиком и часто: реплики считаются новыми, только когда сменились сами реплики */
+const linesKey = computed(() => props.data.lines.map(l => l.id ?? l.text).join('\n'))
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+let run = 0
+async function speak() {
+  const my = ++run
+  const l = props.data.lines[shown.value - 1]
+  audio.stopVoice()
+  if (!l?.id) return
+  const v = await audio.voice(l.id)
+  if (my !== run) { if (v.played) audio.stopVoice(); return }
+  if (!v.played) return
+  await v.done
+  if (my !== run) return
+  await sleep(650)
+  if (my !== run) return
+  if (!allShown.value) shown.value++
+}
+watch(linesKey, () => { shown.value = 1 })
+watch([linesKey, shown], () => void speak(), { immediate: true })
+onBeforeUnmount(() => { run++; audio.stopVoice() })
 
 function more() { if (!allShown.value) shown.value++ }
-function choose(i: number) { audio.stopVoice(); emit('send', { type: 'choose', index: i }) }
+function choose(i: number) { run++; audio.stopVoice(); emit('send', { type: 'choose', index: i }) }
 function onKey(e: KeyboardEvent) {
   if (!allShown.value && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); more(); return }
   if (!allShown.value) return

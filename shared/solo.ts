@@ -19,9 +19,14 @@ export interface SoloCond {
 
 /** реплика сцены или разговора; speaker — 'narrator', 'hero' или id персонажа */
 export interface SoloLine {
+  /** id файла озвучки: проставляется при загрузке истории (см. server/game/solo-lines.ts) */
+  id?: string
   speaker: string
   text: string
+  /** текст для озвучки, если читать нужно не то, что на экране */
   voice?: string
+  /** обработка файла озвучки: громкоговоритель или магнитофонная лента */
+  fx?: 'loudspeaker' | 'tape'
   /** картинка на весь экран на время реплики */
   art?: string
   sfx?: string[]
@@ -87,6 +92,8 @@ export interface SoloPlace {
   exits: SoloExit[]
   /** темно: без фонаря не видно, что тут есть */
   dark?: boolean
+  /** под открытым небом: атмосфера звучит без «стекла» */
+  outdoor?: boolean
   surface?: 'asphalt' | 'wood' | 'tile' | 'water' | 'grass'
   ambience?: string[]
   /** звуки места на изнанке; без них — обычные */
@@ -186,11 +193,19 @@ export interface SoloSpawn {
   monster: string
   place: string
   when?: SoloCond
-  /** после ухода игрока существо остаётся на месте (true) или пропадает */
+  /** от кого спрятались или убежали, тот уходит и больше не появляется; stays — караулит место и встречает снова */
   stays?: boolean
 }
 
-export interface SoloNpc { id: string; name: string; voiceId?: string }
+export interface SoloNpc {
+  id: string
+  name: string
+  voiceId?: string
+  /** все реплики персонажа звучат через громкоговоритель или с ленты */
+  fx?: 'loudspeaker' | 'tape'
+  /** сдвиг высоты голоса при озвучке (1.1 — на десятую выше: детский голос из взрослого) */
+  pitch?: number
+}
 
 export interface SoloDialogueNode {
   lines: SoloLine[]
@@ -251,7 +266,7 @@ export interface SoloView {
   started: boolean
   place: {
     id: string; area: string; name: string; art: string; text: string[]
-    dark: boolean; lit: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string
+    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string
   } | null
   exits: { to: string; label: string; locked: string | null; known: boolean }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]
@@ -277,7 +292,7 @@ export interface SoloView {
   } | null
   puzzle: { hotspot: string; puzzle: SoloPublicPuzzle } | null
   chase: {
-    name: string; art: string; step: number; total: number; text: string
+    id: string; name: string; art: string; step: number; total: number; text: string
     startedAt: number; deadline: number; serverNow: number
     options: { index: number; label: string }[]
   } | null
@@ -306,6 +321,8 @@ export type SoloClientMessage =
   | { type: 'heal'; item: string }
   | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide' }
   | { type: 'run'; index: number }
+  /** вкладка ушла в фон или вернулась: часы встречи и погони стоят, пока игрок не смотрит */
+  | { type: 'away'; on: boolean }
 
 export type SoloServerMessage =
   | { type: 'view'; view: SoloView }
