@@ -1,6 +1,7 @@
 // Боты «Красной нити»: node tools/simulate.mjs <число сыщиков>
 //   ORIGIN=http://127.0.0.1:3100  MODE=random|smart  GAMES=1  FAST=1 (проматывать реплики сразу)
 //   ONLINE=1 — сервер в режиме «в сети»: экран открывает свою комнату, боты входят по её коду
+//   PRINT_ROOM=1 — напечатать код и ключ комнаты: второй экран (браузер) может войти в неё как хозяин и показать партию
 //   (нагрузка: запустить несколько процессов параллельно — у каждого своя комната)
 // Отчёт — только числа: раунды, факты, противоречия, исход. Никаких реплик и имён из разгадки.
 const ORIGIN = process.env.ORIGIN || 'http://127.0.0.1:3100'
@@ -39,7 +40,7 @@ function runGame() {
     host = connect(
       ws => ws.send(JSON.stringify(process.env.ONLINE ? { type: 'hello', role: 'host', create: true } : { type: 'hello', role: 'host' })),
       (m, ws) => {
-        if (m.type === 'room') { room = m.code; return }
+        if (m.type === 'room') { room = m.code; if (process.env.PRINT_ROOM) console.log('ROOM', m.code, m.key); return }
         if (m.type === 'hostAuth') {
           if (!m.ok) { console.error(`экран не пустили: ${m.reason ?? ''}`); process.exit(1) }
           if (!spawned) { spawned = true; spawnBots() }

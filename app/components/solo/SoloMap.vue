@@ -256,7 +256,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <circle r="0.5" class="m-compass__pin" />
             <text y="-5.2" text-anchor="middle" class="m-compass__n">С</text>
           </g>
-          <text class="m-sheet" :transform="`translate(2.4,${100 - 2.6 * K}) scale(${K})`">лист {{ sheetNo }} · {{ areaNow?.name }}</text>
+          <text class="m-sheet" text-anchor="end" :transform="`translate(${W - 2.4},${100 - 2.6 * K}) scale(${K})`">лист {{ sheetNo }} · {{ areaNow?.name }}</text>
         </svg>
       </div>
       <p class="solo-map__legend">
