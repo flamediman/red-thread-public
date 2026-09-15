@@ -249,8 +249,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
     </header>
 
     <main v-if="state" class="stage__body">
-      <!-- appear: меню после заставки и после возврата из одиночной игры проявляется, а не выскакивает -->
-      <Transition name="screen" mode="out-in" appear @before-enter="shownScreen = screen">
+      <Transition name="screen" mode="out-in" @before-enter="shownScreen = screen">
         <StageMenu v-if="screen === 'menu'" :state="state" @send="hostSend" @world="menuWorld = $event" />
         <StageLobby v-else-if="screen === 'lobby'" :state="state" @send="hostSend" />
         <StageTutorial v-else-if="screen === 'tutorial'" :state="state" @send="hostSend" />

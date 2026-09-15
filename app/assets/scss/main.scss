@@ -255,6 +255,12 @@ img { max-width: 100%; display: block; }
 .menu.screen-enter-from, .menu.screen-leave-to { transform: none; }
 /* уход в одиночную игру — отдельная страница: меню гаснет так же, как при смене экрана */
 .menu--leaving { opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+/* меню проявляется при каждом появлении — после заставки и после возврата из одиночной игры.
+   Анимацией, а не appear у Transition: при переходе между страницами Nuxt монтирует страницу внутри Suspense,
+   и хуки перехода Vue там не вызываются — меню вставало сразу целиком поверх погасшего экрана.
+   Без fill-mode: после анимации у меню нет своего слоя, фон мира остаётся на месте */
+.menu { animation: menu-in 0.6s ease; }
+@keyframes menu-in { from { opacity: 0; } }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .speaker-enter-active, .speaker-leave-active { transition: opacity 0.45s ease, transform 0.45s var(--ease-out); }
