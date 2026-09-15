@@ -90,7 +90,12 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 
 /* ── страница: кадр слева, панель справа ── */
 .solo { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(19rem, 27vw, 25rem); background: var(--desk); color: var(--paper); overflow: hidden;
-  > .loader { grid-column: 1 / -1; min-height: 100vh; } }
+  /* история обычно грузится быстрее, чем стоит показывать точки: они проявляются, только если ждать долго */
+  > .loader { grid-column: 1 / -1; min-height: 100vh; animation: solo-in 0.4s 0.7s both; } }
+/* из меню и обратно — через затемнение, как смена экранов в «Красной нити» */
+.solo--leaving { opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
+@keyframes solo-in { from { opacity: 0; } }
+@keyframes solo-rise { from { opacity: 0; transform: translateY(14px); } }
 
 .solo-main { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #050606; }
 .solo-view { position: absolute; inset: 0; overflow: hidden;
@@ -206,6 +211,9 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 /* ── заставка, смерть, финал ── */
 .solo-title, .solo-end { position: relative; grid-column: 1 / -1; display: grid; align-items: end; min-height: 100vh; overflow: hidden; background: #060707; }
 .solo-end { position: fixed; inset: 0; z-index: 50; align-items: center; }
+.solo-title { animation: solo-in 0.9s ease both; }
+.solo-title > .solo-title__art { opacity: 0; transition: opacity 1.2s ease; &.on { opacity: 1; } }
+.solo-title .solo-title__body { animation: solo-rise 0.8s 0.15s var(--ease-out) both; }
 .solo-title__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 76% 50%; filter: var(--photo-filter) brightness(0.7); animation: kenburns 90s ease-in-out infinite alternate; }
 .solo-title::after, .solo-end::after { content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
   background: linear-gradient(90deg, rgba(6, 7, 7, 0.9) 0%, rgba(6, 7, 7, 0.45) 55%, rgba(6, 7, 7, 0.15) 100%), linear-gradient(0deg, rgba(6, 7, 7, 0.85) 0%, transparent 40%); }

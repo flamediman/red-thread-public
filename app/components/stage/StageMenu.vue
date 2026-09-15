@@ -49,10 +49,21 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+
+/* одиночная игра — отдельная страница: меню сначала гаснет, как перед лобби обычного дела, и только потом переход */
+const leaving = ref(false)
+function openSolo(e: MouseEvent, id: string) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+  e.preventDefault()
+  if (leaving.value) return
+  leaving.value = true
+  new Image().src = `/art/${id}/cover.jpg` // обложка заставки грузится, пока меню гаснет
+  setTimeout(() => void navigateTo({ path: '/solo', query: { story: id } }), 500)
+}
 </script>
 
 <template>
-  <div class="menu">
+  <div class="menu" :class="{ 'menu--leaving': leaving }">
     <!-- арт мира на весь экран, миры сменяются перекрёстным затуханием -->
     <TransitionGroup name="world-art" tag="div" class="menu__art" aria-hidden="true">
       <img v-if="world" :key="world.setting.id" class="menu__art-img" :src="world.art" alt="">
@@ -99,13 +110,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <span class="case-row__sub">{{ c.subtitle }}</span>
             <span class="case-row__meta">{{ c.meta }}</span>
           </button>
-          <NuxtLink v-for="s in world.solo" :key="s.id" :to="{ path: '/solo', query: { story: s.id } }" class="case-row" :class="{ 'case-row--off': !s.ready }">
+          <a v-for="s in world.solo" :key="s.id" :href="`/solo?story=${s.id}`" class="case-row" :class="{ 'case-row--off': !s.ready }" @click="openSolo($event, s.id)">
             <span class="case-row__stamp">{{ s.date }}</span>
             <span class="case-row__title">{{ s.title }}</span>
             <span class="case-row__go" aria-hidden="true">→</span>
             <span class="case-row__sub">{{ s.subtitle }}</span>
             <span class="case-row__meta">одиночная игра · компьютер или планшет · {{ s.minutes }} минут</span>
-          </NuxtLink>
+          </a>
         </div>
       </section>
     </Transition>

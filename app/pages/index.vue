@@ -35,7 +35,10 @@ const untilDawn = computed(() => {
   return left === 0 ? info.timeUp : `${info.countdown} ${hh ? hh + ' ч ' : ''}${mm ? mm + ' мин' : ''}`.trim()
 })
 
-const started = ref(false)
+/* заставка «Начать игру» нужна один раз — чтобы браузер разрешил звук. Вернулись из одиночной игры — сразу меню */
+const started = useState('stage-started', () => audio.unlocked.value)
+/** вернулись после перезагрузки: сервер ещё не ответил, пускают ли экран, — не мигать заставкой */
+const checking = computed(() => started.value && !hostChecked.value)
 const screen = computed(() => state.value?.screen ?? 'menu')
 /** какой экран сейчас реально показан: во время затухания старого экрана шапка и тема не должны меняться */
 const branchOf = (s: string) => ['prologue', 'resolve', 'verdict', 'epilogue'].includes(s) ? 'scene' : s
@@ -101,7 +104,8 @@ watch([screen, round, () => audio.unlocked.value, () => state.value?.caseInfo.id
 
 const theme = computed(() => {
   const s = screen.value, r = round.value
-  if (s === 'menu') return menuWorld.value?.menu.music ?? null
+  // мир меню ещё не назван (меню только появилось) — музыку не трогаем: тема, что уже играет, дождётся своего мира
+  if (s === 'menu') return menuWorld.value ? menuWorld.value.menu.music ?? null : undefined
   if (s === 'lobby' || s === 'tutorial') return 'lobby'
   if (s === 'prologue') return 'prologue'
   const share = fieldShare.value ?? r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
@@ -112,7 +116,7 @@ const theme = computed(() => {
   if (s === 'epilogue') return 'epilogue'
   return state.value?.outcome === 'failed' ? 'final-failed' : 'final-solved'
 })
-watch([theme, () => audio.unlocked.value, () => state.value?.caseInfo.id], ([t, ok]) => { if (ok) audio.theme(t ?? null) }, { immediate: true })
+watch([theme, () => audio.unlocked.value, () => state.value?.caseInfo.id], ([t, ok]) => { if (ok && t !== undefined) audio.theme(t) }, { immediate: true })
 
 // улица или помещение — от кадра на экране (карта и совещание — внутри)
 watch([outdoors, backdropDim, () => audio.unlocked.value], ([out, dim]) => { audio.setOutdoors(!!out && !dim) }, { immediate: true })
@@ -180,9 +184,10 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
     :lightning="started && !dawn && !!state?.caseInfo.lightning && screen !== 'menu'"
   />
 
-  <BrandBackdrop v-if="brand" />
+  <BrandBackdrop v-if="brand && !checking" />
 
-  <div v-if="hostAuthorized !== true || !started" class="gate gate--cover">
+  <TheLoader v-if="checking" />
+  <div v-else-if="hostAuthorized !== true || !started" class="gate gate--cover">
     <div class="gate__inner">
       <span class="eyebrow">Кооперативный детектив</span>
       <h1 class="display gate__title">Красная нить</h1>
@@ -244,7 +249,8 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
     </header>
 
     <main v-if="state" class="stage__body">
-      <Transition name="screen" mode="out-in" @before-enter="shownScreen = screen">
+      <!-- appear: меню после заставки и после возврата из одиночной игры проявляется, а не выскакивает -->
+      <Transition name="screen" mode="out-in" appear @before-enter="shownScreen = screen">
         <StageMenu v-if="screen === 'menu'" :state="state" @send="hostSend" @world="menuWorld = $event" />
         <StageLobby v-else-if="screen === 'lobby'" :state="state" @send="hostSend" />
         <StageTutorial v-else-if="screen === 'tutorial'" :state="state" @send="hostSend" />

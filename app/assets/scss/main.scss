@@ -253,6 +253,8 @@ img { max-width: 100%; display: block; }
 .screen-leave-to { opacity: 0; transform: translateY(-8px); }
 /* у меню фон зафиксирован на весь экран — сдвиг родителя сломал бы его, поэтому только затухание */
 .menu.screen-enter-from, .menu.screen-leave-to { transform: none; }
+/* уход в одиночную игру — отдельная страница: меню гаснет так же, как при смене экрана */
+.menu--leaving { opacity: 0; transition: opacity 0.5s ease; pointer-events: none; }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .speaker-enter-active, .speaker-leave-active { transition: opacity 0.45s ease, transform 0.45s var(--ease-out); }

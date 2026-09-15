@@ -30,7 +30,8 @@ const unlocked = ref(false)
 const muted = ref(false)
 const speaking = ref(false)
 
-interface Loop { name: string; stop: (fade?: number) => void; gain: GainNode; world?: string }
+/** samples — длина буфера: по ней узнаём тот же трек под другим адресом */
+interface Loop { name: string; stop: (fade?: number) => void; gain: GainNode; world?: string; samples: number }
 const loops = new Map<string, Loop>()
 let music: Loop | null = null
 let musicWanted: string | null = null
@@ -138,7 +139,7 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
   gain.gain.linearRampToValueAtTime(target, c.currentTime + fadeSec)
 
   return {
-    name, gain,
+    name, gain, samples: buffer.length,
     stop: (fade = 2.5) => {
       alive = false
       const t = c.currentTime
@@ -227,6 +228,8 @@ export function useAudio() {
       if (musicWanted !== wanted) return
       if (!buf) continue
       if (music?.name === key) return
+      // тот же трек под другим адресом (тема мира в меню = заставка истории) — играет дальше, без перезапуска
+      if (music && music.samples === buf.length) { music.name = key; music.gain.gain.linearRampToValueAtTime(musicLevel, c.currentTime + 2); return }
       music?.stop(MUSIC_FADE)
       music = startLoop(key, buf, musicLevel, gains.music!, MUSIC_FADE)
       return

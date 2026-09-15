@@ -14,6 +14,7 @@ const audio = useAudio()
 const v = computed(() => view.value)
 const story = computed(() => v.value?.info.id ?? '')
 const cover = computed(() => story.value ? `/art/${story.value}/cover.jpg` : '')
+const coverReady = ref(false)
 
 /* ── заставка и меню ── */
 const entered = ref(false)
@@ -185,7 +186,8 @@ const themeLevel = computed(() => {
   if (s.scene || s.dialogue) return 0.45
   return 0.6
 })
-watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok) void audio.theme(t, lvl) }, { immediate: true })
+// пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
+watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok && v.value) void audio.theme(t, lvl) }, { immediate: true })
 
 /* далёкие звуки: раз в минуту-полторы где-то в тумане что-то есть — горн, шёпот, цепь. Только когда герой просто идёт */
 const FAR: Record<string, string[]> = {
@@ -229,7 +231,16 @@ function onKey(e: KeyboardEvent) {
   else if (e.code === 'KeyF') { e.preventDefault(); toggleLight() }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); audio.ambience([]); audio.theme(null) })
+// музыку не глушим: уйти отсюда можно только в меню, а оно само сменит тему (или оставит ту же — без обрыва)
+onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); audio.ambience([]) })
+
+/* в меню «Красной нити»: экран гаснет, потом переход — как смена экранов внутри игры */
+const leaving = ref(false)
+function toMenu() {
+  if (leaving.value) return
+  leaving.value = true
+  setTimeout(() => void navigateTo('/'), 500)
+}
 
 const when = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const slots = computed(() => [0, 1, 2].map(slot => v.value?.saves.find(s => s.slot === slot) ?? null))
@@ -238,16 +249,17 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
 </script>
 
 <template>
-  <div class="solo" :class="{ 'solo--other': v?.otherworld }">
+  <div class="solo" :class="{ 'solo--other': v?.otherworld, 'solo--leaving': leaving }">
     <TheLoader v-if="!v && !error" />
 
     <!-- ── заставка ── -->
     <section v-else-if="!entered || !v?.started" class="solo-title">
-      <img v-if="cover" class="solo-title__art" :src="cover" alt="" @error="($event.target as HTMLImageElement).hidden = true">
+      <!-- обложка проявляется, когда догрузилась, а не выскакивает поверх уже проявившейся заставки -->
+      <img v-if="cover" class="solo-title__art" :class="{ on: coverReady }" :src="cover" alt="" @load="coverReady = true" @error="($event.target as HTMLImageElement).hidden = true">
       <i class="solo-tint" aria-hidden="true" />
       <SoloFog :density="1" />
       <div class="solo-title__body">
-        <NuxtLink to="/" class="solo-title__back">← Красная нить</NuxtLink>
+        <a href="/" class="solo-title__back" @click.prevent="toMenu">← Красная нить</a>
         <span class="solo-label">Туман · одиночная игра</span>
         <h1 class="solo-title__name">{{ v?.info.title ?? 'Туман' }}</h1>
         <p v-if="v" class="solo-title__lede">{{ v.info.lede }}</p>
@@ -429,7 +441,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           </dl>
           <div class="solo-title__actions">
             <button type="button" class="solo-btn" @click="send({ type: 'new' }); endingPlayed = null">Сыграть снова</button>
-            <NuxtLink to="/" class="solo-btn solo-btn--ghost">В меню «Красной нити»</NuxtLink>
+            <a href="/" class="solo-btn solo-btn--ghost" @click.prevent="toMenu">В меню «Красной нити»</a>
           </div>
         </div>
       </div>
