@@ -144,7 +144,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             </template>
             <rect v-else class="m-place__body" :x="pad(p).x" :y="pad(p).y" :width="pad(p).w" :height="pad(p).h" :rx="pad(p).h / 2" />
           </g>
-          <text v-for="(f, i) in geo.floors" :key="`flt${i}`" class="m-floor-label" :x="f.x * A + 1.4" :y="f.y + 3.2">{{ f.label }}</text>
+          <!-- подпись этажа — вдоль левого края подложки: сверху её закрыли бы комнаты -->
+          <text v-for="(f, i) in geo.floors" :key="`flt${i}`" class="m-floor-label" text-anchor="middle" :transform="`translate(${f.x * A + 1.9},${f.y + f.h / 2}) rotate(-90)`">{{ f.label }}</text>
 
           <!-- туман над неизведанным -->
           <g :mask="`url(#${uid}-fog)`" class="m-fog">
