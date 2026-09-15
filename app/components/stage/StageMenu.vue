@@ -42,41 +42,17 @@ function go(step: 1 | -1) {
 }
 function pick(i: number) { if (i !== index.value) { dir.value = i > index.value ? 1 : -1; index.value = i; try { localStorage.setItem(KEY, world.value!.setting.id) } catch { /* приватный режим */ } } }
 
-/* стрелки клавиатуры и свайп */
+/* стрелки клавиатуры; свайпа нет — жест иногда листал два мира подряд, миры переключаются стрелками и точками */
 function onKey(e: KeyboardEvent) {
   if (e.key === 'ArrowRight') { e.preventDefault(); go(1) }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1) }
-}
-/* жест мышью или пальцем: мир листается, как только палец прошёл порог, — не дожидаясь отпускания */
-let startX: number | null = null
-let startY = 0
-function onDown(e: PointerEvent) { startX = e.clientX; startY = e.clientY }
-function onMove(e: PointerEvent) {
-  if (startX == null) return
-  const dx = e.clientX - startX, dy = e.clientY - startY
-  if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(dy) * 1.4) { startX = null; go(dx < 0 ? 1 : -1) }
-}
-function onUp() { startX = null }
-/* свайп двумя пальцами по тачпаду приходит колесом по горизонтали: копим сдвиг, листаем один раз
-   и пережидаем инерцию, чтобы один жест не пролистал два мира */
-let wheelSum = 0
-let wheelIdle: ReturnType<typeof setTimeout> | null = null
-let wheelLockUntil = 0
-function onWheel(e: WheelEvent) {
-  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
-  e.preventDefault()
-  if (wheelIdle) clearTimeout(wheelIdle)
-  wheelIdle = setTimeout(() => { wheelSum = 0 }, 180)
-  if (Date.now() < wheelLockUntil) return
-  wheelSum += e.deltaX
-  if (Math.abs(wheelSum) > 40) { go(wheelSum > 0 ? 1 : -1); wheelSum = 0; wheelLockUntil = Date.now() + 650 }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="menu" @pointerdown="onDown" @pointermove="onMove" @pointerup="onUp" @pointercancel="onUp" @wheel="onWheel">
+  <div class="menu">
     <!-- арт мира на весь экран, миры сменяются перекрёстным затуханием -->
     <TransitionGroup name="world-art" tag="div" class="menu__art" aria-hidden="true">
       <img v-if="world" :key="world.setting.id" class="menu__art-img" :src="world.art" alt="">
