@@ -435,6 +435,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
           Нужно {{ pickQ.slots }}: {{ pickQ.hint }}. Нажмите карточку — если подходит, она встанет в слот; неподходящая отнимет 15 секунд у команды.
           <b v-if="coolLeft(pickQ.cooldownUntil) > 0">Вопрос остывает: {{ coolLeft(pickQ.cooldownUntil) }} с.</b>
         </p>
+        <p v-if="toast" class="field-pick__note" :class="{ 'field-pick__note--ok': toast.ok }">{{ toast.text }}</p>
         <div class="pad-filters">
           <button type="button" class="chip" :class="{ 'chip--on': !pickKind }" @click="pickKind = null">все</button>
           <button v-for="(label, k) in KIND_LABEL" :key="k" type="button" class="chip" :class="[`chip--${k}`, { 'chip--on': pickKind === k }]" @click="pickKind = pickKind === k ? null : k"><i class="chip__dot" />{{ label }}</button>
@@ -481,7 +482,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
     </div>
 
     <Transition name="fade">
-      <div v-if="toast" class="field-toast" :class="{ 'field-toast--ok': toast.ok }" @click="toast = null">{{ toast.text }}</div>
+      <div v-if="toast && !pickQ" class="field-toast" :class="{ 'field-toast--ok': toast.ok }" @click="toast = null">{{ toast.text }}</div>
     </Transition>
   </div>
 </template>

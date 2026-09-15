@@ -1355,8 +1355,10 @@ export class Game {
   private fieldFinish(p: PlayerRecord, action: PlanAction) {
     const before = new Set(this.board.keys()), itemsBefore = new Set(this.items)
     const beats = this.actBeats(p, { locationId: p.locationId, action })
-    if (beats.length) this.logTo(p, beats.map(b => ({ ...b, locationId: b.locationId ?? p.locationId, playerId: p.id })))
     const fresh = [...this.board.keys()].filter(k => !before.has(k))
+    // что легло на доску за это действие — к последней реплике, телефон покажет плашками
+    if (beats.length && fresh.length) { const last = beats[beats.length - 1]!; last.facts = [...new Set([...(last.facts ?? []), ...fresh])] }
+    if (beats.length) this.logTo(p, beats.map(b => ({ ...b, locationId: b.locationId ?? p.locationId, playerId: p.id })))
     const newItems = [...this.items].filter(i => !itemsBefore.has(i))
     const talk = action.type === 'ask' || action.type === 'present'
     const kind: FieldFeedEntry['kind'] = talk ? 'talk' : action.type === 'search' || action.type === 'drone' ? 'find' : 'ability'
@@ -1476,8 +1478,15 @@ export class Game {
     if (changed) this.emit()
   }
 
+  /** запись в журнал телефона; у реплик рассказчика, начинающихся с имени сыщика, первое предложение — техническое («Клод осматривает тело.») */
   private logTo(p: PlayerRecord, beats: Beat[]) {
-    p.log = [...(p.log ?? []), { seq: ++this.seq, at: this.clock(), beats }].slice(-FIELD_LOG)
+    const split = beats.map(b => {
+      if (b.speaker !== 'narrator' || b.meta || !b.text.startsWith(p.name)) return b
+      // цитата в реплике («спрашивает: «…»») — техническая целиком
+      const m = b.text.includes(': «') ? b.text : /^[^.!?]*[.!?]/.exec(b.text)?.[0]
+      return m ? { ...b, meta: m.trim() } : b
+    })
+    p.log = [...(p.log ?? []), { seq: ++this.seq, at: this.clock(), beats: split }].slice(-FIELD_LOG)
   }
   private pushFeed(e: Omit<FieldFeedEntry, 'seq' | 'at'>) {
     this.feed = [...this.feed, { ...e, seq: ++this.seq, at: this.clock() }].slice(-FIELD_FEED)
