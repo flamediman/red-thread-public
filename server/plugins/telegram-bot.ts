@@ -5,7 +5,9 @@
    Всё входящее и комментарии под постами — в .data/telegram/inbox.jsonl (сводка отзывов читается оттуда).
    Пока бот слушает здесь, getUpdates с другой машины (tools/telegram.mjs updates) конфликтует с опросом.
    Сервер сайта ходит в Telegram только по IPv6 (IPv4 провайдер режет) — контейнер в сети хоста, см. DEPLOY.md. */
+import { setDefaultResultOrder } from 'node:dns'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { setDefaultAutoSelectFamily } from 'node:net'
 import { join } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
 import { IS_PUBLIC } from '../utils/mode'
@@ -53,6 +55,8 @@ function loadState(): State {
 
 export default defineNitroPlugin((nitroApp) => {
   if (!IS_PUBLIC || !TOKEN || !CHANNEL) return
+  // TELEGRAM_IPV6=1 — к Telegram только по IPv6: без этого Node пробует IPv6 четверть секунды, уходит на IPv4 и упирается в блокировку
+  if (process.env.TELEGRAM_IPV6 === '1') { setDefaultResultOrder('ipv6first'); setDefaultAutoSelectFamily(false) }
   mkdirSync(DIR, { recursive: true })
   const state = loadState()
   /** сообщение у владельца → чат игрока: по нему ответ находит адресата */
