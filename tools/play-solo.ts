@@ -53,6 +53,9 @@ function resolveOverlays() {
     if (v.encounter) {
       if (!encounters.includes(v.encounter.monster)) encounters.push(v.encounter.monster)
       const shoot = v.encounter.options.find(o => o.id === 'shoot' && o.enabled)
+      // бой на время: бот «нажимает» посреди первого окна удара — сдвигаем начало раунда так, чтобы сейчас было в окне
+      const e = (g as any).live.encounter
+      if (e?.hit?.length) { e.startedAt = Date.now() - Math.round((e.hit[0][0] + e.hit[0][1]) / 2); e.deadline = e.startedAt + e.windowMs }
       g.handle({ type: 'act', action: shoot && v.encounter.hp > 30 ? 'shoot' : 'fight' })
       continue
     }

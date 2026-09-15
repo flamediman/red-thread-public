@@ -13,12 +13,16 @@ import type {
 const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSync('/app/build-id', 'utf8').trim() : 'dev')
 const FEED = 14
 const SAVE_SLOTS = 3
-const HANDS = { damage: 8, accuracy: 0.55 }
+const HANDS: NonNullable<SoloItem['weapon']> = { damage: 8, accuracy: 0.55 }
+/** запас на окно удара: нажатие чуть раньше или позже края всё ещё засчитывается */
+const ZONE_TOL = 130
+/** насколько часы клиента могут разойтись с серверными, чтобы верить его времени нажатия */
+const AT_DRIFT = 800
 /** фонарь садится на столько процентов за переход (до нуля — дальше только тлеет) */
 const LIGHT_DRAIN = 2
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
-interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string }
+interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null }
 interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string }
 
 /** всё, что переживает перезагрузку страницы и сохранения */
@@ -139,7 +143,7 @@ export class SoloGame {
       case 'radio': r.radioOn = !!msg.on; return this.changed()
       case 'heal': return this.healWith(msg.item)
       case 'equip': return this.equip(msg.item)
-      case 'act': return this.act(msg.action)
+      case 'act': return this.act(msg.action, msg.at)
       case 'run': return this.run_(msg.index)
     }
     // остальное — только когда герой свободен: не в бою, не в погоне, не в разговоре, не над головоломкой, не в сцене
@@ -458,9 +462,39 @@ export class SoloGame {
     const now = Date.now()
     this.live.puzzle = null
     this.live.dialogue = null
-    this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + m.windowMs, text: m.text.appear }
+    const windowMs = Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1))
+    this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + windowMs, windowMs, text: m.text.appear, ...this.rollZones(m, windowMs) }
     this.say('', [m.sfx.near])
     this.arm()
+  }
+
+  /** оружие, от которого зависят окна удара: то, что в руках (ствол — пока есть патроны), иначе ближний бой или руки */
+  private zoneWeapon() {
+    const r = this.run!
+    const held = r.weapon ? this.ITEM.get(r.weapon)?.weapon : null
+    if (held?.usesAmmo && r.ammo > 0) return held
+    return this.melee()?.weapon ?? HANDS
+  }
+
+  /** окна раунда в миллисекундах от его начала: удар — по оружию и вёрткости существа, побег — по его evade */
+  private rollZones(m: SoloMonster, windowMs: number): { hit: [number, number][]; flee: [number, number] | null } {
+    const r = this.run!
+    const w = this.zoneWeapon()
+    const count = Math.max(1, w.zones ?? 1)
+    const share = Math.min(0.6, (0.14 + 0.36 * w.accuracy) * (1 - (m.guard ?? 0)))
+    const width = share / count
+    const hit: [number, number][] = []
+    for (let k = 0; k < count; k++) {
+      // окна не пересекаются и не липнут к краям: первые секунды — увидеть, последние — успеть
+      for (let tries = 0; tries < 30; tries++) {
+        const a = 0.1 + this.random() * (0.9 - width - 0.1)
+        if (hit.every(([x, y]) => a + width < x / windowMs - 0.06 || a > y / windowMs + 0.06)) { hit.push([Math.round(a * windowMs), Math.round((a + width) * windowMs)]); break }
+      }
+    }
+    hit.sort((x, y) => x[0] - y[0])
+    const fleeShare = 0.1 + 0.4 * m.evade * (r.health < 30 ? 0.7 : 1)
+    const fa = 0.15 + this.random() * (0.95 - fleeShare - 0.15)
+    return { hit, flee: [Math.round(fa * windowMs), Math.round((fa + fleeShare) * windowMs)] }
   }
 
   private arm() {
@@ -492,7 +526,7 @@ export class SoloGame {
     const m = e && this.MON.get(this.SPAWN.get(e.spawn)?.monster ?? '')
     if (!e || !m) return
     e.startedAt = now
-    e.deadline = now + m.windowMs
+    e.deadline = now + e.windowMs
     this.arm()
   }
 
@@ -504,7 +538,9 @@ export class SoloGame {
     e.round++
     e.text = text
     e.startedAt = now
-    e.deadline = now + m.windowMs
+    e.windowMs = Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1))
+    e.deadline = now + e.windowMs
+    Object.assign(e, this.rollZones(m, e.windowMs))
     this.say('', sfx)
     this.arm()
   }
@@ -515,13 +551,17 @@ export class SoloGame {
     this.say(text, sfx)
   }
 
-  private act(action: 'fight' | 'shoot' | 'flee' | 'hide') {
+  /** бой на время: удар и побег засчитываются, если нажали, пока бегунок в своём окне (время нажатия — по часам клиента, если они не разошлись) */
+  private act(action: 'fight' | 'shoot' | 'flee' | 'hide', at?: number) {
     const e = this.live.encounter
     const r = this.run!
     if (!e) return
     const s = this.SPAWN.get(e.spawn)!, m = this.MON.get(s.monster)!
-    const hit = (dmg: number, acc: number, loud: boolean) => {
-      if (this.random() < acc) {
+    const now = Date.now()
+    const rel = (typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now) - e.startedAt
+    const inZone = (z: [number, number] | null) => !!z && rel >= z[0] - ZONE_TOL && rel <= z[1] + ZONE_TOL
+    const hit = (dmg: number, loud: boolean) => {
+      if (e.hit.some(inZone)) {
         e.hp -= dmg
         if (e.hp <= 0) {
           r.killed.push(s.id); r.kills++
@@ -536,24 +576,27 @@ export class SoloGame {
     switch (action) {
       case 'fight': {
         const melee = this.melee()?.weapon ?? HANDS
-        hit(melee.damage, melee.accuracy, false)
+        hit(melee.damage, false)
         break
       }
       case 'shoot': {
         const gun = [...Object.keys(r.items)].map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
         if (!gun || r.ammo <= 0) return
         r.ammo--
-        hit(gun.weapon!.damage, gun.weapon!.accuracy, true)
+        hit(gun.weapon!.damage, true)
         break
       }
       case 'flee': {
-        const chance = m.evade * (r.health < 30 ? 0.7 : 1)
         if (!r.prev) return
-        if (this.random() < chance) {
+        // в окне — ушли чисто; мимо окна — уходите, но существо успевает достать
+        if (inZone(e.flee)) {
           this.endEncounter(m.text.flee, ['solo-run'])
           this.enter(r.prev, true)
         } else {
-          this.nextRound(m, m.text.fleeFail, ['solo-run', m.sfx.attack], m.damage)
+          this.hurt(m.damage)
+          if (this.live.dead) { this.say(m.text.fleeFail, [m.sfx.attack]); break }
+          this.endEncounter(`${m.text.fleeFail} ${m.text.flee}`, ['solo-run', m.sfx.attack])
+          this.enter(r.prev, true)
         }
         break
       }
@@ -746,6 +789,8 @@ export class SoloGame {
       scene: this.live.scene,
       encounter: e && m ? {
         monster: m.id, name: m.name, hp: Math.max(0, e.hp), maxHp: m.hp, round: e.round, startedAt: e.startedAt, deadline: e.deadline, serverNow: now, text: e.text,
+        windowMs: e.windowMs,
+        zones: { hit: e.hit.map(([a, b]) => [e.startedAt + a, e.startedAt + b] as [number, number]), flee: e.flee ? [e.startedAt + e.flee[0], e.startedAt + e.flee[1]] : null },
         options: [
           { id: 'fight' as const, label: this.melee() ? `Ударить: ${this.melee()!.name}` : 'Отбиваться руками', enabled: true },
           // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт

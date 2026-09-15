@@ -296,11 +296,26 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     i { position: absolute; inset: 0; border-radius: 3px; background: var(--paper-2); transform-origin: left; }
     b { position: absolute; right: 0; top: -1.5rem; font-family: var(--font-ui); font-size: 0.85rem; color: var(--paper-dim); }
     &--low { i { background: #d0493a; animation: static-bar 0.3s steps(2) infinite; } b { color: #e07a6b; } } }
+  /* полоса раунда: окна удара (красные) и побега (синее), бегунок идёт слева направо */
+  &__track { position: relative; height: 16px; border-radius: 8px; background: rgba(230, 227, 218, 0.08); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.1);
+    b { position: absolute; right: 0; top: -1.6rem; font-family: var(--font-ui); font-size: 0.85rem; color: var(--paper-dim); }
+    &--low b { color: #e07a6b; } }
+  &__zone { position: absolute; top: 0; height: 100%; border-radius: 8px; transition: box-shadow 0.1s ease;
+    &--hit { background: rgba(208, 73, 58, 0.5); box-shadow: inset 0 0 0 1px rgba(224, 122, 107, 0.7); }
+    &--hit.on { background: rgba(224, 90, 74, 0.85); box-shadow: 0 0 14px rgba(224, 122, 107, 0.7); }
+    &--flee { top: 62%; height: 38%; border-radius: 0 0 8px 8px; background: rgba(95, 176, 200, 0.5); box-shadow: inset 0 0 0 1px rgba(140, 205, 225, 0.7); }
+    &--flee.on { background: rgba(120, 200, 225, 0.85); box-shadow: 0 0 14px rgba(120, 200, 225, 0.7); } }
+  &__cursor { position: absolute; top: -5px; bottom: -5px; width: 3px; border-radius: 2px; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.9); transform: translateX(-50%); }
+  &__legend { display: flex; align-items: center; gap: 0.35rem; font-family: var(--font-ui); font-size: 0.74rem; color: var(--paper-faint); }
+  &__key { display: inline-block; width: 0.8rem; height: 0.5rem; border-radius: 3px; &--hit { background: rgba(224, 90, 74, 0.85); } &--flee { background: rgba(120, 200, 225, 0.85); } }
   &__options { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.45rem; }
   &__opt { display: flex; align-items: center; gap: 0.7rem; min-height: 3.2rem; padding: 0.55rem 0.9rem; border-radius: 8px; text-align: left;
     font-family: var(--font-ui); font-size: 0.92rem; font-weight: 700; color: var(--paper); background: rgba(10, 10, 10, 0.72); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.18);
     transition: background-color 0.12s ease, box-shadow 0.12s ease;
     &--fight, &--shoot { box-shadow: inset 0 0 0 1px rgba(201, 105, 91, 0.5); }
+    /* бегунок в окне этого действия — кнопка загорается */
+    &--ready { background: rgba(60, 20, 16, 0.92); box-shadow: inset 0 0 0 2px #e07a6b, 0 0 18px rgba(224, 122, 107, 0.55); transform: scale(1.02); }
+    &--ready.solo-enc__opt--flee { background: rgba(14, 40, 50, 0.92); box-shadow: inset 0 0 0 2px #78c8e1, 0 0 18px rgba(120, 200, 225, 0.55); }
     &:disabled { opacity: 0.3; } }
 }
 @media (hover: hover) { .solo-enc__opt:not(:disabled):hover { background: rgba(60, 20, 16, 0.85); box-shadow: inset 0 0 0 1px rgba(224, 122, 107, 0.7); } }

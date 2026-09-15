@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /* Сцена на весь экран: реплики по одной. С озвучкой реплика сменяется сама, когда голос дозвучал;
-   щелчок или пробел — дальше сразу. Без озвучки — только по щелчку. Картинка реплики — фото или письмо. */
+   щелчок или пробел, пока голос звучит, — обрывает голос (текст уже весь на экране), следующий — дальше.
+   Без озвучки — только по щелчку. Картинка реплики — фото или письмо. */
 import type { SoloLine } from '#shared/types'
 import { currentCase } from '~/utils/case-store'
 
@@ -46,6 +47,8 @@ async function play() {
 }
 function next() {
   run++
+  // первый щелчок при звучащем голосе — только обрывает его; реплика остаётся дочитать
+  if (voiced.value && audio.speaking.value) { audio.stopVoice(); voiced.value = false; return }
   audio.stopVoice()
   if (index.value + 1 >= props.lines.length) { emit('done'); return }
   index.value++

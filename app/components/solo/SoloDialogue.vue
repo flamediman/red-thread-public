@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* Разговор: портрет, реплики по одной, потом варианты ответа (цифры — выбор).
-   С озвучкой реплики раскрываются сами в темпе голоса; щелчок — следующая сразу. */
+   С озвучкой реплики раскрываются сами в темпе голоса; щелчок при звучащем голосе обрывает его, следующий — следующая реплика. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
 const props = defineProps<{ data: NonNullable<SoloView['dialogue']>; story: string; hero: string }>()
@@ -33,7 +33,10 @@ watch(linesKey, () => { shown.value = 1 })
 watch([linesKey, shown], () => void speak(), { immediate: true })
 onBeforeUnmount(() => { run++; audio.stopVoice() })
 
-function more() { if (!allShown.value) shown.value++ }
+function more() {
+  if (audio.speaking.value) { run++; audio.stopVoice(); return }
+  if (!allShown.value) shown.value++
+}
 function choose(i: number) { run++; audio.stopVoice(); emit('send', { type: 'choose', index: i }) }
 function onKey(e: KeyboardEvent) {
   if (!allShown.value && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); more(); return }
@@ -61,7 +64,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <button v-for="(c, i) in data.choices" :key="c.index" type="button" class="solo-talk__choice" @click.stop="choose(c.index)"><kbd>{{ i + 1 }}</kbd>{{ c.text }}</button>
           <button v-if="!data.choices.length" type="button" class="solo-talk__choice" @click.stop="choose(0)"><kbd>↵</kbd>Отойти</button>
         </div>
-        <span v-else class="solo-talk__more">щелчок — дальше</span>
+        <span v-else class="solo-talk__more">{{ audio.speaking.value ? 'щелчок — пропустить' : 'щелчок — дальше' }}</span>
       </div>
     </div>
   </div>

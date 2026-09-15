@@ -179,7 +179,9 @@ export interface SoloItem {
   art?: string
   /** расходник: сколько лечит / сколько заряда / сколько патронов */
   amount?: number
-  weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean }
+  /** оружие: accuracy — ширина окон удара (0…1), zones — сколько окон за раунд (по умолчанию 1), tempo — замедление
+      времени раунда (1.3 — раунд на треть длиннее); usesAmmo — стреляет патронами */
+  weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean; zones?: number; tempo?: number }
   /** соединить с другим предметом */
   combine?: { with: string; result: string; text: string }[]
 }
@@ -195,8 +197,10 @@ export interface SoloMonster {
   windowMs: number
   /** идёт на свет: с фонарём спрятаться не выйдет */
   seesLight?: boolean
-  /** шанс проскочить мимо, 0…1 */
+  /** ширина окна побега, 0…1 */
   evade: number
+  /** насколько существо сужает окна удара, 0…1 (вёрткое — 0.3, неповоротливое — 0) */
+  guard?: number
   sfx: { near: string; attack: string; hurt: string; die: string }
   text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string }
 }
@@ -320,6 +324,9 @@ export interface SoloView {
   encounter: {
     monster: string; name: string; hp: number; maxHp: number; round: number
     startedAt: number; deadline: number; serverNow: number
+    /** длина раунда и окна на его полосе (время по часам сервера): в hit — удар попадает, в flee — уходишь без урона */
+    windowMs: number
+    zones: { hit: [number, number][]; flee: [number, number] | null }
     text: string
     options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean }[]
   } | null
@@ -354,7 +361,8 @@ export type SoloClientMessage =
   | { type: 'radio'; on: boolean }
   | { type: 'equip'; item: string }
   | { type: 'heal'; item: string }
-  | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide' }
+  /** at — время нажатия по часам сервера (клиент знает сдвиг): так пинг не съедает окно */
+  | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide'; at?: number }
   | { type: 'run'; index: number }
   /** вкладка ушла в фон или вернулась: часы встречи и погони стоят, пока игрок не смотрит */
   | { type: 'away'; on: boolean }
