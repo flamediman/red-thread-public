@@ -241,7 +241,9 @@ export interface SoloDialogueNode {
   effect?: SoloEffect
   choices?: { text: string; to?: string; when?: SoloCond; effect?: SoloEffect }[]
 }
-export interface SoloDialogue { id: string; npc: string; start: string; nodes: Record<string, SoloDialogueNode> }
+/** again — узел, с которого разговор начинается во второй раз и куда ведёт «Дальше» из веток: без него персонаж
+    здоровался бы заново при каждом возврате к вопросам */
+export interface SoloDialogue { id: string; npc: string; start: string; again?: string; nodes: Record<string, SoloDialogueNode> }
 
 export interface SoloEnding { id: string; title: string; scene: SoloLine[] }
 
@@ -307,6 +309,8 @@ export interface SoloView {
   ammo: number
   /** шипение радио: 0 — тихо, 1 — где-то рядом, 2 — здесь */
   radio: 0 | 1 | 2
+  /** приёмник включён (выключенный молчит) */
+  radioOn: boolean
   otherworld: boolean
   weapon: string | null
   map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; visited: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
@@ -346,6 +350,8 @@ export type SoloClientMessage =
   | { type: 'choose'; index: number }
   | { type: 'sceneDone'; seq: number }
   | { type: 'light'; on: boolean }
+  /** приёмник: выключить, чтобы не шипел (и не подсказывал) */
+  | { type: 'radio'; on: boolean }
   | { type: 'equip'; item: string }
   | { type: 'heal'; item: string }
   | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide' }

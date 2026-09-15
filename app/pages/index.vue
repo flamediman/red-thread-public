@@ -238,6 +238,13 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
           <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14" /></svg>
           <span>{{ state?.paused ? 'Продолжить' : 'Пауза' }}</span>
         </button>
+        <button class="ctl ctl--icon" type="button" :title="audio.voiceOn.value ? 'Выключить озвучку реплик' : 'Включить озвучку реплик'" :aria-label="audio.voiceOn.value ? 'Выключить озвучку' : 'Включить озвучку'" :class="{ 'ctl--off': !audio.voiceOn.value }" @click="audio.setVoiceOn(!audio.voiceOn.value)">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16v11H10l-4.5 3.5V16H4z" />
+            <path v-if="audio.voiceOn.value" d="M8 9h8M8 12h5" />
+            <path v-else d="M8 8.5l7 6M15 8.5l-7 6" />
+          </svg>
+        </button>
         <button class="ctl ctl--icon" type="button" :title="audio.muted.value ? 'Включить звук' : 'Выключить звук'" :aria-label="audio.muted.value ? 'Включить звук' : 'Выключить звук'" @click="audio.setMuted(!audio.muted.value)">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />

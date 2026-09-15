@@ -159,8 +159,11 @@ for (const d of S.dialogues) {
   const w = `разговор ${d.id}`
   if (!has('npc', d.npc)) err(`${w}: нет персонажа ${d.npc}`)
   if (!d.nodes[d.start]) err(`${w}: нет начального узла ${d.start}`)
-  const reached = new Set([d.start])
-  const queue = [d.start]
+  if (d.again && !d.nodes[d.again]) err(`${w}: нет узла again ${d.again}`)
+  const reached = new Set(d.again ? [d.start, d.again] : [d.start])
+  const queue = [...reached]
+  // «Дальше» в начальный узел — персонаж поздоровается заново; для возврата к вопросам нужен узел again
+  for (const [id, node] of Object.entries(d.nodes)) for (const c of node.choices ?? []) if (c.to === d.start && id !== d.start) warn(`${w}: узел ${id} ведёт обратно в начальный ${d.start} — приветствие повторится (заведите again)`)
   while (queue.length) {
     const node = d.nodes[queue.shift()!]
     for (const c of node?.choices ?? []) if (c.to && !reached.has(c.to)) { reached.add(c.to); queue.push(c.to) }

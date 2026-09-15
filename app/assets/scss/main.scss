@@ -393,7 +393,8 @@ html, body { overscroll-behavior-x: none; }
 /* кнопки пульта ведущего: иконка + подпись */
 .ctl { display: inline-flex; align-items: center; gap: 0.45em; height: 2.3rem; padding: 0 0.8rem; border-radius: 9px; color: var(--paper-dim); font-size: 0.82rem; font-weight: 600; transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
   svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  &--icon { width: 2.3rem; padding: 0; justify-content: center; } }
+  &--icon { width: 2.3rem; padding: 0; justify-content: center; }
+  &--off { opacity: 0.5; } }
 @media (hover: hover) { .ctl:hover { background: rgba(241, 233, 216, 0.1); color: var(--paper); } }
 
 /* ── меню: карусель миров. Арт мира на весь экран, слева текст и дела, внизу стрелки ── */

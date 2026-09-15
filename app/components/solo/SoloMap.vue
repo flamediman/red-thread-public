@@ -247,15 +247,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             </text>
           </g>
 
-          <!-- картографические мелочи: компас и номер листа -->
-          <g class="m-compass" :transform="`translate(${W - 6.5 * K},${6.5 * K}) scale(${K})`">
-            <circle r="4.4" class="m-compass__ring" />
-            <path d="M0,-3.8 L1,0 L-1,0 Z" class="m-compass__north" />
-            <path d="M0,3.8 L1,0 L-1,0 Z" class="m-compass__south" />
-            <path d="M-3.8,0 L0,-0.7 L0,0.7 Z M3.8,0 L0,-0.7 L0,0.7 Z" class="m-compass__ew" />
-            <circle r="0.5" class="m-compass__pin" />
-            <text y="-5.2" text-anchor="middle" class="m-compass__n">С</text>
-          </g>
+          <!-- номер листа -->
           <text class="m-sheet" text-anchor="end" :transform="`translate(${W - 2.4},${100 - 2.6 * K}) scale(${K})`">лист {{ sheetNo }} · {{ areaNow?.name }}</text>
         </svg>
       </div>

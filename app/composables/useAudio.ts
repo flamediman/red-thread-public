@@ -28,6 +28,10 @@ let ambRoom: GainNode | null = null
 const buffers = new Map<string, Promise<AudioBuffer | null>>()
 const unlocked = ref(false)
 const muted = ref(false)
+/** озвучка реплик: можно выключить, оставив музыку и звуки; сцены тогда идут по щелчку. Запоминается в браузере */
+const VOICE_KEY = 'rn:voice'
+const voiceOn = ref(true)
+try { if (typeof localStorage !== 'undefined' && localStorage.getItem(VOICE_KEY) === 'off') voiceOn.value = false } catch { /* приватный режим */ }
 const speaking = ref(false)
 
 /** samples — длина буфера: по ней узнаём тот же трек под другим адресом */
@@ -181,6 +185,12 @@ export function useAudio() {
     unlocked.value = c.state === 'running'
   }
 
+  function setVoiceOn(on: boolean) {
+    voiceOn.value = on
+    if (!on) stopVoice()
+    try { localStorage.setItem(VOICE_KEY, on ? 'on' : 'off') } catch { /* приватный режим */ }
+  }
+
   function setMuted(m: boolean) {
     muted.value = m
     const c = ensure(); if (!c) return
@@ -254,7 +264,7 @@ export function useAudio() {
       останавливается — голоса не накладываются, даже если ведущий жмёт «Дальше». */
   async function voice(id: string): Promise<{ played: boolean; duration: number; done: Promise<void> }> {
     const c = ensure()
-    if (!c) return { played: false, duration: 0, done: Promise.resolve() }
+    if (!c || !voiceOn.value) return { played: false, duration: 0, done: Promise.resolve() }
     if (!(await voiced()).has(id)) return { played: false, duration: 0, done: Promise.resolve() }
     const buf = await load(`/voice/${currentCase.value}/${id}.mp3`)
     if (!buf) return { played: false, duration: 0, done: Promise.resolve() }
@@ -295,5 +305,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, speaking, unlock, setMuted, setPaused, setOutdoors, ambience, theme, sfx, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, ambience, theme, sfx, voice, stopVoice, stopAll, preload: load }
 }

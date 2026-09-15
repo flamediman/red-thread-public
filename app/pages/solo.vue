@@ -101,6 +101,7 @@ const healthState = computed(() => {
 const hasFlashlight = computed(() => !!v.value?.inventory.some(i => i.id === 'flashlight'))
 const hasRadio = computed(() => !!v.value?.inventory.some(i => i.id === 'radio'))
 const toggleLight = () => { if (v.value && hasFlashlight.value) send({ type: 'light', on: !v.value.light }) }
+const toggleRadio = () => { if (v.value && hasRadio.value) send({ type: 'radio', on: !v.value.radioOn }) }
 
 /* ── вещи: применить к месту или соединить с другой вещью ── */
 type Mode = { kind: 'use' | 'combine'; item: string; name: string } | null
@@ -243,6 +244,7 @@ function onKey(e: KeyboardEvent) {
   if (e.code === 'KeyM') { e.preventDefault(); mapOpen.value = true }
   else if (e.code === 'KeyJ') { e.preventDefault(); notesOpen.value = true }
   else if (e.code === 'KeyF') { e.preventDefault(); toggleLight() }
+  else if (e.code === 'KeyR') { e.preventDefault(); toggleRadio() }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 // музыку не глушим: уйти отсюда можно только в меню, а оно само сменит тему (или оставит ту же — без обрыва)
@@ -298,7 +300,8 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         >
           <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
           <Transition name="solo-cut" :duration="{ enter: 1400, leave: 900 }">
-            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
+            <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
+            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
           </Transition>
           <Transition name="fade">
             <button v-if="closeup && artOk" type="button" class="solo-view__back" @click.stop="backToPlace">← {{ place?.name }}</button>
@@ -346,9 +349,9 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
             <span class="solo-light__bar"><i :style="{ transform: `scaleX(${v.battery / 100})` }" /></span>
             <span class="tabnum">{{ v.battery }}%</span>
           </button>
-          <div v-if="hasRadio" class="solo-radio" :class="`solo-radio--${v.radio}`" title="Приёмник шипит, когда рядом что-то есть">
-            <SoloIcon name="item-radio" /><span><i /><i /><i /><i /><i /></span>
-          </div>
+          <button v-if="hasRadio" type="button" class="solo-radio" :class="[`solo-radio--${v.radio}`, { 'solo-radio--off': !v.radioOn }]" :title="v.radioOn ? 'Приёмник шипит, когда рядом что-то есть. Щелчок — выключить (R)' : 'Приёмник выключен. Щелчок — включить (R)'" @click="toggleRadio">
+            <SoloIcon name="item-radio" /><span><i /><i /><i /><i /><i /></span><small>{{ v.radioOn ? '' : 'выкл' }}</small>
+          </button>
           <div v-if="v.weapon || v.ammo" class="solo-weapon"><SoloIcon :name="v.inventory.find(i => i.equipped)?.icon ?? 'weapon'" />{{ v.weapon ?? 'без оружия' }}<b v-if="v.ammo" class="tabnum"> · патронов {{ v.ammo }}</b></div>
         </div>
 
@@ -416,10 +419,11 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <p class="solo-label">Пауза · {{ v.info.title }}</p>
           <button type="button" class="solo-btn" @click="menuOpen = false">Вернуться</button>
           <button v-for="s in v.saves" :key="s.slot" type="button" class="solo-btn solo-btn--ghost" @click="enter({ load: s.slot })">Загрузить: {{ s.place }} · {{ when(s.at) }}</button>
+          <button type="button" class="solo-btn solo-btn--ghost" @click="audio.setVoiceOn(!audio.voiceOn.value)">{{ audio.voiceOn.value ? 'Озвучка: включена' : 'Озвучка: выключена' }}</button>
           <button type="button" class="solo-btn solo-btn--ghost" @click="audio.setMuted(!audio.muted.value)">{{ audio.muted.value ? 'Включить звук' : 'Выключить звук' }}</button>
           <button type="button" class="solo-btn solo-btn--ghost" @click="askNew">{{ confirmNew ? 'Точно? Несохранённое пропадёт' : 'Начать заново' }}</button>
           <button type="button" class="solo-btn solo-btn--ghost" @click="entered = false; menuOpen = false">На заставку</button>
-          <p class="solo-muted solo-keys">M — карта · J — записки · F — фонарь · 1–5 — действия во встрече</p>
+          <p class="solo-muted solo-keys">M — карта · J — записки · F — фонарь · R — приёмник · 1–5 — действия во встрече</p>
         </div>
       </div>
 

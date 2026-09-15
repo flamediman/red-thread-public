@@ -35,6 +35,8 @@ interface Run {
   light: boolean
   ammo: number
   weapon: string | null
+  /** приёмник выключен игроком; в старых сохранениях поля нет — значит включён */
+  radioOn?: boolean
   looked: string[]
   used: string[]
   killed: string[]
@@ -134,6 +136,7 @@ export class SoloGame {
     if (!r || this.live.dead || r.ending) return
     switch (msg.type) {
       case 'light': return this.setLight(!!msg.on)
+      case 'radio': r.radioOn = !!msg.on; return this.changed()
       case 'heal': return this.healWith(msg.item)
       case 'equip': return this.equip(msg.item)
       case 'act': return this.act(msg.action)
@@ -420,8 +423,12 @@ export class SoloGame {
   private startTalk(id: string) {
     const d = this.DIALOG.get(id)
     if (!d || this.live.dead) return
-    this.live.dialogue = { id: d.id, node: d.start }
-    const node = d.nodes[d.start]
+    // второй разговор начинается с узла again: приветствие уже было
+    const met = `met:${d.id}`
+    const start = d.again && this.flag(met) && d.nodes[d.again] ? d.again : d.start
+    if (!this.flag(met)) this.run!.flags.push(met)
+    this.live.dialogue = { id: d.id, node: start }
+    const node = d.nodes[start]
     if (node?.effect) this.apply(node.effect)
   }
 
@@ -675,7 +682,7 @@ export class SoloGame {
 
   private radio(): 0 | 1 | 2 {
     const r = this.run!
-    if (!this.has('radio')) return 0
+    if (!this.has('radio') || r.radioOn === false) return 0
     if (this.live.encounter || this.live.chase) return 2
     const here = this.place()
     const active = (placeId: string) => this.S.spawns.some(s => s.place === placeId && this.spawnActive(s))
@@ -687,7 +694,7 @@ export class SoloGame {
     const r = this.run
     const empty: SoloView = {
       build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
-      ammo: 0, radio: 0, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, chase: null, puzzle: null,
+      ammo: 0, radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }
     if (!r) return empty
@@ -717,14 +724,15 @@ export class SoloGame {
       hotspots: this.visibleHotspots().map(h => ({
         id: h.id, name: h.name,
         kind: h.puzzle ? 'puzzle' as const : h.talk ? 'talk' as const : 'look' as const,
-        done: h.puzzle ? this.flag(`solved:${h.id}`) : !!h.look?.once && r.looked.includes(h.id)
+        // осмотренное гаснет: головоломка — когда решена, разговор — когда состоялся, остальное — после первого осмотра
+        done: h.puzzle ? this.flag(`solved:${h.id}`) : h.talk ? this.flag(`met:${h.talk}`) : r.looked.includes(h.id)
       })),
       inventory: Object.entries(r.items).filter(([, n]) => n > 0).map(([id, count]) => {
         const it = this.ITEM.get(id)!
         return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, art: this.artOf(it), count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon' }
       }),
       notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x),
-      health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, radio: this.radio(), otherworld: r.otherworld,
+      health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, radio: this.radio(), radioOn: r.radioOn !== false, otherworld: r.otherworld,
       weapon: r.weapon ? this.ITEM.get(r.weapon)?.name ?? null : null,
       map: {
         areas: this.S.areas,

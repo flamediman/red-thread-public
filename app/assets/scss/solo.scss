@@ -106,10 +106,10 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     background: rgba(6, 7, 7, 0.72); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.14); transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease; }
   &__dark { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: background 0.8s ease, opacity 0.8s ease;
     background: radial-gradient(ellipse 120% 90% at 50% 40%, transparent 40%, rgba(4, 5, 5, 0.7) 100%), linear-gradient(180deg, rgba(6, 7, 7, 0.4) 0%, transparent 25%, transparent 45%, rgba(6, 7, 7, 0.94) 100%); }
-  &--black &__art { filter: brightness(0.12) saturate(0.2); }
+  &__art--black { filter: brightness(0.12) saturate(0.2); }
   &--black &__dark { background: radial-gradient(ellipse at 50% 50%, rgba(3, 4, 4, 0.82) 0%, rgba(2, 3, 3, 0.98) 70%); }
   /* фонарь: пятно света у курсора, по краям — чернота; свет чуть дрожит */
-  &--torch &__art { filter: saturate(0.5) contrast(1.15) brightness(1.05); }
+  &__art--torch { filter: saturate(0.5) contrast(1.15) brightness(1.05); }
   &--torch &__dark { background: radial-gradient(circle at var(--lx) var(--ly), rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.12) 7rem, rgba(2, 3, 3, 0.9) 17rem, rgba(2, 3, 3, 0.97) 100%);
     animation: torch-flicker 5s steps(1) infinite; }
   /* батарейка села: пятно маленькое и дрожит чаще */
@@ -173,7 +173,12 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   i:nth-child(2) { height: 45%; } i:nth-child(3) { height: 60%; } i:nth-child(4) { height: 80%; } i:nth-child(5) { height: 100%; }
   &--1 { color: var(--tuman-warn); i:nth-child(-n+3) { background: var(--tuman-warn); animation: static-bar 0.35s steps(2) infinite; } }
   &--2 { color: var(--tuman-red); i { background: var(--tuman-red); animation: static-bar 0.18s steps(2) infinite; } i:nth-child(2n) { animation-delay: 0.09s; } }
+  /* кнопка: щелчок выключает приёмник — шкала гаснет, подпись «выкл» */
+  cursor: pointer; padding: 0.3rem 0.5rem; margin: -0.3rem -0.5rem; border-radius: 8px; text-align: left; font: inherit; transition: background-color var(--dur-fast) ease, opacity var(--dur-fast) ease;
+  small { font-family: var(--font-ui); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  &--off { opacity: 0.45; i { background: rgba(230, 227, 218, 0.1) !important; animation: none !important; } }
 }
+@media (hover: hover) { .solo-radio:hover { background: rgba(230, 227, 218, 0.06); } }
 @keyframes static-bar { 50% { opacity: 0.35; } }
 .solo-weapon { display: flex; align-items: center; gap: 0.6rem; color: var(--paper-dim); font-family: var(--font-ui); font-size: 0.8rem; font-weight: 600; b { font-weight: 600; color: var(--paper-faint); } }
 
@@ -437,12 +442,6 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-pin__badge { fill: #e2b84f; stroke: #0e1012; stroke-width: 0.3; }
     .m-pin__lock { fill: #b5463b; stroke: #0e1012; stroke-width: 0.3; }
     .m-pin__badge-icon { fill: none; stroke: #16191c; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-    .m-compass__ring { fill: rgba(14, 16, 18, 0.55); stroke: #59616a; stroke-width: 0.25; }
-    .m-compass__north { fill: #b5463b; }
-    .m-compass__south { fill: #59616a; }
-    .m-compass__ew { fill: #3f464e; }
-    .m-compass__pin { fill: #d5d9dd; }
-    .m-compass__n { fill: #a9b0b8; font-size: 2px; font-weight: 700; }
     .m-sheet { fill: #59616a; font-size: 1.9px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; } }
   &__key { display: inline-block; width: 0.62rem; height: 0.62rem; margin-right: 0.35rem; border-radius: 50%; vertical-align: -0.05rem;
     &--here { background: rgba(226, 184, 79, 0.25); box-shadow: inset 0 0 0 1.5px #e2b84f; }
