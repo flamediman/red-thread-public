@@ -456,6 +456,20 @@ html, body { overscroll-behavior-x: none; }
   .case-row:not(:disabled):hover .case-row__go { opacity: 1; }
   .case__change:hover { color: var(--paper); }
 }
+/* невысокий экран ноутбука: дела мира должны помещаться целиком — сначала плотнее отступы и заголовок,
+   потом прячутся бригада и подзаголовок мира; прокрутка колонки — только совсем на низких экранах */
+@media (max-height: 940px) {
+  .world { gap: clamp(0.5rem, 1.2vh, 0.8rem); }
+  .world__title { font-size: min(var(--step-5), 9vh); }
+  .world__cases { gap: 0.4rem; margin-top: 0.2rem; }
+  .case-row { padding-block: 0.65rem; }
+  .case-row::before { top: 0.65rem; bottom: 0.65rem; }
+}
+@media (max-height: 830px) {
+  .world__crew { display: none; }
+  .world__sub { font-size: 0.92rem; line-height: 1.45; }
+}
+@media (max-height: 770px) { .world__sub { display: none; } }
 /* смена мира: текст уезжает в сторону листания, арт перетекает */
 .world-next-enter-active, .world-prev-enter-active { transition: opacity 0.38s ease, transform 0.42s var(--ease-out); }
 .world-next-leave-active, .world-prev-leave-active { transition: opacity 0.18s ease, transform 0.2s ease-in; }
