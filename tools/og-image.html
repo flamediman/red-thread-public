@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- Картинка для превью ссылок (Telegram, ВКонтакте, поисковики): 1200×630.
+     Собирается tools/og-image.mjs → public/og/red-thread.jpg. Шрифты и арт миров — те же, что в игре. -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: 'Playfair Display'; font-weight: 700; src: url(../public/fonts/playfair-display-700-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F; }
+  @font-face { font-family: 'Playfair Display'; font-weight: 700; src: url(../public/fonts/playfair-display-700-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  @font-face { font-family: 'Manrope'; font-weight: 500; src: url(../public/fonts/manrope-500-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F; }
+  @font-face { font-family: 'Manrope'; font-weight: 500; src: url(../public/fonts/manrope-500-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+  @font-face { font-family: 'Manrope'; font-weight: 700; src: url(../public/fonts/manrope-700-cyrillic.woff2) format('woff2'); unicode-range: U+0400-045F; }
+  @font-face { font-family: 'Manrope'; font-weight: 700; src: url(../public/fonts/manrope-700-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+2000-206F; }
+
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #0c0d10; }
+  .og { position: relative; width: 1200px; height: 630px; overflow: hidden; color: #f1e9d8;
+    background: radial-gradient(52% 70% at 78% 44%, rgba(212, 69, 58, 0.14), transparent 70%), radial-gradient(40% 50% at 8% 100%, rgba(241, 233, 216, 0.05), transparent 70%), #0c0d10; }
+  .grain { position: absolute; inset: 0; opacity: 0.07; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  .text { position: absolute; left: 76px; top: 0; bottom: 0; width: 520px; display: flex; flex-direction: column; justify-content: center; gap: 26px; z-index: 3; }
+  .eyebrow { display: flex; align-items: center; gap: 16px; font: 700 17px/1 'Manrope', sans-serif; letter-spacing: 0.26em; text-transform: uppercase; color: #d4453a; }
+  .eyebrow::after { content: ''; width: 56px; height: 2px; background: currentColor; opacity: 0.7; }
+  h1 { margin: 0; font: 700 118px/0.92 'Playfair Display', Georgia, serif; letter-spacing: -0.005em; text-shadow: 0 6px 40px rgba(0, 0, 0, 0.6); }
+  .lede { margin: 0; max-width: 470px; font: 500 29px/1.38 'Manrope', sans-serif; color: #e2d8c3; }
+  .meta { margin: 6px 0 0; font: 500 19px/1 'Manrope', sans-serif; color: #9aa1ad; letter-spacing: 0.02em; }
+  .meta b { font-weight: 700; color: #d9cfb9; }
+
+  /* фото миров на доске — как карточки улик */
+  .card { position: absolute; width: 206px; padding: 9px 9px 0; background: #ece3cf; border-radius: 2px; z-index: 2;
+    box-shadow: 0 22px 44px rgba(0, 0, 0, 0.65), 0 2px 0 rgba(0, 0, 0, 0.3); }
+  .card i { display: block; width: 206px; height: 252px; background-repeat: no-repeat; filter: sepia(0.12) contrast(1.06) brightness(0.94); }
+  .card span { display: block; height: 40px; font: 700 14px/40px 'Manrope', sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: #4a4550; text-align: center; }
+  .card--noir { left: 604px; top: 104px; transform: rotate(-6deg); }
+  .card--noir i { background-image: url(../media/art/settings/noir.jpg); background-size: auto 175%; background-position: 50% 24%; }
+  .card--neon { left: 794px; top: 236px; transform: rotate(5deg); }
+  .card--neon i { background-image: url(../media/art/settings/neon.jpg); background-size: auto 150%; background-position: 64% 62%; }
+  .card--tuman { left: 946px; top: 70px; transform: rotate(-3deg); }
+  .card--tuman i { background-image: url(../media/art/settings/tuman.jpg); background-size: auto 128%; background-position: 80% 48%; }
+  /* точка крепления булавки — посередине верхнего края, поворачивается вместе с карточкой */
+  .card b { position: absolute; left: 50%; top: 20px; width: 0; height: 0; }
+
+  svg { position: absolute; inset: 0; width: 1200px; height: 630px; z-index: 4; pointer-events: none; }
+  path { fill: none; stroke: #c9362c; stroke-width: 3.2; stroke-linecap: round; filter: drop-shadow(0 0 6px rgba(212, 69, 58, 0.45)) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.5)); }
+  .pin-shadow { fill: rgba(0, 0, 0, 0.55); }
+  .pin { fill: #eadcbf; }
+</style>
+</head>
+<body>
+<div class="og">
+  <div class="grain"></div>
+  <div class="text">
+    <span class="eyebrow">Кооперативный детектив</span>
+    <h1>Красная<br>нить</h1>
+    <p class="lede">Один экран, телефоны вместо блокнотов, одна ночь на&nbsp;правду.</p>
+    <p class="meta"><b>Нуар · Неон · Туман</b> — играть в браузере</p>
+  </div>
+  <div class="card card--noir"><i></i><span>Нуар</span><b></b></div>
+  <div class="card card--neon"><i></i><span>Неон</span><b></b></div>
+  <div class="card card--tuman"><i></i><span>Туман</span><b></b></div>
+  <svg id="thread" viewBox="0 0 1200 630"></svg>
+</div>
+<script>
+  // нить: из-за верхнего края — через булавки всех трёх карточек — снова за верхний край, с лёгким провисом
+  const pts = [...document.querySelectorAll('.card b')].map(b => { const r = b.getBoundingClientRect(); return { x: r.left, y: r.top } })
+  const route = [{ x: 552, y: -20 }, ...pts, { x: 1160, y: -20 }]
+  let d = `M ${route[0].x} ${route[0].y}`
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1], p = route[i]
+    const sag = 10 + Math.hypot(p.x - a.x, p.y - a.y) * 0.05
+    d += ` Q ${(a.x + p.x) / 2} ${(a.y + p.y) / 2 + sag} ${p.x} ${p.y}`
+  }
+  const svg = document.getElementById('thread')
+  svg.innerHTML = `<path d="${d}"/>` + pts.map(p => `<circle class="pin-shadow" cx="${p.x + 1}" cy="${p.y + 4}" r="9"/><circle class="pin" cx="${p.x}" cy="${p.y}" r="8"/>`).join('')
+</script>
+</body>
+</html>

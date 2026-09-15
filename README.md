@@ -78,6 +78,7 @@ node .output/server/index.mjs     # переменные — из окружен
 | `TELEGRAM_URL` | — | канал игры: ссылка в меню и на телефоне в финале |
 | `DONATE_URL` | — | страница поддержки: ссылка и QR в меню |
 | `TRUST_PROXY` | — | `1` за обратным прокси: адрес игрока берётся из заголовка |
+| `SITE_URL` | — | адрес сайта для превью ссылок и `sitemap.xml`; без него — из запроса |
 | `REAL_IP_HEADER` | `x-forwarded-for` | заголовок с адресом игрока (`cf-connecting-ip` за Cloudflare) |
 | `MAX_ROOMS` | `300` | предел одновременных комнат (в сети) |
 | `MAX_SOCKETS_PER_IP` | `150` в сети | предел соединений с одного адреса |
@@ -157,6 +158,8 @@ tools/          генерация озвучки, музыки, звуков и
 - `STORY=<история> node_modules/.bin/jiti tools/voice-solo.ts` — озвучка одиночной истории; `node tools/voice-noise.mjs <папка>` —
   шумовой пол готовых файлов.
 - `CASE=<дело> node_modules/.bin/jiti tools/voice.ts` — озвучка (ElevenLabs).
+- `node tools/og-image.mjs` — картинка превью ссылок (`public/og/red-thread.jpg`, 1200×630) из `tools/og-image.html`:
+  Chrome без окна и ffmpeg. Заголовок, описание и картинку для Telegram и поисковиков вставляет `server/plugins/meta.ts`.
 - `CASE=<дело> node tools/music.mjs` — музыкальные темы дела, `node tools/sfx.mjs <мир>` — звуки мира.
 - `NODE_EXTRA_CA_CERTS=tools/certs/russian_ca_bundle.pem CASE=<дело> SETTING=<мир> node tools/gigachat-art.mjs` —
   иллюстрации (GigaChat); `tools/flux.mjs` — FLUX на Hugging Face.

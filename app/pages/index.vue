@@ -3,7 +3,7 @@ import type { Beat, ClientMessage, SettingInfo } from '#shared/types'
 import { ART } from '~/utils/art'
 import { formatRoom } from '~/utils/room'
 
-useHead({ title: 'Красная нить — экран' })
+useHead({ title: 'Красная нить — кооперативный детектив' })
 
 const { state, connected, ready, hostAuthorized, hostPending, hostChecked, hostReason, roomCode, send, createRoom } = useGame('host')
 const { config, loaded: configLoaded } = useConfig()
