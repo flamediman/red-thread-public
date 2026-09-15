@@ -386,14 +386,13 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-place__body { stroke-width: 0.35; }
     .m-place--building .m-place__body { fill: #30363c; stroke: #414850; }
     .m-place--building.m-place--seen .m-place__body { fill: #3f464e; stroke: #58616b; }
-    .m-place--asphalt .m-place__body, .m-place--tile .m-place__body { fill: #262b30; stroke: #30363c; }
+    .m-place--asphalt .m-place__body, .m-place--tile .m-place__body, .m-place--water .m-place__body { fill: #2a2f34; stroke: #353b41; }
     .m-place--wood .m-place__body { fill: #332c25; stroke: #463c32; }
     .m-place--grass .m-place__body { fill: #222d25; stroke: #2c3a30; }
-    .m-place--water .m-place__body { fill: #1b3442; stroke: #24465a; }
     .m-place--seen:not(.m-place--building) .m-place__body { filter: brightness(1.18); }
-    .m-place--here .m-place__body { stroke: #e2b84f; stroke-width: 0.55; }
-    .m-place--locked .m-place__body { stroke: #b5463b; stroke-width: 0.5; stroke-dasharray: 1.4 0.9; }
-    .m-fog__base { fill: #0c0e0f; opacity: 0.8; }
+    .m-place--here.m-place--building .m-place__body { stroke: #e2b84f; stroke-width: 0.55; }
+    .m-place--locked.m-place--building .m-place__body { stroke: #b5463b; stroke-width: 0.5; stroke-dasharray: 1.4 0.9; }
+    .m-fog__base { fill: #0c0e0f; opacity: 0.72; }
     .m-label { font-weight: 600; paint-order: stroke; stroke: #111416; stroke-width: 0.55px; }
     .m-label--water { fill: #4f7d96; font-size: 2.2px; font-style: italic; }
     .m-label--street { fill: #7d858e; font-size: 1.8px; }

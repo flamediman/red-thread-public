@@ -16,6 +16,15 @@ const A = computed(() => areaNow.value?.aspect ?? 1.5)
 const W = computed(() => 100 * A.value)
 const geo = computed<SoloAreaMap>(() => areaNow.value?.map ?? {})
 const places = computed(() => props.map.places.filter(p => p.area === tab.value))
+/* на широком плане (дорога) высота меньше — подписи и метки крупнее, чтобы читались так же */
+const K = computed(() => Math.max(1, A.value / 1.5))
+/* улица под открытым небом — не здание: небольшая площадка в середине своего прямоугольника */
+const pad = (p: Place) => {
+  const w = p.w * A.value, h = p.h, s = Math.min(w, h) * 0.62
+  return { x: cx(p) - s / 2 * 1.35, y: cy(p) - s / 2, w: s * 1.35, h: s }
+}
+/* проходы рисуются там, где нет своих улиц и тропинок, — в зданиях; на улицах их заменяет сама карта */
+const showLinks = computed(() => !geo.value.roads?.length && !geo.value.paths?.length)
 
 const cx = (p: Place) => (p.x + p.w / 2) * A.value
 const cy = (p: Place) => p.y + p.h / 2
@@ -29,7 +38,7 @@ const links = computed(() => {
   })
 })
 /* туман рассеивается вокруг мест, где герой был; у соседних — чуть-чуть, чтобы было видно, что там что-то есть */
-const reveal = (p: Place) => Math.max(p.w * A.value, p.h) * (p.visited ? 0.78 : 0.42) + (p.visited ? 7 : 2)
+const reveal = (p: Place) => Math.max(p.w * A.value, p.h) * (p.visited ? 0.95 : 0.45) + (p.visited ? 11 : 3)
 /* длинное название — в две строки, по ближайшему к середине пробелу */
 function nameLines(p: Place) {
   const t = p.visited ? p.name : '?'
@@ -96,7 +105,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <filter :id="`${uid}-soft`" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.6" /></filter>
             <filter :id="`${uid}-fogtex`" x="0" y="0" width="100%" height="100%">
               <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="3" seed="11" />
-              <feColorMatrix values="0 0 0 0 0.62  0 0 0 0 0.66  0 0 0 0 0.68  0 0 0 0.55 0" />
+              <feColorMatrix values="0 0 0 0 0.62  0 0 0 0 0.66  0 0 0 0 0.68  0 0 0 0.38 0" />
             </filter>
             <mask :id="`${uid}-fog`" maskUnits="userSpaceOnUse" x="0" y="0" :width="W" height="100">
               <rect :width="W" height="100" fill="#fff" />
@@ -117,7 +126,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <path v-for="(d, i) in geo.water" :key="`w${i}`" class="m-water" :d="d" />
           </g>
           <rect v-for="(f, i) in geo.floors" :key="`fl${i}`" class="m-floor" :x="f.x * A" :y="f.y" :width="f.w * A" :height="f.h" rx="1.2" />
-          <text v-for="(f, i) in geo.floors" :key="`flt${i}`" class="m-floor-label" :x="f.x * A + 1.4" :y="f.y + 3.2">{{ f.label }}</text>
           <polyline v-for="(l, i) in geo.paths" :key="`p${i}`" class="m-path" :points="pts(l)" />
           <g class="m-roads">
             <polyline v-for="(l, i) in geo.roads" :key="`rc${i}`" class="m-road-casing" :points="pts(l)" />
@@ -130,9 +138,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
           <!-- места: здания и площадки -->
           <g v-for="p in places" :key="p.id" class="m-place" :class="[p.outdoor ? `m-place--${p.surface}` : 'm-place--building', { 'm-place--seen': p.visited, 'm-place--here': p.here, 'm-place--locked': p.locked }]">
-            <rect v-if="!p.outdoor" class="m-place__shadow" :x="p.x * A + 0.7" :y="p.y + 0.9" :width="p.w * A" :height="p.h" rx="0.8" />
-            <rect class="m-place__body" :x="p.x * A" :y="p.y" :width="p.w * A" :height="p.h" :rx="p.outdoor ? 2.2 : 0.8" />
+            <template v-if="!p.outdoor">
+              <rect class="m-place__shadow" :x="p.x * A + 0.7" :y="p.y + 0.9" :width="p.w * A" :height="p.h" rx="0.8" />
+              <rect class="m-place__body" :x="p.x * A" :y="p.y" :width="p.w * A" :height="p.h" rx="0.8" />
+            </template>
+            <rect v-else class="m-place__body" :x="pad(p).x" :y="pad(p).y" :width="pad(p).w" :height="pad(p).h" :rx="pad(p).h / 2" />
           </g>
+          <text v-for="(f, i) in geo.floors" :key="`flt${i}`" class="m-floor-label" :x="f.x * A + 1.4" :y="f.y + 3.2">{{ f.label }}</text>
 
           <!-- туман над неизведанным -->
           <g :mask="`url(#${uid}-fog)`" class="m-fog">
@@ -140,15 +152,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <rect :width="W" height="100" :filter="`url(#${uid}-fogtex)`" />
           </g>
 
-          <g v-for="(l, i) in geo.labels" :key="`l${i}`" :transform="`translate(${l.x * A},${l.y}) rotate(${l.rotate ?? 0})`">
+          <g v-for="(l, i) in geo.labels" :key="`l${i}`" :transform="`translate(${l.x * A},${l.y}) rotate(${l.rotate ?? 0}) scale(${K})`">
             <text class="m-label" :class="`m-label--${l.kind ?? 'area'}`" text-anchor="middle">{{ l.text }}</text>
           </g>
 
           <!-- проходы между известными местами -->
-          <path v-for="l in links" :key="l.key" class="m-route" :d="l.d" />
+          <template v-if="showLinks"><path v-for="l in links" :key="l.key" class="m-route" :d="l.d" /></template>
 
           <!-- метки -->
-          <g v-for="p in places" :key="`pin-${p.id}`" class="m-pin" :class="{ 'm-pin--unknown': !p.visited, 'm-pin--here': p.here }" :transform="`translate(${cx(p)},${cy(p)})`">
+          <g v-for="p in places" :key="`pin-${p.id}`" class="m-pin" :class="{ 'm-pin--unknown': !p.visited, 'm-pin--here': p.here }" :transform="`translate(${cx(p)},${cy(p)}) scale(${K})`">
             <circle v-if="p.here" class="m-pin__pulse" r="4.2" />
             <circle class="m-pin__dot" r="2.7" :fill="p.visited ? HUE[p.poi] ?? '#66707a' : '#3a4047'" />
             <path v-if="p.visited" class="m-pin__icon" :d="ICON[p.poi] ?? ICON.door" transform="translate(-1.55,-1.55) scale(0.13)" />
