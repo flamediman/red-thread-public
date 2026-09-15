@@ -1,4 +1,5 @@
-/* Поисковым роботам: игра и одиночные истории — можно, служебное и страницы входа в комнату — нет. */
+/* Поисковым роботам: служебное закрыто. Страница входа в комнату не закрыта — превьюшники мессенджеров
+   могут слушаться robots.txt, а из поиска её убирает meta robots noindex (server/plugins/meta.ts). */
 import { siteOrigin } from '../utils/site'
 
 export default defineEventHandler((event) => {
@@ -7,7 +8,6 @@ export default defineEventHandler((event) => {
   return [
     'User-agent: *',
     'Disallow: /api/',
-    'Disallow: /play',
     'Disallow: /_ws',
     'Disallow: /_solo',
     '',
