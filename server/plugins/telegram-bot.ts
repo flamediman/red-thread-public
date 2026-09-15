@@ -3,8 +3,8 @@
    Работает только на сервере «в сети» с TELEGRAM_BOT_TOKEN и TELEGRAM_CHANNEL: длинный опрос getUpdates, без вебхука.
    Владелец — создатель канала (или TELEGRAM_OWNER_ID); чтобы бот мог ему писать, владелец один раз жмёт «Старт» у бота.
    Всё входящее и комментарии под постами — в .data/telegram/inbox.jsonl (сводка отзывов читается оттуда).
-   Пока бот слушает здесь, getUpdates с другой машины (tools/telegram.mjs updates) конфликтует с опросом. */
-import { setDefaultResultOrder } from 'node:dns'
+   Пока бот слушает здесь, getUpdates с другой машины (tools/telegram.mjs updates) конфликтует с опросом.
+   Сервер сайта ходит в Telegram только по IPv6 (IPv4 провайдер режет) — контейнер в сети хоста, см. DEPLOY.md. */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
@@ -53,8 +53,6 @@ function loadState(): State {
 
 export default defineNitroPlugin((nitroApp) => {
   if (!IS_PUBLIC || !TOKEN || !CHANNEL) return
-  // api.telegram.org отдаёт и IPv6-адрес; на сервере без рабочего IPv6 fetch ждёт его до таймаута и не пробует IPv4
-  setDefaultResultOrder('ipv4first')
   mkdirSync(DIR, { recursive: true })
   const state = loadState()
   /** сообщение у владельца → чат игрока: по нему ответ находит адресата */
