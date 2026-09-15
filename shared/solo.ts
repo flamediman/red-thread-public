@@ -102,6 +102,8 @@ export interface SoloAreaMap {
   floors?: { x: number; y: number; w: number; h: number; label: string }[]
   /** подписи местности; rotate — в градусах */
   labels?: { x: number; y: number; text: string; kind?: 'water' | 'street' | 'area'; rotate?: number }[]
+  /** мелочи для духа места: tree, bush, lamp, bench, statue, busstop, barrier, boat, pier, flagpole, sign, mast, truck; size — в процентах высоты */
+  props?: { kind: string; x: number; y: number; rotate?: number; size?: number }[]
 }
 
 export interface SoloPlace {

@@ -373,31 +373,60 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &__svg { display: block; width: 100%; height: auto; max-height: calc(100dvh - 11rem); font-family: var(--font-ui);
     .m-land { fill: #1b1f23; }
     .m-grass { fill: #1f2923; }
-    .m-forest { fill: #1b2721; }
-    .m-tree { fill: #22342a; }
-    .m-water { fill: #172d3a; stroke: #24465a; stroke-width: 1px; vector-effect: non-scaling-stroke; }
-    .m-floor { fill: #20252a; stroke: #353b42; stroke-width: 0.3; }
+    .m-grass-dot { fill: #2a3a2e; }
+    .m-forest { fill: #1a2620; stroke: #223428; stroke-width: 0.4; }
+    .m-tree { fill: #24382b; }
+    .m-shore { fill: none; stroke: #2a4d60; stroke-width: 2.4; stroke-opacity: 0.35; stroke-linejoin: round; }
+    .m-water { fill: #172d3a; stroke: #24465a; stroke-width: 0.35; }
+    .m-ripple { fill: none; stroke: #23445a; stroke-width: 0.22; }
+    .m-floor__shadow { fill: #0f1113; }
+    .m-floor { fill: #1f2429; stroke: #4b545d; stroke-width: 0.8; }
     .m-floor-label { fill: #6b737c; font-size: 1.9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
-    .m-path { fill: none; stroke: #3a3f44; stroke-width: 0.55; stroke-dasharray: 1.2 0.9; stroke-linecap: round; }
+    .m-path { fill: none; stroke: #3d4348; stroke-width: 0.55; stroke-dasharray: 1.2 0.9; stroke-linecap: round; }
     .m-road-casing { fill: none; stroke: #0e1012; stroke-width: 3.1; stroke-linecap: round; stroke-linejoin: round; }
     .m-road { fill: none; stroke: #444a51; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .m-block { fill: #292e34; stroke: #33393f; stroke-width: 0.25; }
-    .m-block-shadow, .m-place__shadow { fill: #101214; }
+    .m-road-mid { fill: none; stroke: #2a2f35; stroke-width: 0.2; stroke-dasharray: 1.4 1; stroke-linecap: round; }
+    .m-block__shadow, .m-place__shadow { fill: #0f1113; }
+    .m-block__body { fill: #292e34; stroke: #363c43; stroke-width: 0.25; }
+    .m-block__ridge, .m-place__ridge { fill: none; stroke: #3b424a; stroke-width: 0.28; stroke-linecap: round; }
     .m-place__body { stroke-width: 0.35; }
+    .m-place__door { fill: #4c545d; }
     .m-place--building .m-place__body { fill: #30363c; stroke: #414850; }
     .m-place--building.m-place--seen .m-place__body { fill: #3f464e; stroke: #58616b; }
+    .m-place--building.m-place--seen .m-place__ridge { stroke: #515963; }
+    .m-place--building.m-place--seen .m-place__door { fill: #7a838d; }
     .m-place--asphalt .m-place__body, .m-place--tile .m-place__body, .m-place--water .m-place__body { fill: #2a2f34; stroke: #353b41; }
     .m-place--wood .m-place__body { fill: #332c25; stroke: #463c32; }
     .m-place--grass .m-place__body { fill: #222d25; stroke: #2c3a30; }
     .m-place--seen:not(.m-place--building) .m-place__body { filter: brightness(1.18); }
     .m-place--here.m-place--building .m-place__body { stroke: #e2b84f; stroke-width: 0.55; }
     .m-place--locked.m-place--building .m-place__body { stroke: #b5463b; stroke-width: 0.5; stroke-dasharray: 1.4 0.9; }
+    /* мелочи: штрих, цвет — по роду вещи */
+    .m-prop path { fill: none; stroke: #5a626b; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .m-prop--tree path { fill: #223b2c; stroke: #2f5038; stroke-width: 1.2; }
+    .m-prop--bush path { fill: #23372a; stroke: #2f4a35; stroke-width: 1.2; }
+    .m-prop--lamp path { stroke: #6b737c; }
+    .m-prop__glow { fill: rgba(226, 184, 79, 0.14); }
+    .m-prop--boat path { fill: #3a3128; stroke: #6a5a46; }
+    .m-prop--pier path { fill: #3a3128; stroke: #6a5a46; stroke-width: 1; }
+    .m-prop--statue path { fill: #4a5058; stroke: #8a9199; stroke-width: 1; }
+    .m-prop--busstop path { stroke: #667079; }
+    .m-prop--bench path { stroke: #6a5a46; }
+    .m-prop--barrier path { stroke: #d8d2c6; stroke-width: 2.6; }
+    .m-prop--barrier .m-prop__extra { stroke: #b5463b; stroke-dasharray: 3 3; }
+    .m-prop--sign path { fill: #8d2f2a; stroke: #6b737c; stroke-width: 1.4; }
+    .m-prop--sign .m-prop__extra { fill: none; stroke: #eee6d8; stroke-width: 2.2; }
+    .m-prop--flagpole path { stroke: #8a9199; }
+    .m-prop--flagpole .m-prop__extra { fill: #b5463b; stroke: #b5463b; stroke-width: 0.6; }
+    .m-prop--mast path { stroke: #6b737c; }
+    .m-prop--truck path { fill: #2f343a; stroke: #667079; }
     .m-fog__base { fill: #0c0e0f; opacity: 0.72; }
     .m-label { font-weight: 600; paint-order: stroke; stroke: #111416; stroke-width: 0.55px; }
     .m-label--water { fill: #4f7d96; font-size: 2.2px; font-style: italic; }
     .m-label--street { fill: #7d858e; font-size: 1.8px; }
     .m-label--area { fill: #4a6152; font-size: 2px; letter-spacing: 0.3em; text-transform: uppercase; }
-    .m-route { fill: none; stroke: rgba(226, 184, 79, 0.32); stroke-width: 0.4; stroke-dasharray: 0.9 0.8; stroke-linecap: round; }
+    .m-route { fill: none; stroke: rgba(226, 184, 79, 0.28); stroke-width: 0.4; stroke-dasharray: 0.9 0.8; stroke-linecap: round; }
+    .m-door { fill: #e2b84f; opacity: 0.55; }
     .m-pin__dot { stroke: #0e1012; stroke-width: 0.5; }
     .m-pin__icon { fill: none; stroke: #f3f0e8; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
     .m-pin__q { fill: #8a929b; font-size: 2.8px; font-weight: 700; }
@@ -407,7 +436,14 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-pin__pulse { fill: rgba(226, 184, 79, 0.18); stroke: #e2b84f; stroke-width: 0.35; transform-box: fill-box; transform-origin: center; animation: map-pulse 1.8s ease-out infinite; }
     .m-pin__badge { fill: #e2b84f; stroke: #0e1012; stroke-width: 0.3; }
     .m-pin__lock { fill: #b5463b; stroke: #0e1012; stroke-width: 0.3; }
-    .m-pin__badge-icon { fill: none; stroke: #16191c; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; } }
+    .m-pin__badge-icon { fill: none; stroke: #16191c; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .m-compass__ring { fill: rgba(14, 16, 18, 0.55); stroke: #59616a; stroke-width: 0.25; }
+    .m-compass__north { fill: #b5463b; }
+    .m-compass__south { fill: #59616a; }
+    .m-compass__ew { fill: #3f464e; }
+    .m-compass__pin { fill: #d5d9dd; }
+    .m-compass__n { fill: #a9b0b8; font-size: 2px; font-weight: 700; }
+    .m-sheet { fill: #59616a; font-size: 1.9px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; } }
   &__key { display: inline-block; width: 0.62rem; height: 0.62rem; margin-right: 0.35rem; border-radius: 50%; vertical-align: -0.05rem;
     &--here { background: rgba(226, 184, 79, 0.25); box-shadow: inset 0 0 0 1.5px #e2b84f; }
     &--save { background: #e2b84f; }
