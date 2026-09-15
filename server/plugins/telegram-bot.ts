@@ -5,9 +5,8 @@
    Всё входящее и комментарии под постами — в .data/telegram/inbox.jsonl (сводка отзывов читается оттуда).
    Пока бот слушает здесь, getUpdates с другой машины (tools/telegram.mjs updates) конфликтует с опросом.
    Сервер сайта ходит в Telegram только по IPv6 (IPv4 провайдер режет) — контейнер в сети хоста, см. DEPLOY.md. */
-import { setDefaultResultOrder } from 'node:dns'
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { setDefaultAutoSelectFamily } from 'node:net'
+import { request } from 'node:https'
 import { join } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
 import { IS_PUBLIC } from '../utils/mode'
@@ -55,8 +54,8 @@ function loadState(): State {
 
 export default defineNitroPlugin((nitroApp) => {
   if (!IS_PUBLIC || !TOKEN || !CHANNEL) return
-  // TELEGRAM_IPV6=1 — к Telegram только по IPv6: без этого Node пробует IPv6 четверть секунды, уходит на IPv4 и упирается в блокировку
-  if (process.env.TELEGRAM_IPV6 === '1') { setDefaultResultOrder('ipv6first'); setDefaultAutoSelectFamily(false) }
+  // TELEGRAM_IPV6=1 — к Telegram только по IPv6: провайдер сервера режет его по IPv4, а fetch сам с IPv4 не уходит
+  const FAMILY = process.env.TELEGRAM_IPV6 === '1' ? 6 : 0
   mkdirSync(DIR, { recursive: true })
   const state = loadState()
   /** сообщение у владельца → чат игрока: по нему ответ находит адресата */
@@ -75,17 +74,29 @@ export default defineNitroPlugin((nitroApp) => {
   const log = (entry: Record<string, unknown>) => appendFileSync(INBOX, JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n')
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-  async function api<T = unknown>(method: string, body: Record<string, unknown> = {}, timeoutMs = 15_000): Promise<T> {
+  /* запрос к Bot API через node:https — чтобы можно было задать семейство адресов */
+  function api<T = unknown>(method: string, body: Record<string, unknown> = {}, timeoutMs = 15_000): Promise<T> {
+    const payload = JSON.stringify(body)
     abort = new AbortController()
-    const timer = setTimeout(() => abort?.abort(), timeoutMs)
-    try {
-      const r = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: abort.signal
+    return new Promise<T>((resolve, reject) => {
+      const req = request({
+        host: 'api.telegram.org', path: `/bot${TOKEN}/${method}`, method: 'POST', family: FAMILY || undefined, signal: abort!.signal, timeout: timeoutMs,
+        headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }
+      }, (res) => {
+        let raw = ''
+        res.setEncoding('utf8')
+        res.on('data', (c: string) => { raw += c })
+        res.on('end', () => {
+          let data: { ok: boolean; result: T; description?: string }
+          try { data = JSON.parse(raw) } catch { return reject(new Error(`${method}: HTTP ${res.statusCode}`)) }
+          if (!data.ok) return reject(new Error(`${method}: ${data.description}`))
+          resolve(data.result)
+        })
       })
-      const data = await r.json().catch(() => ({ ok: false, description: `HTTP ${r.status}` })) as { ok: boolean; result: T; description?: string }
-      if (!data.ok) throw new Error(`${method}: ${data.description}`)
-      return data.result
-    } finally { clearTimeout(timer) }
+      req.on('timeout', () => req.destroy(new Error(`${method}: таймаут`)))
+      req.on('error', (e: NodeJS.ErrnoException) => reject(new Error(`${method}: ${e.code ?? e.message}`)))
+      req.end(payload)
+    })
   }
   const send = (chat: number, text: string, extra: Record<string, unknown> = {}) => api<TgMessage>('sendMessage', { chat_id: chat, text, link_preview_options: { is_disabled: true }, ...extra })
 
