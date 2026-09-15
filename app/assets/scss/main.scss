@@ -1209,6 +1209,11 @@ img.img-missing { visibility: hidden; }
     small { flex: none; font-family: var(--font-ui); font-weight: 700; font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brass-2); }
     &--item small { color: var(--sea); } }
 }
+/* чипы фильтров на светлой карточке: неактивные — светлые, активный — тёмный (на тёмном фоне наоборот) */
+.veil__card .chip { background: rgba(28, 26, 31, 0.06); color: var(--ink-2); border-color: var(--paper-3); .chip__dot { opacity: 0.9; } }
+.veil__card .chip--on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+[data-setting='neon'] .veil__card .chip { background: rgba(241, 233, 216, 0.06); color: var(--paper-dim); border-color: var(--glass-line); }
+[data-setting='neon'] .veil__card .chip--on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 /* карточки к вопросу: слоты сверху (приколотые — тёмные плашки, пустые — пунктир), ниже фильтры и список */
 .field-pick { display: flex; flex-direction: column; gap: 0.6rem; max-height: 88dvh; max-width: 100%; min-width: 0; box-sizing: border-box;
   > * { min-width: 0; }
