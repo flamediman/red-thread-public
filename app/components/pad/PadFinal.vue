@@ -21,7 +21,7 @@ const sub = computed(() => props.state.outcome === 'failed'
     <div v-if="config.telegram || config.donate || config.bot" class="pad-links">
       <p>Понравилось? Расскажите в канале и выберите, каким будет следующее дело.</p>
       <a v-if="config.telegram" class="btn" :href="config.telegram" target="_blank" rel="noopener">Канал игры в Telegram</a>
-      <a v-if="config.bot" class="btn btn--ghost" :href="`${config.bot}?start=review`" target="_blank" rel="noopener">Отзыв или баг — написать нам</a>
+      <a v-if="config.bot" class="btn btn--ghost" :href="`${config.bot}?start=review`" target="_blank" rel="noopener">Поделиться впечатлениями</a>
       <a v-if="config.donate" class="btn btn--ghost" :href="config.donate" target="_blank" rel="noopener">Поддержать проект</a>
     </div>
   </div>

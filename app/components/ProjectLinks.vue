@@ -5,7 +5,7 @@ const open = ref(false)
 const cards = computed(() => [
   config.value.telegram && { id: 'tg', url: config.value.telegram, title: 'Канал игры', text: 'Новости, голосования за новые дела, обратная связь' },
   config.value.donate && { id: 'donate', url: config.value.donate, title: 'Поддержать', text: 'Любая сумма — на голоса, музыку и иллюстрации новых дел' },
-  config.value.bot && { id: 'bot', url: config.value.bot, title: 'Написать нам', text: 'Баг, идея или отзыв о партии — ответим лично' }
+  config.value.bot && { id: 'bot', url: config.value.bot, title: 'Написать нам', text: 'Баг, идея или впечатления — ответим лично' }
 ].filter((c): c is { id: string; url: string; title: string; text: string } => !!c))
 /** подпись под кодом: короткий адрес как есть; длинную ссылку банка с реквизитами на экран не выводим */
 const BANKS = /sberbank|tbank|tinkoff|nspk|alfabank|vtb|yoomoney/
