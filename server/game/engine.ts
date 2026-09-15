@@ -22,8 +22,8 @@ const FIELD_SECOND_MS = 10_000      // второй, внимательный о
 const FIELD_TALK_MS = 5000
 const FIELD_ABILITY_MS = 4000
 const FIELD_FORCE_MS = 4000         // взлом замка — сверх осмотра
-const FIELD_WRONG_MS = 45_000       // неверные карточки на вопросе доски
-const FIELD_COOLDOWN_MS = 20_000    // вопрос «остывает» после неверной попытки
+const FIELD_WRONG_MS = 15_000       // неподходящая карточка на вопросе доски
+const FIELD_COOLDOWN_MS = 8_000     // вопрос «остывает» после неподходящей карточки
 const FIELD_ACCUSE_PENALTY_MS = 5 * 60_000
 const FIELD_FEED = 40, FIELD_LOG = 40, FIELD_MOMENTS = 8
 const FIELD_FRESH_MS = 2 * 60_000   // «новое» у вопроса, открывшегося за последние две минуты
@@ -175,6 +175,8 @@ export class Game {
   fieldLeftMs = 0
   solved = new Set<string>()
   solveCooldown = new Map<string, number>()
+  /** карточки, приколотые к вопросам доски (по одной, каждая проверена) */
+  qpins = new Map<string, string[]>()
   /** места осмотра, которых больше нет */
   gone = new Set<string>()
   /** запертые места, которые вскрыли способностью */
@@ -574,6 +576,8 @@ export class Game {
         this.settleWalk(p, Date.now()); p.walk = null; p.busy = null; this.emit()
         break
       case 'solve': if (typeof msg.questionId === 'string') this.fieldSolve(p, msg.questionId, msg.factIds); break
+      case 'qpin': if (typeof msg.questionId === 'string' && typeof msg.factId === 'string') this.fieldPin(p, msg.questionId, msg.factId); break
+      case 'qunpin': if (typeof msg.questionId === 'string' && typeof msg.factId === 'string') this.fieldUnpin(msg.questionId, msg.factId); break
       case 'vote':
         if (this.screen !== 'accuse' || !this.accusation) return
         this.accusation.votes[pid] = { ...(this.accusation.votes[pid] ?? {}), ...this.pickVote(msg) }
@@ -872,7 +876,7 @@ export class Game {
       const hasKey = !!spot.locked.keyItemId && this.items.has(spot.locked.keyItemId)
       const canForce = force && this.canForceLock(spot, kind) && (p.usesLeft ?? 0) > 0
       if (!hasKey && !canForce) {
-        out.push(this.narrate(`s_${p.id}_${this.round}`, `${whereFor(spot.locked.text)} ${spot.locked.text}`, ['door-knob']))
+        out.push({ ...this.narrate(`s_${p.id}_${this.round}`, `${whereFor(spot.locked.text)} ${spot.locked.text}`, ['door-knob']), meta: whereFor(spot.locked.text) })
         return out
       }
       if (!hasKey && canForce) { p.usesLeft!--; out.push(this.narrate(`s_${p.id}_${this.round}_f`, `${where} ${this.act(p, spot.locked.kind === 'digital' ? 'Защита сдаётся нетраннеру за минуту.' : 'Замок сдаётся взломщику за минуту.')}`, [spot.locked.kind === 'digital' ? 'static' : 'door-knob'])) }
@@ -882,7 +886,7 @@ export class Game {
       if (f.itemId) this.items.add(f.itemId)
       this.addFact(f.factId, p.id, { locationId: spot.locationId })
       const item = f.itemId ? this.b.ITEM.get(f.itemId) : null
-      out.push({ ...this.narrate(id, `${prefix} ${f.text}${item ? ` В улики: «${item.name}».` : ''}`, f.sfx ?? ['drawer'], item ? 1400 : 700), itemId: item?.id, itemName: item?.name })
+      out.push({ ...this.narrate(id, `${prefix} ${f.text}${item ? ` В улики: «${item.name}».` : ''}`, f.sfx ?? ['drawer'], item ? 1400 : 700), meta: prefix.trim(), itemId: item?.id, itemName: item?.name, facts: f.factId ? [f.factId] : undefined })
     }
 
     if (!this.searched.has(spot.id)) {
@@ -894,7 +898,7 @@ export class Game {
       this.hiddenDone.add(spot.id)
       applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, `${where} Второй осмотр, внимательнее.`)
     } else if (!this.memoryReadable(spot, kind)) {
-      out.push(this.narrate(`s_${p.id}_${this.round}`, `${where} Здесь уже всё осмотрено — ничего нового.`))
+      out.push({ ...this.narrate(`s_${p.id}_${this.round}`, `${where} Здесь уже всё осмотрено — ничего нового.`), meta: where })
     }
 
     // запись памяти: читается при любом осмотре, если сыщик — брейнданс-техник или у бригады есть проигрыватель
@@ -1368,6 +1372,47 @@ export class Game {
     }
   }
 
+  /** карточка к вопросу по одной: подходит хоть к одному набору вместе с уже приколотыми — остаётся, набралось slots — вопрос решён;
+      не подходит — штраф команде и короткое остывание вопроса */
+  private fieldPin(p: PlayerRecord, questionId: string, factId: string) {
+    if (this.screen !== 'field' || this.paused) return
+    const q = this.S.realtime?.board.find(x => x.id === questionId)
+    if (!q || this.solved.has(q.id) || !this.reqOk(q.requires) || !this.board.has(factId)) return
+    const now = Date.now()
+    if ((this.solveCooldown.get(q.id) ?? 0) > now) return
+    const pinned = this.qpins.get(q.id) ?? []
+    if (pinned.includes(factId)) return
+    const title = this.b.FACT.get(factId)?.title ?? ''
+    if (q.answers.some(a => a.includes(factId) && pinned.every(f => a.includes(f)))) {
+      const next = [...pinned, factId]
+      if (next.length >= q.slots) {
+        this.qpins.delete(q.id)
+        this.solved.add(q.id)
+        this.addFact(q.yieldsFactId, p.id)
+        this.pushMoment({ ...q.beat, facts: [q.yieldsFactId] }, q.title)
+        this.pushFeed({ kind: 'solve', playerId: p.id, text: `${p.name} закрывает вопрос «${q.title}»: ${this.b.FACT.get(q.yieldsFactId)?.title ?? ''}` })
+      } else {
+        this.qpins.set(q.id, next)
+        this.pushFeed({ kind: 'pin', playerId: p.id, text: `${p.name} прикалывает «${title}» к вопросу «${q.title}» — подходит, нужна ещё ${q.slots - next.length === 1 ? 'одна' : String(q.slots - next.length)}.` })
+      }
+    } else {
+      this.solveCooldown.set(q.id, now + FIELD_COOLDOWN_MS)
+      this.fieldPenaltyMs += FIELD_WRONG_MS
+      if (this.deadline) this.deadline -= FIELD_WRONG_MS
+      this.pushFeed({ kind: 'fail', playerId: p.id, text: `${p.name}: «${title}» к вопросу «${q.title}» не подходит. Минус ${FIELD_WRONG_MS / 1000} секунд.` })
+    }
+    this.emit()
+  }
+
+  private fieldUnpin(questionId: string, factId: string) {
+    if (this.screen !== 'field') return
+    const pinned = this.qpins.get(questionId)
+    if (!pinned?.includes(factId)) return
+    const next = pinned.filter(f => f !== factId)
+    if (next.length) this.qpins.set(questionId, next); else this.qpins.delete(questionId)
+    this.emit()
+  }
+
   private fieldSolve(p: PlayerRecord, questionId: string, factIds: unknown) {
     if (this.screen !== 'field' || this.paused || !Array.isArray(factIds)) return
     const q = this.S.realtime?.board.find(x => x.id === questionId)
@@ -1457,7 +1502,7 @@ export class Game {
       players: [...this.players.values()].map(p => ({ id: p.id, walk: p.walk ?? null, busy: p.busy ? { label: p.busy.label, startedAt: p.busy.startedAt, until: p.busy.until } : null })),
       questions: (this.S.realtime?.board ?? []).filter(q => this.solved.has(q.id) || this.reqOk(q.requires)).map(q => {
         const cd = this.solveCooldown.get(q.id) ?? 0
-        return { id: q.id, group: q.group, title: q.title, slots: q.slots, solved: this.solved.has(q.id), yieldsFactId: this.solved.has(q.id) ? q.yieldsFactId : null, cooldownUntil: cd > now ? cd : null, hint: this.slotHint(q) }
+        return { id: q.id, group: q.group, title: q.title, slots: q.slots, solved: this.solved.has(q.id), yieldsFactId: this.solved.has(q.id) ? q.yieldsFactId : null, cooldownUntil: cd > now ? cd : null, pinned: this.qpins.get(q.id) ?? [], hint: this.slotHint(q) }
       }),
       feed: this.feed.slice(-30),
       moments: this.moments.slice(-6),
@@ -1509,7 +1554,7 @@ export class Game {
         unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()], confronted: [...this.confronted], openedAt: [...this.openedAt], tutorialStep: this.tutorialStep,
         beats: this.beats, beatIndex: this.beatIndex, proceedVotes: [...this.proceedVotes], accusation: this.accusation, verdict: this.verdict,
         attemptsLeft: this.attemptsLeft, hintsUsed: this.hintsUsed, hintsFired: [...this.hintsFired], eventsFired: [...this.eventsFired], outcome: this.outcome, pausedAt: this.pausedAt,
-        fieldTotalMs: this.fieldTotalMs, fieldPenaltyMs: this.fieldPenaltyMs, fieldLeftMs: this.fieldLeftMs, solved: [...this.solved], solveCooldown: [...this.solveCooldown],
+        fieldTotalMs: this.fieldTotalMs, fieldPenaltyMs: this.fieldPenaltyMs, fieldLeftMs: this.fieldLeftMs, solved: [...this.solved], solveCooldown: [...this.solveCooldown], qpins: [...this.qpins],
         gone: [...this.gone], openedLocs: [...this.openedLocs], feed: this.feed, moments: this.moments, seq: this.seq, savedAt: Date.now()
       }
       this.store.save(data)
@@ -1537,7 +1582,7 @@ export class Game {
       this.lieMarks = new Map(d.lieMarks ?? []); this.beats = d.beats ?? []; this.beatIndex = d.beatIndex ?? 0; this.proceedVotes = new Set(d.proceedVotes ?? [])
       this.accusation = d.accusation ?? null; this.verdict = d.verdict ?? null
       this.attemptsLeft = d.attemptsLeft ?? 2; this.hintsUsed = d.hintsUsed ?? 0; this.hintsFired = new Set(d.hintsFired ?? []); this.eventsFired = new Set(d.eventsFired ?? []); this.outcome = d.outcome ?? null
-      this.fieldTotalMs = d.fieldTotalMs ?? 0; this.fieldPenaltyMs = d.fieldPenaltyMs ?? 0; this.fieldLeftMs = d.fieldLeftMs ?? 0; this.solved = new Set(d.solved ?? []); this.solveCooldown = new Map(d.solveCooldown ?? [])
+      this.fieldTotalMs = d.fieldTotalMs ?? 0; this.fieldPenaltyMs = d.fieldPenaltyMs ?? 0; this.fieldLeftMs = d.fieldLeftMs ?? 0; this.solved = new Set(d.solved ?? []); this.solveCooldown = new Map(d.solveCooldown ?? []); this.qpins = new Map(d.qpins ?? [])
       this.gone = new Set(d.gone ?? []); this.openedLocs = new Set(d.openedLocs ?? []); this.feed = d.feed ?? []; this.moments = d.moments ?? []; this.seq = d.seq ?? 0
       // после перезапуска фаза с таймером ставится на паузу — ведущий продолжит, когда все вернутся;
       // простой сервера в оставшееся время не засчитывается

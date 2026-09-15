@@ -163,7 +163,7 @@ watch(() => field.value?.feed.at(-1)?.seq ?? 0, seq => {
           <div v-for="q in g.items" :key="q.id" class="field__q" :class="{ 'field__q--solved': q.solved, 'field__q--cool': cooling(q.cooldownUntil) }">
             <span class="field__q-title">{{ q.title }}</span>
             <span v-if="q.solved" class="field__q-answer">{{ cardTitle(q.yieldsFactId) }}</span>
-            <span v-else class="field__q-slots"><i v-for="n in q.slots" :key="n" /><small>{{ cooling(q.cooldownUntil) ? 'не сходится' : q.hint }}</small></span>
+            <span v-else class="field__q-slots"><i v-for="n in q.slots" :key="n" :class="{ on: n <= q.pinned.length }" /><small>{{ cooling(q.cooldownUntil) ? 'не сходится' : q.pinned.length ? `${q.pinned.length} из ${q.slots}` : q.hint }}</small></span>
           </div>
         </section>
       </div>

@@ -101,26 +101,39 @@ const groups = computed(() => {
 const solvedCount = computed(() => field.value?.questions.filter(q => q.solved).length ?? 0)
 const cardTitle = (id: string | null) => props.state.board.cards.find(c => c.id === id)?.title ?? ''
 
+/* карточки к вопросу — по одной: сервер сразу отвечает, подошла или нет; приколотые держатся у вопроса */
 const picking = ref<string | null>(null)
-const picked = ref<string[]>([])
 const pickKind = ref<BoardCard['kind'] | null>(null)
+const pickSource = ref<string | null>(null)
 const pickQ = computed(() => field.value?.questions.find(q => q.id === picking.value) ?? null)
-const pickCards = computed(() => [...props.state.board.cards].reverse()
-  .filter(c => !pickKind.value || c.kind === pickKind.value)
-  .sort((a, b) => Number(picked.value.includes(b.id)) - Number(picked.value.includes(a.id)) || Number(b.pinned) - Number(a.pinned)))
-function openPick(id: string) { picking.value = id; picked.value = []; pickKind.value = null }
-function togglePick(id: string) {
+const sourceOf = (c: BoardCard) => c.witnessId ? witnessName(c.witnessId) : c.locationId ? (props.state.locations.find(l => l.id === c.locationId)?.name ?? '') : ''
+/** фильтр по источнику: свидетели и комнаты, у которых хотя бы две карточки */
+const pickSources = computed(() => {
+  const n = new Map<string, number>()
+  for (const c of props.state.board.cards) { const src = sourceOf(c); if (src) n.set(src, (n.get(src) ?? 0) + 1) }
+  return [...n].filter(([, k]) => k >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([src]) => src)
+})
+const pinnedCards = computed(() => (pickQ.value?.pinned ?? []).map(id => props.state.board.cards.find(c => c.id === id)).filter((c): c is BoardCard => !!c))
+const pickCards = computed(() => {
+  const pinned = new Set(pickQ.value?.pinned ?? [])
+  return [...props.state.board.cards].reverse()
+    .filter(c => !pinned.has(c.id) && (!pickKind.value || c.kind === pickKind.value) && (!pickSource.value || sourceOf(c) === pickSource.value))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+})
+const pendingId = ref<string | null>(null)
+const shaking = ref<string | null>(null)
+let shakeTimer: ReturnType<typeof setTimeout> | null = null
+function openPick(id: string) { picking.value = id; pickKind.value = null; pickSource.value = null; pendingId.value = null; shaking.value = null }
+function pinCard(id: string) {
   const q = pickQ.value
-  if (!q) return
-  if (picked.value.includes(id)) picked.value = picked.value.filter(x => x !== id)
-  else if (picked.value.length < q.slots) picked.value = [...picked.value, id]
+  if (!q || coolLeft(q.cooldownUntil) > 0 || props.state.paused) return
+  pendingId.value = id
+  send({ type: 'qpin', questionId: q.id, factId: id })
 }
-function pin() {
-  const q = pickQ.value
-  if (!q || picked.value.length !== q.slots) return
-  send({ type: 'solve', questionId: q.id, factIds: picked.value })
-  picking.value = null
-}
+function unpinCard(id: string) { if (pickQ.value) send({ type: 'qunpin', questionId: pickQ.value.id, factId: id }) }
+// вопрос закрыт — окно выбора уходит, ответ видно в строке внизу и на экране
+watch(() => pickQ.value?.solved, solved => { if (solved) picking.value = null })
+onBeforeUnmount(() => { if (shakeTimer) clearTimeout(shakeTimer) })
 const coolLeft = (until: number | null) => until ? Math.max(0, Math.ceil((until - now.value) / 1000)) : 0
 
 /* ── журнал: новое сообщение открывается само ── */
@@ -132,6 +145,13 @@ watch(() => me.value?.log.at(-1)?.seq ?? 0, seq => {
   if (seq > lastSeen) { lastSeen = seq; reading.value = me.value!.log.at(-1)! }
 }, { immediate: true })
 const logNewest = computed(() => [...(me.value?.log ?? [])].reverse())
+/** осмотр или разговор — по тому, есть ли в записи чужая речь */
+const readKind = (e: FieldLogEntry) => e.beats.some(b => b.speaker !== 'narrator') ? 'Разговор' : 'Осмотр'
+/** смысловая часть реплики: без технического «кто и где» и без хвоста «В улики: …» — он показан отдельной плашкой */
+const storyText = (b: FieldLogEntry['beats'][number]) => {
+  const t = b.meta && b.text.startsWith(b.meta) ? b.text.slice(b.meta.length).trim() : b.text
+  return b.itemId ? t.replace(/\s*В улики: «[^»]*»\.?$/, '') : t
+}
 const speakerOf = (sp: string) => sp === 'narrator' ? null
   : sp === 'inspector' ? { name: props.state.caseInfo.helper.name, face: ART.witness('inspector') }
   : { name: witnessName(sp), face: ART.witness(sp) }
@@ -141,8 +161,11 @@ const toast = ref<{ text: string; ok: boolean } | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 watch(() => field.value?.feed.at(-1)?.seq, () => {
   const e = field.value?.feed.at(-1)
-  if (!e || e.playerId !== props.you.id || (e.kind !== 'solve' && e.kind !== 'fail')) return
-  toast.value = { text: e.text, ok: e.kind === 'solve' }
+  if (!e || e.playerId !== props.you.id || (e.kind !== 'solve' && e.kind !== 'fail' && e.kind !== 'pin')) return
+  // неподходящая карточка вздрагивает в списке; подошедшая уходит в слот сама
+  if (e.kind === 'fail' && pendingId.value) { shaking.value = pendingId.value; if (shakeTimer) clearTimeout(shakeTimer); shakeTimer = setTimeout(() => { shaking.value = null }, 900) }
+  pendingId.value = null
+  toast.value = { text: e.text, ok: e.kind !== 'fail' }
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toast.value = null }, 5000)
 })
@@ -323,7 +346,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
       </div>
 
       <template v-if="boardView === 'questions'">
-        <p class="plan__hint">Приколите к вопросу карточки, которые на него отвечают. Неверный набор отнимет 45 секунд у всей команды.</p>
+        <p class="plan__hint">Прикалывайте к вопросу карточки по одной: подходящая остаётся, неподходящая отнимает 15 секунд у команды. Заполнили все места — доска даст вывод.</p>
         <section v-for="g in groups" :key="g.name" class="plan__group">
           <p class="plan__tag">{{ g.name }}</p>
           <button
@@ -335,7 +358,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
             <span class="field-q__title">{{ q.title }}</span>
             <span v-if="q.solved" class="field-q__answer">{{ cardTitle(q.yieldsFactId) }}</span>
             <span v-else class="field-q__hint">
-              <i v-for="n in q.slots" :key="n" class="field-q__slot" />
+              <i v-for="n in q.slots" :key="n" class="field-q__slot" :class="{ on: n <= q.pinned.length }" />
               {{ coolLeft(q.cooldownUntil) > 0 ? `остывает ${coolLeft(q.cooldownUntil)} с` : q.hint }}
             </span>
           </button>
@@ -379,37 +402,59 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
       </article>
     </div>
 
-    <!-- новое в журнале: ответ или находка -->
+    <!-- новое в журнале: осмотр или ответ. Техническое «кто и где» — мелко и серо, находка и речь — крупно, что легло на доску — плашками -->
     <div v-if="reading" class="veil" @click.self="reading = null">
       <div class="veil__card field-read" role="dialog" aria-modal="true">
+        <header class="field-read__head">
+          <span class="field-read__kind">{{ readKind(reading) }}</span>
+          <span class="field-read__at tabnum">{{ reading.at }}</span>
+        </header>
         <template v-for="(b, i) in reading.beats" :key="i">
           <div v-if="speakerOf(b.speaker)" class="field-read__who"><img class="face" :src="speakerOf(b.speaker)!.face" alt=""><b>{{ speakerOf(b.speaker)!.name }}</b></div>
-          <p class="field-read__text" :class="{ 'field-read__text--said': b.speaker !== 'narrator' }">{{ b.text }}</p>
+          <p v-if="b.meta" class="field-read__meta">{{ b.meta }}</p>
+          <p v-if="storyText(b)" class="field-read__text" :class="{ 'field-read__text--said': b.speaker !== 'narrator', 'field-read__text--tech': b.speaker === 'narrator' && !b.meta }">{{ storyText(b) }}</p>
+          <div v-if="b.facts?.length || b.itemId" class="field-read__found">
+            <span v-for="f in b.facts ?? []" :key="f" class="field-read__chip"><small>на доску</small>{{ cardTitle(f) || '…' }}</span>
+            <span v-if="b.itemId" class="field-read__chip field-read__chip--item"><small>в улики</small>{{ b.itemName }}</span>
+          </div>
         </template>
         <div class="veil__actions"><button class="btn" type="button" @click="reading = null">Понятно</button></div>
       </div>
     </div>
 
-    <!-- выбор карточек для вопроса доски -->
+    <!-- карточки к вопросу доски — по одной: подошла — встала в слот, нет — вздрогнула и отняла время -->
     <div v-if="pickQ" class="veil" @click.self="picking = null">
       <div class="veil__card field-pick" role="dialog" aria-modal="true">
-        <h2 class="veil__title">{{ pickQ.title }}</h2>
-        <p class="veil__text">Нужно карточек: {{ pickQ.slots }} — {{ pickQ.hint }}.</p>
+        <p class="field-pick__group">{{ pickQ.group }}</p>
+        <h2 class="veil__title field-pick__title">{{ pickQ.title }}</h2>
+        <div class="field-pick__slots">
+          <button v-for="c in pinnedCards" :key="c.id" type="button" class="field-pick__slot field-pick__slot--on" title="Снять карточку" @click="unpinCard(c.id)"><b>{{ c.title }}</b><i>×</i></button>
+          <span v-for="n in Math.max(0, pickQ.slots - pinnedCards.length)" :key="`e${n}`" class="field-pick__slot">?</span>
+        </div>
+        <p class="field-pick__how">
+          Нужно {{ pickQ.slots }}: {{ pickQ.hint }}. Нажмите карточку — если подходит, она встанет в слот; неподходящая отнимет 15 секунд у команды.
+          <b v-if="coolLeft(pickQ.cooldownUntil) > 0">Вопрос остывает: {{ coolLeft(pickQ.cooldownUntil) }} с.</b>
+        </p>
         <div class="pad-filters">
           <button type="button" class="chip" :class="{ 'chip--on': !pickKind }" @click="pickKind = null">все</button>
           <button v-for="(label, k) in KIND_LABEL" :key="k" type="button" class="chip" :class="[`chip--${k}`, { 'chip--on': pickKind === k }]" @click="pickKind = pickKind === k ? null : k"><i class="chip__dot" />{{ label }}</button>
         </div>
-        <div class="field-pick__list">
-          <button v-for="c in pickCards" :key="c.id" type="button" class="field-pick__card" :class="[`mcard--${c.kind}`, { 'field-pick__card--on': picked.includes(c.id) }]" @click="togglePick(c.id)">
+        <div v-if="pickSources.length" class="pad-filters">
+          <button v-for="src in pickSources" :key="src" type="button" class="chip" :class="{ 'chip--on': pickSource === src }" @click="pickSource = pickSource === src ? null : src">{{ src }}</button>
+        </div>
+        <div class="field-pick__list" :class="{ 'field-pick__list--cool': coolLeft(pickQ.cooldownUntil) > 0 }">
+          <button
+            v-for="c in pickCards" :key="c.id" type="button" class="field-pick__card"
+            :class="[`mcard--${c.kind}`, { 'field-pick__card--shake': shaking === c.id, 'field-pick__card--pending': pendingId === c.id }]"
+            :disabled="coolLeft(pickQ.cooldownUntil) > 0" @click="pinCard(c.id)"
+          >
             <i class="mcard__kind" />
-            <span><b>{{ c.title }}</b><small>{{ c.detail }}</small></span>
-            <em>{{ picked.includes(c.id) ? picked.indexOf(c.id) + 1 : '' }}</em>
+            <span><b>{{ c.title }}</b><small>{{ c.detail }}</small><small v-if="sourceOf(c)" class="field-pick__src">{{ sourceOf(c) }}</small></span>
+            <em>+</em>
           </button>
+          <p v-if="!pickCards.length" class="lobby__empty">Под этот фильтр карточек нет.</p>
         </div>
-        <div class="veil__actions">
-          <button class="btn btn--ghost" type="button" @click="picking = null">Отмена</button>
-          <button class="btn btn--stamp" type="button" :disabled="picked.length !== pickQ.slots" @click="pin">Приколоть · {{ picked.length }}/{{ pickQ.slots }}</button>
-        </div>
+        <div class="veil__actions"><button class="btn btn--ghost" type="button" @click="picking = null">Закрыть</button></div>
       </div>
     </div>
 

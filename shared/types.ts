@@ -20,6 +20,8 @@ export interface Beat {
   sfx?: string[]
   /** пауза после реплики, мс */
   pauseAfter?: number
+  /** техническая часть text — кто и где («Гриша — Витрина, тело.»): телефон показывает её отдельно от находки */
+  meta?: string
   /** где это происходит — экран показывает фото локации */
   locationId?: string
   /** предмет, который в этот момент ложится в улики — экран показывает фото */
@@ -516,7 +518,7 @@ export interface FieldFeedEntry {
   /** игровое время */
   at: string
   playerId?: string
-  kind: 'find' | 'talk' | 'solve' | 'fail' | 'event' | 'hint' | 'ability' | 'door'
+  kind: 'find' | 'talk' | 'solve' | 'fail' | 'pin' | 'event' | 'hint' | 'ability' | 'door'
   text: string
   locationId?: string
 }
@@ -537,6 +539,8 @@ export interface FieldQuestionState {
   yieldsFactId: string | null
   /** после неверной попытки вопрос «остывает» до этого момента, epoch ms */
   cooldownUntil: number | null
+  /** карточки, которые уже приколоты к вопросу (подошли); когда их slots — вопрос решён */
+  pinned: string[]
   /** какие карточки нужны — по типам, без названий */
   hint: string
 }
@@ -754,6 +758,9 @@ export type ClientMessage =
   | { type: 'halt' }
   /** режим «на время»: приколоть карточки к вопросу доски */
   | { type: 'solve'; questionId: string; factIds: string[] }
+  /** доска «на время»: приколоть одну карточку к вопросу (подходит — остаётся, нет — штраф) или снять её */
+  | { type: 'qpin'; questionId: string; factId: string }
+  | { type: 'qunpin'; questionId: string; factId: string }
   | { type: 'toMenu' }
 
 export type ServerMessage =
