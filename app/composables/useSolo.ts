@@ -57,7 +57,8 @@ function open() {
       error.value = null
       setCurrentCase(msg.view.info.id)
       setCurrentSetting(msg.view.info.settingId)
-      const timed = msg.view.chase ?? msg.view.encounter
+      // сдвиг часов — по любому экрану со временем сервера: погоня, встреча, босс
+      const timed = msg.view.chase ?? msg.view.encounter ?? msg.view.boss
       if (timed) clockOffset.value = timed.serverNow - Date.now()
       view.value = msg.view
     }
