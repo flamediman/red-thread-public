@@ -62,7 +62,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <button
           v-for="(o, i) in enc.options" :key="o.id" type="button" class="solo-enc__opt"
           :class="[`solo-enc__opt--${o.id}`, { 'solo-enc__opt--ready': ready(o.id) }]" :disabled="!o.enabled" @click="pick(o.id)"
-        ><kbd>{{ i + 1 }}</kbd>{{ o.label }}</button>
+        ><kbd>{{ i + 1 }}</kbd><span class="solo-enc__opt-text"><b>{{ o.label }}</b><small v-if="o.hint">{{ o.hint }}</small></span></button>
       </div>
     </div>
   </div>

@@ -201,6 +201,8 @@ export interface SoloMonster {
   evade: number
   /** насколько существо сужает окна удара, 0…1 (вёрткое — 0.3, неповоротливое — 0) */
   guard?: number
+  /** шанс ответить ударом на ваш удачный удар, 0…1: крепкие существа выматывают, если бить голыми руками */
+  riposte?: number
   sfx: { near: string; attack: string; hurt: string; die: string }
   text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string }
 }
@@ -328,7 +330,8 @@ export interface SoloView {
     windowMs: number
     zones: { hit: [number, number][]; flee: [number, number] | null }
     text: string
-    options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean }[]
+    /** hint — что делает действие и почему может не сработать; показывается под кнопкой */
+    options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean; hint?: string }[]
   } | null
   puzzle: { hotspot: string; puzzle: SoloPublicPuzzle } | null
   chase: {

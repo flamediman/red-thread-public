@@ -13,7 +13,8 @@ import type {
 const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSync('/app/build-id', 'utf8').trim() : 'dev')
 const FEED = 14
 const SAVE_SLOTS = 3
-const HANDS: NonNullable<SoloItem['weapon']> = { damage: 8, accuracy: 0.55 }
+/* голые руки: слабо и узкое окно — бить ими можно только самых хлипких, остальных лучше обойти */
+const HANDS: NonNullable<SoloItem['weapon']> = { damage: 6, accuracy: 0.4 }
 /** запас на окно удара: нажатие чуть раньше или позже края всё ещё засчитывается */
 const ZONE_TOL = 130
 /** насколько часы клиента могут разойтись с серверными, чтобы верить его времени нажатия */
@@ -462,11 +463,43 @@ export class SoloGame {
     const now = Date.now()
     this.live.puzzle = null
     this.live.dialogue = null
-    const windowMs = Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1))
+    const windowMs = this.roundWindow(m)
     this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + windowMs, windowMs, text: m.text.appear, ...this.rollZones(m, windowMs) }
     this.say('', [m.sfx.near])
     this.arm()
   }
+
+  /** варианты во встрече с подсказками: что делает действие и что ему мешает */
+  private encounterOptions(m: SoloMonster, p: SoloPlace, gun: SoloItem | undefined): NonNullable<SoloView['encounter']>['options'] {
+    const r = this.run!
+    const dim = this.dim()
+    const melee = this.melee()
+    const prev = r.prev ? this.PLACE.get(r.prev)?.name : null
+    const hideWhy: string[] = []
+    if (m.seesLight && r.light) hideWhy.push('фонарь горит, а она идёт на свет')
+    if (this.has('radio') && r.radioOn !== false) hideWhy.push('приёмник шипит — выдаст')
+    const lightHint = !p.dark ? 'Здесь и так светло — фонарь ничего не меняет'
+      : r.light ? `Погасить: темнота прячет${m.seesLight ? ' от неё' : ''}, но окна удара станут уже`
+      : `Зажечь: окна удара шире${m.seesLight ? ', но она идёт на свет — раунды короче, не спрятаться' : ''}`
+    return [
+      { id: 'fight', label: melee ? `Ударить: ${melee.name}` : 'Отбиваться руками', enabled: true,
+        hint: `${melee ? '' : 'Голыми руками — слабо и окно узкое. '}Бить, когда бегунок в красном окне${dim ? '; в темноте оно уже' : ''}.` },
+      // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт
+      ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0,
+        hint: r.ammo ? 'Почти на всё здоровье существа; раунд длиннее.' : 'Патроны кончились.' }] : []),
+      { id: 'flee', label: 'Бежать назад', enabled: !!r.prev, hint: prev ? `Назад: ${prev}. В синем окне — уйдёте без удара.` : 'Отступать некуда.' },
+      { id: 'hide', label: p.hide ? `Спрятаться: ${p.hide}` : 'Спрятаться', enabled: !!p.hide,
+        hint: !p.hide ? 'Здесь негде.' : hideWhy.length ? `Не выйдет: ${hideWhy.join(', ')}.` : 'Существо пройдёт мимо и уйдёт.' },
+      ...(this.has('flashlight') ? [{ id: 'light' as const, label: r.light ? 'Погасить фонарь' : 'Включить фонарь', enabled: r.light || r.battery > 0, hint: lightHint }] : [])
+    ]
+  }
+
+  /** длина раунда: оружие замедляет (tempo), существо, идущее на свет, при зажжённом фонаре торопится */
+  private roundWindow(m: SoloMonster) {
+    return Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1) * (m.seesLight && this.run!.light ? 0.75 : 1))
+  }
+  /** в темноте без фонаря едва видно: окна удара и побега уже */
+  private dim() { const p = this.place(); return !!p.dark && !this.run!.light }
 
   /** оружие, от которого зависят окна удара: то, что в руках (ствол — пока есть патроны), иначе ближний бой или руки */
   private zoneWeapon() {
@@ -481,7 +514,7 @@ export class SoloGame {
     const r = this.run!
     const w = this.zoneWeapon()
     const count = Math.max(1, w.zones ?? 1)
-    const share = Math.min(0.6, (0.14 + 0.36 * w.accuracy) * (1 - (m.guard ?? 0)))
+    const share = Math.min(0.6, (0.08 + 0.3 * w.accuracy) * (1 - (m.guard ?? 0)) * (this.dim() ? 0.55 : 1))
     const width = share / count
     const hit: [number, number][] = []
     for (let k = 0; k < count; k++) {
@@ -492,7 +525,7 @@ export class SoloGame {
       }
     }
     hit.sort((x, y) => x[0] - y[0])
-    const fleeShare = 0.1 + 0.4 * m.evade * (r.health < 30 ? 0.7 : 1)
+    const fleeShare = (0.1 + 0.4 * m.evade * (r.health < 30 ? 0.7 : 1)) * (this.dim() ? 0.7 : 1)
     const fa = 0.15 + this.random() * (0.95 - fleeShare - 0.15)
     return { hit, flee: [Math.round(fa * windowMs), Math.round((fa + fleeShare) * windowMs)] }
   }
@@ -538,7 +571,7 @@ export class SoloGame {
     e.round++
     e.text = text
     e.startedAt = now
-    e.windowMs = Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1))
+    e.windowMs = this.roundWindow(m)
     e.deadline = now + e.windowMs
     Object.assign(e, this.rollZones(m, e.windowMs))
     this.say('', sfx)
@@ -568,7 +601,9 @@ export class SoloGame {
           this.endEncounter(m.text.die, [m.sfx.die])
           return
         }
-        this.nextRound(m, m.text.hit, [loud ? 'solo-shot' : 'solo-swing', m.sfx.hurt], 0)
+        // крепкое существо отвечает на удар: голыми руками такой бой выматывает
+        if (this.random() > 1 - (m.riposte ?? 0)) this.nextRound(m, `${m.text.hit} ${m.text.attack}`, [loud ? 'solo-shot' : 'solo-swing', m.sfx.hurt, m.sfx.attack], m.damage)
+        else this.nextRound(m, m.text.hit, [loud ? 'solo-shot' : 'solo-swing', m.sfx.hurt], 0)
       } else {
         this.nextRound(m, `${m.text.miss} ${m.text.attack}`, [loud ? 'solo-shot' : 'solo-swing', m.sfx.attack], m.damage)
       }
@@ -603,9 +638,11 @@ export class SoloGame {
       case 'hide': {
         const p = this.place()
         if (!p.hide) return
+        // укрытие надёжно, если ничем себя не выдать: ни светом (для тех, кто идёт на свет), ни шипящим приёмником
         if (m.seesLight && r.light) { this.nextRound(m, 'Свет фонаря выдаёт укрытие.', [m.sfx.attack], m.damage); break }
-        if (this.random() < 0.85) { r.passed.push(s.id); this.endEncounter(m.text.hide, ['solo-hide']) }
-        else this.nextRound(m, m.text.attack, [m.sfx.attack], m.damage)
+        if (this.has('radio') && r.radioOn !== false) { this.nextRound(m, 'Приёмник шипит из-под куртки — и голова существа поворачивается на звук.', ['radio-static', m.sfx.attack], m.damage); break }
+        r.passed.push(s.id)
+        this.endEncounter(m.text.hide, ['solo-hide'])
         break
       }
     }
@@ -791,14 +828,7 @@ export class SoloGame {
         monster: m.id, name: m.name, hp: Math.max(0, e.hp), maxHp: m.hp, round: e.round, startedAt: e.startedAt, deadline: e.deadline, serverNow: now, text: e.text,
         windowMs: e.windowMs,
         zones: { hit: e.hit.map(([a, b]) => [e.startedAt + a, e.startedAt + b] as [number, number]), flee: e.flee ? [e.startedAt + e.flee[0], e.startedAt + e.flee[1]] : null },
-        options: [
-          { id: 'fight' as const, label: this.melee() ? `Ударить: ${this.melee()!.name}` : 'Отбиваться руками', enabled: true },
-          // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт
-          ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0 }] : []),
-          { id: 'flee' as const, label: 'Бежать назад', enabled: !!r.prev },
-          { id: 'hide' as const, label: p.hide ? `Спрятаться: ${p.hide}` : 'Спрятаться', enabled: !!p.hide },
-          ...(this.has('flashlight') ? [{ id: 'light' as const, label: r.light ? 'Погасить фонарь' : 'Включить фонарь', enabled: r.light || r.battery > 0 }] : [])
-        ]
+        options: this.encounterOptions(m, p, gun)
       } : null,
       puzzle: ph?.puzzle ? { hotspot: ph.id, puzzle: this.publicPuzzle(ph) } : null,
       dialogue: dl && dNode ? {
