@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { abilityUses } from '~/utils/ability'
 import type { ClientMessage, PublicState, YouState } from '#shared/types'
 import { ART } from '~/utils/art'
 
@@ -46,6 +47,7 @@ function pick(id: string) {
           <span class="role__who"> · {{ r.name }}</span>
           <span class="role__ability">{{ r.ability.text }}</span>
           <span class="role__example">Пример: {{ r.ability.example }}</span>
+          <span class="role__uses">{{ abilityUses(r.ability) }}</span>
         </span>
         <span v-if="r.takenBy" class="role__taken">{{ r.takenBy }}</span>
         <span v-else-if="r.mine" class="role__taken">вы</span>

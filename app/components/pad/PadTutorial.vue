@@ -4,18 +4,12 @@ import type { PublicState, YouState } from '#shared/types'
 import { TUTORIAL_STEPS } from '#shared/tutorial'
 import { ART } from '~/utils/art'
 import { tutorialSteps } from '~/utils/tutorial'
+import { abilityUses } from '~/utils/ability'
 
 const props = defineProps<{ you: YouState; state: PublicState }>()
 const step = computed(() => tutorialSteps(props.state.setting.crew, props.state.caseInfo.mode, Number(props.state.settings.duration))[Math.min(props.state.tutorialStep, TUTORIAL_STEPS - 1)]!)
 const role = computed(() => props.state.detectives.find(d => d.id === props.you.detectiveId) ?? null)
-/** способности, которые — действие сверх хода (остальные со счётчиком срабатывают внутри обычного хода) */
-const EXTRA = new Set(['drone', 'patrol', 'reporter', 'intern', 'fixer', 'archivist', 'tracker', 'coroner'])
-const usesText = computed(() => {
-  const a = role.value?.ability
-  if (!a || a.uses == null) return 'Работает сама, всегда.'
-  const times = `${a.uses} ${a.uses === 1 ? 'раз' : 'раза'} за ночь`
-  return EXTRA.has(a.kind) ? `Сверх хода, ${times}.` : `${times[0]!.toUpperCase()}${times.slice(1)}.`
-})
+const usesText = computed(() => abilityUses(role.value?.ability))
 </script>
 
 <template>

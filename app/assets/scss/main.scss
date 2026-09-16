@@ -812,6 +812,9 @@ html, body { overscroll-behavior: none; }
 .pad-lobby__random { padding: 0.8rem 0.9rem; border-radius: var(--radius-lg); background: var(--desk-2); color: var(--paper-dim); font-size: var(--step--1); line-height: 1.4; border-left: 3px solid var(--brass); }
 .role__example { display: block; margin-top: 0.25rem; font-size: 0.82rem; color: var(--paper-faint); line-height: 1.35; }
 .role--mine .role__example { color: var(--ink-3); }
+/* как используется — одной строкой внизу, на всех экранах телефона одинаково */
+.role__uses { display: block; margin-top: 0.3rem; font-family: var(--font-ui); font-weight: 600; font-size: 0.78rem; color: var(--paper-dim); }
+.role--mine .role__uses { color: var(--ink-3); }
 
 /* лобби телефона: выбор сыщика */
 .pad-lobby { display: flex; flex-direction: column; gap: 0.8rem;

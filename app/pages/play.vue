@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { abilityUses } from '~/utils/ability'
 import { INKS } from '#shared/inks'
 
 import { ART } from '~/utils/art'
@@ -24,7 +25,7 @@ const { seconds } = useCountdown(computed(() => state.value?.deadline ?? null))
 /* мой сыщик: способность и пример — по кнопке на любом экране партии */
 const roleOpen = ref(false)
 const myRole = computed(() => state.value?.detectives.find(d => d.id === you.value?.detectiveId) ?? null)
-const usesText = computed(() => you.value?.usesLeft == null ? 'Работает сама, всегда.' : you.value.usesLeft > 0 ? `Осталось использований: ${you.value.usesLeft}.` : 'Использования на эту ночь закончились.')
+const usesText = computed(() => abilityUses(myRole.value?.ability, you.value?.usesLeft))
 
 /* правка профиля из лобби */
 const editing = ref(false)
