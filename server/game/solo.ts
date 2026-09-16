@@ -290,6 +290,8 @@ export class SoloGame {
     const here = this.place()
     const exit = here.exits.find(x => x.to === to && this.ok(x.when))
     if (!exit || !this.PLACE.has(to)) return
+    const pending = this.pendingActSpawn()
+    if (pending) { this.clearLinger(); this.startSpawn(pending); return this.changed() }
     if (exit.lock && !this.exitOpen(here.id, exit)) {
       const byItem = exit.lock.item && this.has(exit.lock.item)
       const byFlag = exit.lock.flag && this.flag(exit.lock.flag)
@@ -336,13 +338,23 @@ export class SoloGame {
 
   private startSpawn(s: SoloSpawn) { if (s.boss) this.startBoss(s.id); else this.startEncounter(s.id) }
 
-  /** после осмотра, действия или решённой головоломки здесь: существо, которое ждало именно этого */
+  /** после осмотра, действия или решённой головоломки здесь: существо, которое ждало именно этого;
+      с afterMs — через паузу (текст находки успеть прочитать), но не позже, чем игрок соберётся уходить */
   private actSpawn(hotspotId: string) {
     const r = this.run!
     if (this.live.dead || this.live.encounter || this.live.chase || this.live.boss || r.ending) return
     const s = this.S.spawns.find(s => s.place === r.place && s.trigger === 'act' && this.spawnActive(s)
       && (!s.after || s.after === hotspotId || r.looked.includes(s.after) || this.flag(`solved:${s.after}`)))
-    if (s) { this.clearLinger(); this.startSpawn(s) }
+    if (!s) return
+    if (s.afterMs) this.armLinger(s.id, s.afterMs)
+    else { this.clearLinger(); this.startSpawn(s) }
+  }
+
+  /** игрок уходит, а то, что вышло бы после осмотра, ещё не вышло: оно встаёт между ним и выходом */
+  private pendingActSpawn(): SoloSpawn | null {
+    const l = this.live.linger
+    const s = l && this.SPAWN.get(l.spawn)
+    return s && s.trigger === 'act' && s.place === this.run!.place && this.spawnActive(s) ? s : null
   }
 
   private armLinger(spawnId: string, ms: number) {
