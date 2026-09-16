@@ -40,8 +40,16 @@ const voiceOn = ref(true)
 try { if (typeof localStorage !== 'undefined' && localStorage.getItem(VOICE_KEY) === 'off') voiceOn.value = false } catch { /* приватный режим */ }
 const speaking = ref(false)
 
-/** samples — длина буфера: по ней узнаём тот же трек под другим адресом */
-interface Loop { name: string; stop: (fade?: number) => void; setLevel: (v: number) => void; gain: GainNode; world?: string; samples: number }
+/** sig — отпечаток буфера: по нему узнаём тот же трек под другим адресом. Раньше сравнивали длину, но темы разных миров,
+    сгенерированные на одну длительность, совпадают до сэмпла — и меню не переключало музыку между Неоном и Туманом */
+interface Loop { name: string; stop: (fade?: number) => void; setLevel: (v: number) => void; gain: GainNode; world?: string; sig: string }
+
+function signature(buf: AudioBuffer) {
+  const d = buf.getChannelData(0)
+  const parts: string[] = [String(buf.length)]
+  for (let i = 1; i <= 16; i++) parts.push(d[Math.floor(buf.length * i / 17)]!.toFixed(4))
+  return parts.join(':')
+}
 const loops = new Map<string, Loop>()
 let music: Loop | null = null
 let musicWanted: string | null = null
@@ -162,7 +170,7 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
   gain.gain.linearRampToValueAtTime(target, c.currentTime + fadeSec)
 
   return {
-    name, gain, samples: buffer.length,
+    name, gain, sig: signature(buffer),
     setLevel: (v: number) => {
       level = v
       const t = c.currentTime
@@ -266,7 +274,7 @@ export function useAudio() {
       if (!buf) continue
       if (music?.name === key) return
       // тот же трек под другим адресом (тема мира в меню = заставка истории) — играет дальше, без перезапуска
-      if (music && music.samples === buf.length) { music.name = key; music.gain.gain.linearRampToValueAtTime(musicLevel, c.currentTime + 2); return }
+      if (music && music.sig === signature(buf)) { music.name = key; music.gain.gain.linearRampToValueAtTime(musicLevel, c.currentTime + 2); return }
       music?.stop(MUSIC_FADE)
       music = startLoop(key, buf, musicLevel, gains.music!, MUSIC_FADE)
       return

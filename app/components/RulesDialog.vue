@@ -5,6 +5,7 @@ import { rulesFor } from '~/utils/rules'
 const props = defineProps<{ variant?: 'stage' | 'pad'; mode?: 'rounds' | 'realtime' }>()
 const rules = computed(() => rulesFor(props.mode))
 const open = defineModel<boolean>({ default: false })
+useVeil(open)
 
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape') open.value = false }
 watch(open, (v) => {

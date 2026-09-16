@@ -2,6 +2,7 @@
 /* Канал игры и поддержка проекта. На экране — кнопка и карточка с QR (телевизор не кликают, по коду наводят телефон). */
 const { config } = useConfig()
 const open = ref(false)
+useVeil(open)
 const cards = computed(() => [
   config.value.telegram && { id: 'tg', url: config.value.telegram, title: 'Канал игры', text: 'Новости, голосования за новые дела, обратная связь' },
   config.value.donate && { id: 'donate', url: config.value.donate, title: 'Поддержать', text: 'Любая сумма — на голоса, музыку и иллюстрации новых дел' },

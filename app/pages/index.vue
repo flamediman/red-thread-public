@@ -109,14 +109,15 @@ const theme = computed(() => {
   if (s === 'lobby' || s === 'tutorial') return 'lobby'
   if (s === 'prologue') return 'prologue'
   const share = fieldShare.value ?? r / Math.max(1, (state.value?.roundsTotal ?? 12) - 1)
-  if (s === 'plan' || s === 'resolve' || s === 'field') return share < 0.35 ? 'night-early' : share < 0.7 ? 'night-late' : 'night-dawn'
+  // рассветная тема — только на последней пятой части ночи: раньше она включалась с 70 % и давила остаток партии
+  if (s === 'plan' || s === 'resolve' || s === 'field') return share < 0.35 ? 'night-early' : share < 0.8 ? 'night-late' : 'night-dawn'
   if (s === 'discuss') return 'discuss'
   if (s === 'accuse') return 'accuse'
   if (s === 'verdict') return state.value?.verdict?.correct === false ? 'verdict-wrong' : 'epilogue'
   if (s === 'epilogue') return 'epilogue'
   return state.value?.outcome === 'failed' ? 'final-failed' : 'final-solved'
 })
-watch([theme, () => audio.unlocked.value, () => state.value?.caseInfo.id], ([t, ok]) => { if (ok && t !== undefined) audio.theme(t) }, { immediate: true })
+watch([theme, () => audio.unlocked.value, () => state.value?.caseInfo.id], ([t, ok]) => { if (ok && t !== undefined) audio.theme(t, t === 'night-dawn' ? 0.7 : 1) }, { immediate: true })
 
 // улица или помещение — от кадра на экране (карта и совещание — внутри)
 watch([outdoors, backdropDim, () => audio.unlocked.value], ([out, dim]) => { audio.setOutdoors(!!out && !dim) }, { immediate: true })
