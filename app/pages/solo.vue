@@ -171,19 +171,26 @@ const relay = (m: SoloClientMessage) => send(m)
 
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
 /** петли, которые в ленте места должны быть тише остальных (часы в кабинете — не громче гула) */
-const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8 }
+const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8, 'other-pulse': 0.7 }
 watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
   ([, radio, enc, low, inGame, ok, ended]) => {
     if (!ok) return
     if (!inGame || !v.value?.started || ended) { audio.ambience(['fog-wind'], { 'fog-wind': 0.5 }); return }
     const names = [...(place.value?.ambience ?? [])]
     const levels: Record<string, number> = { ...AMB_LEVEL }
+    // в помещении за стеной еле слышно идёт ветер (лента помещения и так глушит верх — выходит «за стеклом»)
+    if (place.value && !place.value.outdoor && !names.includes('fog-wind')) { names.push('fog-wind'); levels['fog-wind'] = 0.22 }
     if (radio) { names.push('radio-static'); levels['radio-static'] = radio === 2 ? 0.95 : 0.35 }
     if (enc) { names.push('dread-drone'); levels['dread-drone'] = 0.8 }
     if (low) { names.push('heartbeat'); levels.heartbeat = 0.7 }
     audio.ambience(names, levels)
   }, { immediate: true })
 watch([() => place.value?.outdoor, () => audio.unlocked.value], ([outdoor]) => audio.setOutdoors(!!outdoor), { immediate: true })
+/* эхо «комнаты» по покрытию: кафель и затопленный подвал гулкие, дерево чуть, улица сухая */
+watch([() => place.value?.surface, () => place.value?.outdoor, () => audio.unlocked.value], ([surface, outdoor, ok]) => {
+  if (!ok) return
+  audio.setRoom(outdoor ? 0.07 : surface === 'water' ? 0.5 : surface === 'tile' ? 0.36 : 0.16)
+}, { immediate: true })
 
 /* музыка: тема по району и состоянию, под исследованием — тише ленты атмосферы, в погоне и на заставке — в полную.
    Темы лежат в папке истории; которой нет — заменяется темой мира из меню */
@@ -224,13 +231,44 @@ function scheduleFar() {
     const s = v.value
     if (entered.value && s?.started && !overlay.value && !anyPanel.value && !s.ending && audio.unlocked.value && !audio.speaking.value) {
       const pool = FAR[place.value?.area ?? ''] ?? FAR.town!
-      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.6, true)
+      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.6, { far: true, pan: (Math.random() * 2 - 1) * 0.8 })
     }
     scheduleFar()
   }, 40_000 + Math.random() * 50_000)
 }
 onMounted(scheduleFar)
 onBeforeUnmount(() => { if (farTimer) clearTimeout(farTimer) })
+
+/* ближний слой: раз в 10–25 с рядом что-то есть — по типу места; звук приходит чуть слева или справа */
+const NEAR: Record<string, string[]> = {
+  wood: ['creak-floor', 'wind-window', 'drip-one', 'creak-floor'],
+  tile: ['drip-one', 'glass-tinkle', 'pipe-knock', 'wind-window'],
+  open: ['gust', 'leaf-scrape', 'gust'],
+  water: ['water-surge', 'drip-one', 'creak-floor', 'water-surge'],
+  other: ['metal-groan', 'drip-one', 'pipe-knock', 'metal-groan']
+}
+const nearKind = computed(() => {
+  const p = place.value
+  if (!p) return 'open'
+  if (p.ambience.includes('other-hum')) return 'other'
+  if (p.ambience.includes('water-lap')) return 'water'
+  if (p.outdoor) return 'open'
+  return p.surface === 'tile' ? 'tile' : 'wood'
+})
+let nearTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleNear() {
+  if (nearTimer) clearTimeout(nearTimer)
+  nearTimer = setTimeout(() => {
+    const s = v.value
+    if (entered.value && s?.started && !overlay.value && !anyPanel.value && !s.ending && audio.unlocked.value && !audio.speaking.value) {
+      const pool = NEAR[nearKind.value]!
+      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.5, { pan: (Math.random() * 2 - 1) * 0.6 })
+    }
+    scheduleNear()
+  }, 10_000 + Math.random() * 15_000)
+}
+onMounted(scheduleNear)
+onBeforeUnmount(() => { if (nearTimer) clearTimeout(nearTimer) })
 
 /* ── клавиатура ── */
 const anyPanel = computed(() => menuOpen.value || saveOpen.value || mapOpen.value || notesOpen.value)

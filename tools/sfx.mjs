@@ -137,7 +137,18 @@ const PACKS = {
     'loudspeaker-hum': ['A dead old horn loudspeaker on a wooden pole in an empty pioneer camp: faint steady electric hum with occasional soft crackle and a barely audible distant garbled voice, quiet, no music, seamless ambience loop', 12, true],
     'pines': ['Tall pine trees slowly creaking and swaying in a light wind in a foggy forest, occasional wood creak, soft needle rustle, no birds, no music, seamless ambience loop', 14, true],
     'announce-far': ['A distant loudspeaker announcement echoing across a lake in fog, muffled unintelligible woman voice, crackling, very far away, then silence, no music', 5],
-    'branch-far': ['A dry branch cracking somewhere far away in a foggy pine forest, then silence, no music', 2]
+    'branch-far': ['A dry branch cracking somewhere far away in a foggy pine forest, then silence, no music', 2],
+    // ближний слой: случайные звуки рядом с героем раз в 10–25 с, по типу места
+    'creak-floor': ['A single slow creak of an old wooden floorboard under weight in a quiet empty room, close, no music', 1.5],
+    'drip-one': ['One single water drop falling from a ceiling into a shallow puddle in a dark tiled room with a short echo, no music', 1],
+    'wind-window': ['A gust of wind pressing on an old wooden window frame, the loose pane rattles softly twice, heard from inside a quiet room, no music', 3],
+    'glass-tinkle': ['A small shard of broken glass pushed by a shoe on a tiled floor, a light tinkle, close, quiet room, no music', 1.2],
+    'pipe-knock': ['An old water heating pipe in a wall knocking twice with a dull metallic clank, then a faint hiss, quiet building, no music', 1.5],
+    'gust': ['A single gust of wind rising through pine branches and dying away, soft rustle and a hollow whoosh, outdoors in fog, no music', 3],
+    'leaf-scrape': ['Dry leaves and a sheet of newspaper scraping across wet asphalt in a light gust, then still, close, no music', 2],
+    'water-surge': ['One larger lake wave slapping against wooden pier posts and receding with dripping, close, calm night, no music', 2.5],
+    'metal-groan': ['A long low groan of rusted iron structure under strain in a flooded abandoned building, deep resonant, slowly fading, horror ambience, no music', 3],
+    'other-pulse': ['Very slow deep sub-bass pulse like the heartbeat of a huge flooded building, one soft thump every few seconds with a faint metallic resonance, oppressive, no melody, no drums, seamless ambience loop', 12, true]
   }
 }
 
@@ -153,6 +164,7 @@ const LEVEL = { tuman: { loop: -30, shot: -21 } }
 /* далёкое — заметно ниже ровного уровня: горн за озером не должен звучать как горн в руке (16.09.2026 — «слишком громкий и навязчивый») */
 const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -6, 'bugle-far-cut': -8, 'siren-bugle': -5, 'oarlocks': -5, 'phone-far-bugle': -3, 'announce-far': -8, 'branch-far': -6,
   'fog-drip': -4, 'flag-rope': -3, 'loudspeaker-hum': -3, 'qte-tick': -8, 'radio-click': -6, 'pocket': -5, 'map-unfold': -4, 'flaregun-load': -2,
+  'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'leaf-scrape': -8, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']

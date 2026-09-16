@@ -26,6 +26,8 @@ const gains: Partial<Record<Layer, GainNode>> = {}
 let ambFilter: BiquadFilterNode | null = null
 /** «далеко»: вход цепочки низких частот и эха — так звучит всё, что где-то за озером или в другом конце здания */
 let farInput: GainNode | null = null
+/** «комната»: короткое эхо для одиночных звуков, доля эха — по покрытию места (кафель гулкий, улица сухая) */
+let room: { input: GainNode; wet: GainNode } | null = null
 /** звуки, которые по смыслу всегда далеко: идут через эту цепочку, откуда бы их ни попросили */
 const FAR_NAMES = new Set(['bugle-far-cut', 'bugle-far-full', 'whisper-far', 'siren-bugle', 'oarlocks', 'announce-far', 'branch-far'])
 let ambRoom: GainNode | null = null
@@ -39,7 +41,7 @@ try { if (typeof localStorage !== 'undefined' && localStorage.getItem(VOICE_KEY)
 const speaking = ref(false)
 
 /** samples — длина буфера: по ней узнаём тот же трек под другим адресом */
-interface Loop { name: string; stop: (fade?: number) => void; gain: GainNode; world?: string; samples: number }
+interface Loop { name: string; stop: (fade?: number) => void; setLevel: (v: number) => void; gain: GainNode; world?: string; samples: number }
 const loops = new Map<string, Loop>()
 let music: Loop | null = null
 let musicWanted: string | null = null
@@ -109,12 +111,25 @@ async function load(url: string): Promise<AudioBuffer | null> {
 }
 
 /** Гладкая петля: буфер запускается снова за XFADE секунд до конца, оба края — по равномощным кривым. */
-function startLoop(name: string, buffer: AudioBuffer, target: number, dest: GainNode, fadeSec = 2.5): Loop {
+function startLoop(name: string, buffer: AudioBuffer, target: number, dest: GainNode, fadeSec = 2.5, breathing = false): Loop {
   const c = ensure()!
   const gain = c.createGain()
   gain.gain.value = 0
   gain.connect(dest)
   let alive = true
+  let level = target
+  let breathTimer: ReturnType<typeof setTimeout> | null = null
+  /* петля атмосферы дышит: каждые 4–10 с уровень медленно уходит к 0,65…1,1 от заданного — ветер наплывает и стихает */
+  const breathe = () => {
+    if (!alive) return
+    const span = 4 + Math.random() * 6
+    const t = c.currentTime
+    gain.gain.cancelScheduledValues(t)
+    gain.gain.setValueAtTime(gain.gain.value, t)
+    gain.gain.linearRampToValueAtTime(level * (0.65 + Math.random() * 0.45), t + span)
+    breathTimer = setTimeout(breathe, span * 1000)
+  }
+  if (breathing) breathTimer = setTimeout(breathe, fadeSec * 1000 + 500)
   const sources: AudioBufferSourceNode[] = []
   const dur = buffer.duration
   const xf = Math.min(XFADE, dur / 3)
@@ -148,8 +163,16 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
 
   return {
     name, gain, samples: buffer.length,
+    setLevel: (v: number) => {
+      level = v
+      const t = c.currentTime
+      gain.gain.cancelScheduledValues(t)
+      gain.gain.setValueAtTime(gain.gain.value, t)
+      gain.gain.linearRampToValueAtTime(v, t + 2)
+    },
     stop: (fade = 2.5) => {
       alive = false
+      if (breathTimer) clearTimeout(breathTimer)
       const t = c.currentTime
       gain.gain.cancelScheduledValues(t)
       gain.gain.setValueAtTime(gain.gain.value, t)
@@ -218,10 +241,10 @@ export function useAudio() {
       const target = levels[name] ?? 1
       const existing = loops.get(name)
       if (existing && existing.world !== currentSetting.value) { existing.stop(); loops.delete(name) }
-      else if (existing) { existing.gain.gain.linearRampToValueAtTime(target, c.currentTime + 2); continue }
+      else if (existing) { existing.setLevel(target); continue }
       const buf = await loadSfx(name)
       if (!buf || loops.has(name) || !names.includes(name)) continue
-      loops.set(name, { ...startLoop(name, buf, target, gains.ambience!), world: currentSetting.value })
+      loops.set(name, { ...startLoop(name, buf, target, gains.ambience!, 2.5, true), world: currentSetting.value })
     }
   }
 
@@ -251,17 +274,40 @@ export function useAudio() {
   }
 
   /** Одиночный эффект. Возвращает длительность, чтобы экран мог подождать. */
-  /** Одиночный звук. far — сыграть «издалека»: глухо, с долгим эхом и тише; звуки из FAR_NAMES — всегда так */
-  async function sfx(name: string, volume = 1, far = false): Promise<number> {
+  /** Одиночный звук. far — сыграть «издалека»: глухо, с долгим эхом и тише (звуки из FAR_NAMES — всегда так);
+      pan — откуда, −1 слева … 1 справа. Остальное идёт через «комнату» — короткое эхо по покрытию места */
+  async function sfx(name: string, volume = 1, opts: boolean | { far?: boolean; pan?: number } = false): Promise<number> {
     const c = ensure(); if (!c) return 0
     const buf = await loadSfx(name)
     if (!buf) return 0
+    const o = typeof opts === 'boolean' ? { far: opts } : opts
     const src = c.createBufferSource()
     src.buffer = buf
     const g = c.createGain(); g.gain.value = volume
-    src.connect(g).connect(far || FAR_NAMES.has(name) ? farChain(c) : gains.sfx!)
+    const dest = o.far || FAR_NAMES.has(name) ? farChain(c) : roomChain(c)
+    let tail: AudioNode = g
+    if (typeof o.pan === 'number' && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, o.pan)); tail = g.connect(p) }
+    src.connect(g); tail.connect(dest)
     src.start()
     return buf.duration
+  }
+
+  function roomChain(c: AudioContext) {
+    if (room) return room.input
+    const input = c.createGain()
+    const conv = c.createConvolver(); conv.buffer = impulse(c, 1.5, 3.2)
+    const wet = c.createGain(); wet.gain.value = 0.1
+    input.connect(gains.sfx!)
+    input.connect(conv).connect(wet).connect(gains.sfx!)
+    room = { input, wet }
+    return input
+  }
+
+  /** доля эха «комнаты»: 0.05 — улица, 0.16 — деревянная комната, 0.36 — кафельный зал, 0.5 — затопленный подвал */
+  function setRoom(wet: number) {
+    const c = ensure(); if (!c) return
+    roomChain(c)
+    room!.wet.gain.setTargetAtTime(wet, c.currentTime, 0.8)
   }
 
   /** Далёкий звук: низкие частоты и синтетическое эхо (шум с затуханием как импульс зала), сухого сигнала почти нет.
@@ -337,5 +383,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, ambience, theme, sfx, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, sfx, voice, stopVoice, stopAll, preload: load }
 }
