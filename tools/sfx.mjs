@@ -127,7 +127,17 @@ const PACKS = {
     'whistle-blast': ['A shrill deafening referee whistle blast right at the ear, distorted and painful, with a body slammed against a wooden wall, horror, no music', 2],
     'counselor-hurt': ['A metal pipe hitting a tall body in a starched cotton blouse: dull thud, a whistle choking with a wet gurgle, close, no music', 1.2],
     'counselor-die': ['A tall body collapsing onto wooden floor like an empty coat, then a small metal whistle rolling slowly across floorboards and stopping, silence, no music', 3],
-    'bugle-far-full': ['A lone bugle far away across a calm lake at dawn playing a slow gentle lights-out call cleanly from start to end, soft echo over water, peaceful and sad', 8]
+    'bugle-far-full': ['A lone bugle far away across a calm lake at dawn playing a slow gentle lights-out call cleanly from start to end, soft echo over water, peaceful and sad', 8],
+    // 16.09: полнота атмосферы — карманы, карта, приёмник, точки босса, оружие; лес, громкоговоритель лагеря; далёкие звуки
+    'pocket': ['A small object slipped into the pocket of a canvas jacket: a soft cloth rustle and a light tap, close, quiet, no music', 1.5],
+    'map-unfold': ['A folded paper map unfolded quickly in two moves, crisp paper crackle, close, quiet room, no music', 1.8],
+    'radio-click': ['A stiff plastic slider switch of an old Soviet transistor radio clicked once, short dry click, close, no music', 0.7],
+    'qte-tick': ['A single short soft wooden tick, like a pencil tapped once on a table, dry, close, no music', 0.5],
+    'flaregun-load': ['A break-action flare pistol opened with a metallic click, a cardboard cartridge pushed in, snapped shut, close, no music', 1.5],
+    'loudspeaker-hum': ['A dead old horn loudspeaker on a wooden pole in an empty pioneer camp: faint steady electric hum with occasional soft crackle and a barely audible distant garbled voice, quiet, no music, seamless ambience loop', 12, true],
+    'pines': ['Tall pine trees slowly creaking and swaying in a light wind in a foggy forest, occasional wood creak, soft needle rustle, no birds, no music, seamless ambience loop', 14, true],
+    'announce-far': ['A distant loudspeaker announcement echoing across a lake in fog, muffled unintelligible woman voice, crackling, very far away, then silence, no music', 5],
+    'branch-far': ['A dry branch cracking somewhere far away in a foggy pine forest, then silence, no music', 2]
   }
 }
 
@@ -140,13 +150,17 @@ mkdirSync(OUT, { recursive: true })
    петли атмосферы тише, одиночные звуки громче, пики — не выше -1 дБ. `--normalize` — только выровнять готовые файлы. */
 const LEVEL = { tuman: { loop: -30, shot: -21 } }
 /** удары и крики громче ровного уровня, мелочи вроде щелчка фонаря — тише */
-const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -2, 'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -6, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
+/* далёкое — заметно ниже ровного уровня: горн за озером не должен звучать как горн в руке (16.09.2026 — «слишком громкий и навязчивый») */
+const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -6, 'bugle-far-cut': -8, 'siren-bugle': -5, 'oarlocks': -5, 'phone-far-bugle': -3, 'announce-far': -8, 'branch-far': -6,
+  'fog-drip': -4, 'flag-rope': -3, 'loudspeaker-hum': -3, 'qte-tick': -8, 'radio-click': -6, 'pocket': -5, 'map-unfold': -4, 'flaregun-load': -2,
+  'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']
   if (base == null) return
   const target = base + (ACCENT[file.split('/').pop().replace(/\.m4a$/, '')] ?? 0)
-  const log = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' }).stderr ?? ''
-  const mean = Number(/mean_volume: (-?[\d.]+)/.exec(log)?.[1])
+  // по воспринимаемой громкости (LUFS), а не по средней: редкие капли или далёкий горн со средней громкостью выходили громче ветра
+  const log = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-af', 'ebur128', '-f', 'null', '-'], { encoding: 'utf8' }).stderr ?? ''
+  const mean = Number(/Integrated loudness:\s*I:\s*(-?[\d.]+) LUFS/.exec(log)?.[1])
   if (!Number.isFinite(mean)) return
   const gain = Math.max(-30, Math.min(30, target - mean))
   if (Math.abs(gain) < 1) return

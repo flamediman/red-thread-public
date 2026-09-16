@@ -23,6 +23,8 @@ const confirmNew = ref(false)
 const saveOpen = ref(false)
 const mapOpen = ref(false)
 const notesOpen = ref(false)
+watch(mapOpen, on => { if (on) void audio.sfx('map-unfold', 0.55) })
+watch(notesOpen, on => { if (on) void audio.sfx('paper', 0.45) })
 
 async function enter(action: 'continue' | 'new' | { load: number }) {
   await Promise.race([audio.unlock(), new Promise(r => setTimeout(r, 1500))])
@@ -101,7 +103,7 @@ const healthState = computed(() => {
 const hasFlashlight = computed(() => !!v.value?.inventory.some(i => i.id === 'flashlight'))
 const hasRadio = computed(() => !!v.value?.inventory.some(i => i.id === 'radio'))
 const toggleLight = () => { if (v.value && hasFlashlight.value) send({ type: 'light', on: !v.value.light }) }
-const toggleRadio = () => { if (v.value && hasRadio.value) send({ type: 'radio', on: !v.value.radioOn }) }
+const toggleRadio = () => { if (v.value && hasRadio.value) { void audio.sfx('radio-click', 0.6); send({ type: 'radio', on: !v.value.radioOn }) } }
 
 /* ── вещи: применить к месту или соединить с другой вещью ── */
 type Mode = { kind: 'use' | 'combine'; item: string; name: string } | null
@@ -168,12 +170,14 @@ const sceneDone = () => { if (v.value?.scene) send({ type: 'sceneDone', seq: v.v
 const relay = (m: SoloClientMessage) => send(m)
 
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
+/** петли, которые в ленте места должны быть тише остальных (часы в кабинете — не громче гула) */
+const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8 }
 watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
   ([, radio, enc, low, inGame, ok, ended]) => {
     if (!ok) return
     if (!inGame || !v.value?.started || ended) { audio.ambience(['fog-wind'], { 'fog-wind': 0.5 }); return }
     const names = [...(place.value?.ambience ?? [])]
-    const levels: Record<string, number> = {}
+    const levels: Record<string, number> = { ...AMB_LEVEL }
     if (radio) { names.push('radio-static'); levels['radio-static'] = radio === 2 ? 0.95 : 0.35 }
     if (enc) { names.push('dread-drone'); levels['dread-drone'] = 0.8 }
     if (low) { names.push('heartbeat'); levels.heartbeat = 0.7 }
@@ -205,12 +209,13 @@ const themeLevel = computed(() => {
 // пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
 watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok && v.value) void audio.theme(t, lvl) }, { immediate: true })
 
-/* далёкие звуки: раз в минуту-полторы где-то в тумане что-то есть — горн, шёпот, цепь. Только когда герой просто идёт */
+/* далёкие звуки: раз в минуту-полторы где-то в тумане что-то есть — горн, шёпот, ветка, громкоговоритель. Только когда герой
+   просто идёт; всё играет через цепочку «далеко» (глухо, с эхом, тише ветра) */
 const FAR: Record<string, string[]> = {
-  road: ['whisper-far', 'fog-drip', 'bugle-far-cut'],
-  town: ['bugle-far-cut', 'whisper-far', 'oarlocks', 'fog-drip'],
+  road: ['whisper-far', 'branch-far', 'bugle-far-cut', 'branch-far'],
+  town: ['bugle-far-cut', 'whisper-far', 'oarlocks', 'announce-far'],
   sana: ['lantern-chain', 'whisper-far', 'water-lap', 'door-locked'],
-  camp: ['bugle-far-cut', 'lantern-chain', 'whisper-far', 'flag-rope']
+  camp: ['bugle-far-cut', 'announce-far', 'whisper-far', 'branch-far', 'lantern-chain']
 }
 let farTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleFar() {
@@ -219,7 +224,7 @@ function scheduleFar() {
     const s = v.value
     if (entered.value && s?.started && !overlay.value && !anyPanel.value && !s.ending && audio.unlocked.value && !audio.speaking.value) {
       const pool = FAR[place.value?.area ?? ''] ?? FAR.town!
-      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.28)
+      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.6, true)
     }
     scheduleFar()
   }, 40_000 + Math.random() * 50_000)

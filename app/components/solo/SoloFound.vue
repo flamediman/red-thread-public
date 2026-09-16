@@ -6,6 +6,9 @@ import type { SoloView } from '#shared/types'
 defineProps<{ item: NonNullable<SoloView['feed'][number]['found']>; story: string; more: number }>()
 const emit = defineEmits<{ done: [] }>()
 const artOk = ref(true)
+const audio = useAudio()
+// вещь ложится в карман
+onMounted(() => { void audio.sfx('pocket', 0.7) })
 
 function onKey(e: KeyboardEvent) {
   if (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape') { e.preventDefault(); emit('done') }

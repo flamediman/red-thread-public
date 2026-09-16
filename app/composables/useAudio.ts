@@ -24,6 +24,10 @@ function voiced(): Promise<Set<string>> {
 const gains: Partial<Record<Layer, GainNode>> = {}
 /** атмосфера в помещении звучит «за окном»: фильтр высоких частот и приглушение */
 let ambFilter: BiquadFilterNode | null = null
+/** «далеко»: вход цепочки низких частот и эха — так звучит всё, что где-то за озером или в другом конце здания */
+let farInput: GainNode | null = null
+/** звуки, которые по смыслу всегда далеко: идут через эту цепочку, откуда бы их ни попросили */
+const FAR_NAMES = new Set(['bugle-far-cut', 'bugle-far-full', 'whisper-far', 'siren-bugle', 'oarlocks', 'announce-far', 'branch-far'])
 let ambRoom: GainNode | null = null
 const buffers = new Map<string, Promise<AudioBuffer | null>>()
 const unlocked = ref(false)
@@ -247,16 +251,44 @@ export function useAudio() {
   }
 
   /** Одиночный эффект. Возвращает длительность, чтобы экран мог подождать. */
-  async function sfx(name: string, volume = 1): Promise<number> {
+  /** Одиночный звук. far — сыграть «издалека»: глухо, с долгим эхом и тише; звуки из FAR_NAMES — всегда так */
+  async function sfx(name: string, volume = 1, far = false): Promise<number> {
     const c = ensure(); if (!c) return 0
     const buf = await loadSfx(name)
     if (!buf) return 0
     const src = c.createBufferSource()
     src.buffer = buf
     const g = c.createGain(); g.gain.value = volume
-    src.connect(g).connect(gains.sfx!)
+    src.connect(g).connect(far || FAR_NAMES.has(name) ? farChain(c) : gains.sfx!)
     src.start()
     return buf.duration
+  }
+
+  /** Далёкий звук: низкие частоты и синтетическое эхо (шум с затуханием как импульс зала), сухого сигнала почти нет.
+      Итог заметно тише прямого звука — горн за озером не перекрикивает ветер */
+  function farChain(c: AudioContext) {
+    if (farInput) return farInput
+    const input = c.createGain(); input.gain.value = 0.5
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1300; lp.Q.value = 0.4
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180
+    const conv = c.createConvolver(); conv.buffer = impulse(c, 3.4, 2.4)
+    const dry = c.createGain(); dry.gain.value = 0.35
+    const wet = c.createGain(); wet.gain.value = 0.9
+    input.connect(hp); hp.connect(lp)
+    lp.connect(dry).connect(gains.sfx!)
+    lp.connect(conv).connect(wet).connect(gains.sfx!)
+    farInput = input
+    return input
+  }
+
+  function impulse(c: AudioContext, seconds: number, decay: number) {
+    const rate = c.sampleRate, len = Math.floor(rate * seconds)
+    const buf = c.createBuffer(2, len, rate)
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch)
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay)
+    }
+    return buf
   }
 
   /** Реплика: играет /voice/<id>.mp3, приглушая атмосферу и музыку. Возвращает true, если файл был. */

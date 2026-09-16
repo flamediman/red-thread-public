@@ -424,6 +424,7 @@ export class SoloGame {
   private equip(itemId: string) {
     const item = this.ITEM.get(itemId)
     if (!item || item.kind !== 'weapon' || !this.has(itemId)) return
+    if (this.run!.weapon !== itemId) this.say('', [item.weapon?.usesAmmo ? 'flaregun-load' : 'pipe-pick'])
     this.run!.weapon = itemId
     this.changed()
   }

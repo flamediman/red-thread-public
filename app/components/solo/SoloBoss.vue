@@ -55,6 +55,10 @@ watch(() => props.boss.round, () => {
   flashTimer = window.setTimeout(() => { flash.value = null }, 600)
 })
 const caught = computed(() => props.boss.prompts.filter(p => result(p) === 'hit').length)
+/* каждая новая точка — короткий тик */
+const audio = useAudio()
+const ticked = new Set<number>()
+watch(visible, list => { for (const p of list) if (!ticked.has(p.id) && now.value >= p.from - 260) { ticked.add(p.id); void audio.sfx('qte-tick', 0.6) } })
 const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - now.value) / 1000)))
 </script>
 

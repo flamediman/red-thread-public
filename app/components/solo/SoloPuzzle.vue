@@ -4,6 +4,7 @@ import type { SoloClientMessage, SoloView } from '#shared/types'
 
 const props = defineProps<{ data: NonNullable<SoloView['puzzle']>; story: string; lastFail: string | null }>()
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
+const audio = useAudio()
 const p = computed(() => props.data.puzzle)
 
 const LETTERS = 'АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'.split('')
@@ -29,6 +30,7 @@ function spin(i: number, dir: 1 | -1) {
   const next = [...wheels.value]
   next[i] = set[(at + dir + set.length) % set.length]!
   wheels.value = next
+  void audio.sfx('qte-tick', 0.35)
 }
 /* колёсико можно крутить и пальцем (тянуть вверх-вниз), и колесом мыши, а на клавиатуре — просто набрать код */
 const focus = ref(0)
