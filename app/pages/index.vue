@@ -118,6 +118,12 @@ const theme = computed(() => {
   return state.value?.outcome === 'failed' ? 'final-failed' : 'final-solved'
 })
 watch([theme, () => audio.unlocked.value, () => state.value?.caseInfo.id], ([t, ok]) => { if (ok && t !== undefined) audio.theme(t, t === 'night-dawn' ? 0.7 : 1) }, { immediate: true })
+/* темы всех миров подгружаются заранее, пока показано меню: перелистывание миров переключает музыку сразу,
+   а не через несколько секунд загрузки (файл темы — 1,5–2 МБ, в браузере он качался до 10 с) */
+watch([screen, () => state.value?.catalog, () => audio.unlocked.value], ([s, catalog, ok]) => {
+  if (s !== 'menu' || !catalog || !ok) return
+  for (const g of catalog) if (g.setting.menu?.music) void audio.preload(g.setting.menu.music)
+}, { immediate: true })
 
 // улица или помещение — от кадра на экране (карта и совещание — внутри)
 watch([outdoors, backdropDim, () => audio.unlocked.value], ([out, dim]) => { audio.setOutdoors(!!out && !dim) }, { immediate: true })

@@ -103,6 +103,8 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &--noart { background: radial-gradient(ellipse at 50% 40%, #3a403e 0%, #151918 70%); }
   /* крупный план осмотра: кнопка обратно к месту — над текстом места */
   &__back { position: absolute; left: 1rem; top: 1rem; z-index: 7; padding: 0.45rem 0.85rem; border-radius: 999px; font-family: var(--font-ui); font-size: 0.78rem; font-weight: 600; color: var(--paper-2);
+  /* озвучка и звук на заставке — справа сверху, той же таблеткой, что и «← Красная нить» */
+  &__ctl { position: absolute; right: 1rem; top: 1rem; z-index: 7; display: flex; gap: 0.4rem; }
     background: rgba(6, 7, 7, 0.72); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.14); transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease; }
   &__dark { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: background 0.8s ease, opacity 0.8s ease;
     background: radial-gradient(ellipse 120% 90% at 50% 40%, transparent 40%, rgba(4, 5, 5, 0.7) 100%), linear-gradient(180deg, rgba(6, 7, 7, 0.4) 0%, transparent 25%, transparent 45%, rgba(6, 7, 7, 0.94) 100%); }
@@ -322,6 +324,12 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 }
 @media (hover: hover) { .solo-enc__opt:not(:disabled):hover { background: rgba(60, 20, 16, 0.85); box-shadow: inset 0 0 0 1px rgba(224, 122, 107, 0.7); } }
 @keyframes enc-in { from { opacity: 0; filter: brightness(3); } }
+.solo-ctl { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.45rem 0.8rem; border-radius: 999px; font-family: var(--font-ui); font-size: 0.78rem; font-weight: 600; color: var(--paper-2);
+  background: rgba(8, 10, 10, 0.55); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.22); transition: background-color 0.15s ease, color 0.15s ease;
+  svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  &--off { color: var(--paper-faint); span { text-decoration: line-through; } } }
+@media (hover: hover) { .solo-ctl:hover { background: rgba(30, 34, 34, 0.85); color: var(--paper); } }
+@media (max-width: 640px) { .solo-ctl span { display: none; } .solo-ctl { padding: 0.5rem 0.6rem; } }
 /* босс: арена над панелью, точки со стрелками и кольцом-таймером; удар по боссу — вспышка, по герою — тряска */
 .solo-boss { --qte: 5rem;
   &__arena { position: absolute; inset: 0 0 42% 0; z-index: 6; }

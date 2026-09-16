@@ -320,6 +320,17 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloFog :density="1" />
       <div class="solo-title__body">
         <a href="/" class="solo-title__back" @click.prevent="toMenu">← Красная нить</a>
+        <!-- озвучка и звук — здесь, на заставке, как в лобби других дел -->
+        <div class="solo-title__ctl">
+          <button type="button" class="solo-ctl" :class="{ 'solo-ctl--off': !audio.voiceOn.value }" :title="audio.voiceOn.value ? 'Выключить озвучку реплик' : 'Включить озвучку реплик'" :aria-label="audio.voiceOn.value ? 'Выключить озвучку' : 'Включить озвучку'" @click="audio.setVoiceOn(!audio.voiceOn.value)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H10l-4.5 3.5V16H4z" /><path v-if="audio.voiceOn.value" d="M8 9h8M8 12h5" /><path v-else d="M8 8.5l7 6M15 8.5l-7 6" /></svg>
+            <span>{{ audio.voiceOn.value ? 'Озвучка' : 'Без озвучки' }}</span>
+          </button>
+          <button type="button" class="solo-ctl" :class="{ 'solo-ctl--off': audio.muted.value }" :title="audio.muted.value ? 'Включить звук' : 'Выключить звук'" :aria-label="audio.muted.value ? 'Включить звук' : 'Выключить звук'" @click="audio.setMuted(!audio.muted.value)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path v-if="!audio.muted.value" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /><path v-else d="M16 9.5l5 5M21 9.5l-5 5" /></svg>
+            <span>{{ audio.muted.value ? 'Без звука' : 'Звук' }}</span>
+          </button>
+        </div>
         <span class="solo-label">Туман · одиночная игра</span>
         <h1 class="solo-title__name">{{ v?.info.title ?? 'Туман' }}</h1>
         <p v-if="v" class="solo-title__lede">{{ v.info.lede }}</p>
@@ -463,7 +474,6 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <p class="solo-label">Пауза · {{ v.info.title }}</p>
           <button type="button" class="solo-btn" @click="menuOpen = false">Вернуться</button>
           <button v-for="s in v.saves" :key="s.slot" type="button" class="solo-btn solo-btn--ghost" @click="enter({ load: s.slot })">Загрузить: {{ s.place }} · {{ when(s.at) }}</button>
-          <button type="button" class="solo-btn solo-btn--ghost" @click="audio.setVoiceOn(!audio.voiceOn.value)">{{ audio.voiceOn.value ? 'Озвучка: включена' : 'Озвучка: выключена' }}</button>
           <button type="button" class="solo-btn solo-btn--ghost" @click="audio.setMuted(!audio.muted.value)">{{ audio.muted.value ? 'Включить звук' : 'Выключить звук' }}</button>
           <button type="button" class="solo-btn solo-btn--ghost" @click="askNew">{{ confirmNew ? 'Точно? Несохранённое пропадёт' : 'Начать заново' }}</button>
           <button type="button" class="solo-btn solo-btn--ghost" @click="entered = false; menuOpen = false">На заставку</button>
