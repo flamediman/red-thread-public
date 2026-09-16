@@ -322,6 +322,30 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 }
 @media (hover: hover) { .solo-enc__opt:not(:disabled):hover { background: rgba(60, 20, 16, 0.85); box-shadow: inset 0 0 0 1px rgba(224, 122, 107, 0.7); } }
 @keyframes enc-in { from { opacity: 0; filter: brightness(3); } }
+/* босс: арена над панелью, точки со стрелками и кольцом-таймером; удар по боссу — вспышка, по герою — тряска */
+.solo-boss { --qte: 5rem;
+  &__arena { position: absolute; inset: 0 0 42% 0; z-index: 6; }
+  &--hit .solo-enc__art { animation: boss-hit 0.5s ease-out; }
+  &--miss { animation: boss-miss 0.45s ease-out; }
+  &__time { margin-left: auto; font-family: var(--font-ui); font-size: 0.85rem; color: var(--paper-dim); }
+  &__series { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-ui); font-size: 0.78rem; color: var(--paper-faint);
+    i { width: 1.4rem; height: 4px; border-radius: 2px; background: rgba(230, 227, 218, 0.15); transition: background-color 0.15s ease;
+      &.hit { background: #8ad3a0; box-shadow: 0 0 8px rgba(138, 211, 160, 0.6); }
+      &.miss { background: #d0493a; } }
+    span { margin-left: 0.4rem; } } }
+.solo-qte { position: absolute; z-index: 7; display: grid; place-items: center; width: var(--qte); height: var(--qte); margin: calc(var(--qte) / -2) 0 0 calc(var(--qte) / -2); padding: 0; border: 0; border-radius: 50%;
+  color: #fff; background: rgba(8, 8, 8, 0.6); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3), 0 0 30px rgba(0, 0, 0, 0.7); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  svg { position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); transform: rotate(-90deg); overflow: visible; }
+  &__ring { fill: none; stroke: #e07a6b; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 289; filter: drop-shadow(0 0 6px rgba(224, 122, 107, 0.8)); }
+  &__glyph { font-family: var(--font-ui); font-size: 2.1rem; font-weight: 700; line-height: 1; text-shadow: 0 0 10px rgba(255, 255, 255, 0.6); }
+  &--hit { background: rgba(28, 74, 46, 0.92); box-shadow: 0 0 0 3px #8ad3a0, 0 0 32px rgba(138, 211, 160, 0.75); .solo-qte__ring { stroke: #8ad3a0; } }
+  &--miss { background: rgba(92, 20, 16, 0.92); box-shadow: 0 0 0 3px #d0493a, 0 0 24px rgba(208, 73, 58, 0.6); animation: shake 0.35s ease; .solo-qte__ring { stroke: #d0493a; } } }
+.qte-enter-from, .qte-leave-to { opacity: 0; transform: scale(0.5); }
+.qte-enter-active { transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.2, 1.4, 0.4, 1); }
+.qte-leave-active { transition: opacity 0.22s ease, transform 0.22s ease; }
+@keyframes boss-hit { 0% { filter: saturate(0.45) contrast(1.2) brightness(2.4); } }
+@keyframes boss-miss { 0% { transform: translate(7px, -5px); } 40% { transform: translate(-7px, 5px); } 70% { transform: translate(3px, -2px); } }
+@media (max-width: 640px) { .solo-boss { --qte: 4.4rem; } .solo-boss__arena { inset: 0 0 46% 0; } }
 /* погоня: жёлтый свет фонаря за спиной разгорается, пока тает время; кадр трясётся на бегу */
 .solo-enc--chase .solo-enc__art { animation: chase-run 0.55s ease-in-out infinite; filter: saturate(0.5) contrast(1.25) brightness(0.7); }
 .solo-chase__lamp { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: var(--glow, 0.3); mix-blend-mode: screen;

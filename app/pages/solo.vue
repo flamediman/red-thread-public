@@ -142,13 +142,14 @@ const endingPlayed = ref<string | null>(null)
 /** находки ждут своей очереди: карточка — когда закончились сцена, разговор и головоломка */
 const found = ref<NonNullable<SoloView['feed'][number]['found']>[]>([])
 const nextFound = () => { found.value = found.value.slice(1) }
-const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
+const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'boss' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
   const s = v.value
   if (!s?.started || !entered.value) return null
   if (s.scene) return 'scene'
   if (s.ending) return endingPlayed.value === s.ending.id ? 'ending' : 'ending-scene'
   if (s.dead) return 'dead'
   if (s.chase) return 'chase'
+  if (s.boss) return 'boss'
   if (s.encounter) return 'encounter'
   if (s.dialogue) return 'dialogue'
   if (s.puzzle) return 'puzzle'
@@ -167,7 +168,7 @@ const sceneDone = () => { if (v.value?.scene) send({ type: 'sceneDone', seq: v.v
 const relay = (m: SoloClientMessage) => send(m)
 
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
-watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
+watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
   ([, radio, enc, low, inGame, ok, ended]) => {
     if (!ok) return
     if (!inGame || !v.value?.started || ended) { audio.ambience(['fog-wind'], { 'fog-wind': 0.5 }); return }
@@ -197,7 +198,7 @@ const themeName = computed<string | null>(() => {
 const themeLevel = computed(() => {
   const s = v.value
   if (!s || !entered.value || !s.started || s.ending || s.chase) return 1
-  if (s.encounter) return 0.3
+  if (s.encounter || s.boss) return 0.3
   if (s.scene || s.dialogue) return 0.45
   return 0.6
 })
@@ -431,6 +432,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="sceneDone" />
       <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
       <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
+      <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" />

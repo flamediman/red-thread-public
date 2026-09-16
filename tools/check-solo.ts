@@ -19,7 +19,7 @@ const warn = (m: string) => warns.push(m)
 
 /* ── уникальность ── */
 const ids = new Map<string, string>()
-const table = { place: S.places, hotspot: S.hotspots, item: S.items, note: S.notes, monster: S.monsters, spawn: S.spawns, chase: S.chases ?? [], npc: S.npcs, dialogue: S.dialogues, ending: S.endings, area: S.areas }
+const table = { place: S.places, hotspot: S.hotspots, item: S.items, note: S.notes, monster: S.monsters, boss: S.bosses ?? [], spawn: S.spawns, chase: S.chases ?? [], npc: S.npcs, dialogue: S.dialogues, ending: S.endings, area: S.areas }
 for (const [kind, list] of Object.entries(table)) {
   for (const x of list as { id: string }[]) {
     const key = `${kind}:${x.id}`
@@ -137,10 +137,32 @@ for (const m of S.monsters) {
   artUsed.set(`m_${m.id}`, `существо ${m.id}`)
   if (m.windowMs < 4500) warn(`существо ${m.id}: на решение ${m.windowMs / 1000} с — прочитать текст и выбрать из пяти вариантов не успеть`)
 }
+for (const b of S.bosses ?? []) {
+  const w = `босс ${b.id}`
+  artUsed.set(`m_${b.art ?? b.id}`, w)
+  for (const x of Object.values(b.sfx)) sfxUsed.set(x, w)
+  if (b.success) effect(b.success, `${w} победа`)
+  if (b.need > b.series) err(`${w}: нужно поймать ${b.need} из ${b.series} точек`)
+  for (const ph of b.phases ?? []) if ((ph.need ?? b.need) > (ph.series ?? b.series)) err(`${w}: фаза ${ph.below} — нужно поймать больше точек, чем есть`)
+  if (Math.min(b.promptMs, ...(b.phases ?? []).map(ph => ph.promptMs ?? b.promptMs)) < 900) warn(`${w}: окно точки меньше 0,9 с — на планшете не успеть`)
+  const rounds = Math.ceil(b.hp / b.hit)
+  if (rounds > 6) warn(`${w}: ${rounds} удачных серий до победы — долго`)
+}
 for (const s of S.spawns) {
-  if (!has('monster', s.monster)) err(`появление ${s.id}: нет существа ${s.monster}`)
-  if (!has('place', s.place)) err(`появление ${s.id}: нет места ${s.place}`)
-  cond(s.when, `появление ${s.id}`)
+  const w = `появление ${s.id}`
+  if (!s.monster && !s.boss) err(`${w}: ни существа, ни босса`)
+  if (s.monster && !has('monster', s.monster)) err(`${w}: нет существа ${s.monster}`)
+  if (s.boss && !has('boss', s.boss)) err(`${w}: нет босса ${s.boss}`)
+  if (!has('place', s.place)) err(`${w}: нет места ${s.place}`)
+  if (s.after) {
+    const h = S.hotspots.find(x => x.id === s.after)
+    if (!h) err(`${w}: нет точки ${s.after}`)
+    else if (h.place !== s.place) err(`${w}: точка ${s.after} в другом месте (${h.place})`)
+    if (s.trigger !== 'act') warn(`${w}: after без trigger 'act' не сработает`)
+  }
+  if (s.trigger === 'linger' && !s.afterMs) warn(`${w}: linger без afterMs — выйдет через 20 с`)
+  if (s.boss && s.stays) warn(`${w}: босс с stays — будет возвращаться после каждого побега`)
+  cond(s.when, w)
 }
 for (const n of S.npcs) { artUsed.set(`n_${n.id}`, `персонаж ${n.id}`); if (!n.voiceId) warn(`персонаж ${n.id}: нет голоса — реплики прочитает рассказчик`) }
 for (const c of S.chases ?? []) {
@@ -271,7 +293,7 @@ if (!artUsed.has('cover') && !existsSync(resolve(artDir, 'cover.jpg'))) missingA
 const sfxDir = resolve(import.meta.dirname, '../public/sfx')
 const missingSfx = [...sfxUsed.keys()].filter(s => !existsSync(resolve(sfxDir, entry.info.settingId, `${s}.m4a`)) && !existsSync(resolve(sfxDir, `${s}.m4a`)))
 
-console.log(`«${S.title}»: мест ${S.places.length}, осмотров ${S.hotspots.length}, предметов ${S.items.length}, записок ${S.notes.length}, существ ${S.monsters.length}, разговоров ${S.dialogues.length}, концовок ${S.endings.length}`)
+console.log(`«${S.title}»: мест ${S.places.length}, осмотров ${S.hotspots.length}, предметов ${S.items.length}, записок ${S.notes.length}, существ ${S.monsters.length}, боссов ${(S.bosses ?? []).length}, разговоров ${S.dialogues.length}, концовок ${S.endings.length}`)
 console.log(`максимум метрик: ${Object.entries(maxScore).map(([k, v]) => `${k} ${v}`).join(', ') || '—'}`)
 if (missingArt.length) console.log(`нет картинок (${missingArt.length}): ${missingArt.join(', ')}`)
 if (missingSfx.length) console.log(`нет звуков (${missingSfx.length}): ${missingSfx.join(', ')}`)

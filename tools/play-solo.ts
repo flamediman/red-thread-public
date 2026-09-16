@@ -33,6 +33,7 @@ const usedOn = new Set<string>()
 const chosen = new Set<string>()
 const encounters: string[] = []
 const chases: string[] = []
+const bosses: string[] = []
 let lastProgress = ''
 
 function skipScene() { let n = 0; while (V().scene && n++ < 20) g.handle({ type: 'sceneDone', seq: V().scene!.seq }) }
@@ -48,6 +49,15 @@ function resolveOverlays() {
       const step = spec.steps[v.chase.step]!
       if (!chases.includes(spec.id)) chases.push(spec.id)
       g.handle({ type: 'run', index: step.options.findIndex(o => o.right) })
+      continue
+    }
+    if (v.boss) {
+      if (!bosses.includes(v.boss.id)) bosses.push(v.boss.id)
+      // серия точек: бот ловит каждую — окна сдвигаем так, чтобы «сейчас» было внутри
+      const b = (g as any).live.boss
+      const now = Date.now()
+      for (const p of b.prompts) { p.from = now - 100; p.to = now + 1000 }
+      for (const p of [...b.prompts]) g.handle({ type: 'qte', id: p.id, key: p.key })
       continue
     }
     if (v.encounter) {
@@ -179,7 +189,7 @@ while (!V().ending && !V().dead && steps++ < 600) {
 const v = V()
 const score = (g as unknown as { run: { score: Record<string, number>; deaths: number; kills: number } }).run
 console.log(`${policy}: ${v.ending ? `концовка «${v.ending.title}»` : v.dead ? 'смерть' : 'не дошёл'} · шагов ${steps} · мест ${v.map.places.filter(p => p.visited).length}/${S.places.length} · записок ${v.notes.length}/${S.notes.length}`)
-console.log(`  метрики ${Object.entries(score.score).map(([k, n]) => `${k} ${n}`).join(', ') || '—'} · встречи: ${encounters.join(', ') || '—'} · погони: ${chases.join(', ') || '—'} · последнее продвижение: ${lastProgress}`)
+console.log(`  метрики ${Object.entries(score.score).map(([k, n]) => `${k} ${n}`).join(', ') || '—'} · встречи: ${encounters.join(', ') || '—'} · боссы: ${bosses.join(', ') || '—'} · погони: ${chases.join(', ') || '—'} · последнее продвижение: ${lastProgress}`)
 if (!v.ending) process.exitCode = 1
 g.dispose()
 rmSync(process.env.DATA_DIR!, { recursive: true, force: true })

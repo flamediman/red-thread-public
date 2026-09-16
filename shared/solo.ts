@@ -69,6 +69,8 @@ export interface SoloEffect {
 
 export interface SoloText { when?: SoloCond; text: string; voice?: string }
 
+export type SoloQteKey = 'up' | 'down' | 'left' | 'right'
+
 export interface SoloExit {
   to: string
   label: string
@@ -166,7 +168,8 @@ export interface SoloHotspot {
   hideWhen?: SoloCond
 }
 
-export type SoloItemKind = 'key' | 'tool' | 'weapon' | 'ammo' | 'heal' | 'battery' | 'story'
+/** luck — оберег: одноразовый второй бросок, если укрытие подвело */
+export type SoloItemKind = 'key' | 'tool' | 'weapon' | 'ammo' | 'heal' | 'battery' | 'story' | 'luck'
 
 export interface SoloItem {
   id: string
@@ -203,8 +206,37 @@ export interface SoloMonster {
   guard?: number
   /** шанс ответить ударом на ваш удачный удар, 0…1: крепкие существа выматывают, если бить голыми руками */
   riposte?: number
+  /** от него не спрятаться (укрытие закрыто) */
+  noHide?: boolean
+  /** приёмник его не ловит: появляется без предупреждения */
+  silent?: boolean
+  /** с каждым раундом торопится: длина раунда умножается на hurry (0.85 — на 15 % короче каждый раунд), не короче 3,5 с */
+  hurry?: number
   sfx: { near: string; attack: string; hurt: string; die: string }
-  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string }
+  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string }
+}
+
+/** Босс: серии быстрых нажатий. На экране одна за другой вспыхивают точки со стрелкой: на компьютере — нажать эту
+    стрелку, на планшете — коснуться точки, пока кольцо вокруг неё не сомкнулось. Поймали need из series — босс теряет hit;
+    нет — бьёт он. Фазы по здоровью меняют текст и темп. */
+export interface SoloBoss {
+  id: string
+  name: string
+  /** картинка на весь экран: m_<art>; без неё — m_<id> */
+  art?: string
+  hp: number
+  damage: number
+  /** точек в серии, сколько нужно поймать, окно каждой точки в мс */
+  series: number
+  need: number
+  promptMs: number
+  /** урон боссу за удачную серию */
+  hit: number
+  phases?: { below: number; text: string; series?: number; need?: number; promptMs?: number }[]
+  sfx: { near: string; attack: string; hurt: string; die: string }
+  text: { appear: string; hit: string; miss: string; die: string }
+  /** после победы */
+  success?: SoloEffect
 }
 
 /** Погоня: от этого не отбиться. Несколько шагов подряд, на каждом — секунды, чтобы выбрать, куда бежать.
@@ -225,11 +257,18 @@ export interface SoloChase {
 
 export interface SoloSpawn {
   id: string
-  monster: string
+  /** существо или босс (одно из двух) */
+  monster?: string
+  boss?: string
   place: string
   when?: SoloCond
-  /** от кого спрятались или убежали, тот уходит и больше не появляется; stays — караулит место и встречает снова */
+  /** от кого спрятались, тот уходит и больше не появляется (убежали — вернётся при следующем входе); stays — караулит место и встречает снова */
   stays?: boolean
+  /** когда выходит: enter — сразу при входе (по умолчанию); act — после осмотра или действия здесь (after — именно этой
+      точки); linger — через afterMs миллисекунд, если игрок всё ещё здесь и ничем не занят */
+  trigger?: 'enter' | 'act' | 'linger'
+  after?: string
+  afterMs?: number
 }
 
 export interface SoloNpc {
@@ -263,6 +302,7 @@ export interface SoloStory {
   items: SoloItem[]
   notes: SoloNote[]
   monsters: SoloMonster[]
+  bosses?: SoloBoss[]
   spawns: SoloSpawn[]
   chases?: SoloChase[]
   npcs: SoloNpc[]
@@ -334,6 +374,15 @@ export interface SoloView {
     options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean; hint?: string }[]
   } | null
   puzzle: { hotspot: string; puzzle: SoloPublicPuzzle } | null
+  boss: {
+    id: string; name: string; art: string; hp: number; maxHp: number; round: number; text: string
+    startedAt: number; deadline: number; serverNow: number
+    /** точки серии по часам сервера: key — стрелка, x/y — место на арене в процентах, result — как сыграна */
+    prompts: { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }[]
+    need: number
+    /** итог прошлой серии */
+    last: 'hit' | 'miss' | null
+  } | null
   chase: {
     id: string; name: string; art: string; step: number; total: number; text: string
     startedAt: number; deadline: number; serverNow: number
@@ -367,6 +416,8 @@ export type SoloClientMessage =
   /** at — время нажатия по часам сервера (клиент знает сдвиг): так пинг не съедает окно */
   | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide'; at?: number }
   | { type: 'run'; index: number }
+  /** босс: нажата стрелка (или точка) с номером id */
+  | { type: 'qte'; id: number; key: SoloQteKey; at?: number }
   /** вкладка ушла в фон или вернулась: часы встречи и погони стоят, пока игрок не смотрит */
   | { type: 'away'; on: boolean }
 

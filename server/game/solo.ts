@@ -6,8 +6,8 @@ import { resolve } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
 import { assignVoiceIds } from './solo-lines'
 import type {
-  SoloChase, SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
-  SoloPlace, SoloSpawn, SoloStory, SoloView
+  SoloBoss, SoloChase, SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
+  SoloPlace, SoloQteKey, SoloSpawn, SoloStory, SoloView
 } from '../../shared/types'
 
 const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSync('/app/build-id', 'utf8').trim() : 'dev')
@@ -21,10 +21,16 @@ const ZONE_TOL = 130
 const AT_DRIFT = 800
 /** фонарь садится на столько процентов за переход (до нуля — дальше только тлеет) */
 const LIGHT_DRAIN = 2
+/** босс: стрелки точек и пауза между точками серии, мс */
+const QTE_KEYS: SoloQteKey[] = ['up', 'down', 'left', 'right']
+const QTE_GAP = 340
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
 interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null }
 interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string }
+interface Prompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
+/** бой с боссом: серия точек prompts, итог прошлой серии last, phase — какая фаза уже объявлена */
+interface Boss { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string; prompts: Prompt[]; last: 'hit' | 'miss' | null; phase: number }
 
 /** всё, что переживает перезагрузку страницы и сохранения */
 interface Run {
@@ -61,6 +67,9 @@ interface Run {
 interface Live {
   encounter: Encounter | null
   chase?: Chase | null
+  boss?: Boss | null
+  /** существо, которое выйдет, если игрок задержится здесь: at — когда */
+  linger?: { spawn: string; at: number } | null
   puzzle: string | null
   dialogue: { id: string; node: string } | null
   scene: { seq: number; lines: SoloLine[] } | null
@@ -81,6 +90,7 @@ export class SoloGame {
   private MON: Map<string, SoloMonster>
   private SPAWN: Map<string, SoloSpawn>
   private CHASE: Map<string, SoloChase>
+  private BOSS: Map<string, SoloBoss>
   private DIALOG: Map<string, SoloDialogue>
 
   private run: Run | null = null
@@ -90,6 +100,7 @@ export class SoloGame {
   /** номера событий растут и после перезапуска сервера: клиент по ним решает, что уже прозвучало */
   private seq = Math.floor(Date.now() / 1000)
   private timer: ReturnType<typeof setTimeout> | null = null
+  private lingerTimer: ReturnType<typeof setTimeout> | null = null
   private activeSince = Date.now()
   private file: string
 
@@ -98,6 +109,7 @@ export class SoloGame {
     this.PLACE = byId(story.places); this.ITEM = byId(story.items); this.HOT = byId(story.hotspots)
     this.MON = byId(story.monsters); this.SPAWN = byId(story.spawns); this.DIALOG = byId(story.dialogues)
     this.CHASE = byId(story.chases ?? [])
+    this.BOSS = byId(story.bosses ?? [])
     assignVoiceIds(story)
     this.file = resolve(DATA_DIR, 'solo', story.id, `${token}.json`)
     this.load()
@@ -105,20 +117,24 @@ export class SoloGame {
 
   dispose() {
     if (this.timer) clearTimeout(this.timer)
+    if (this.lingerTimer) clearTimeout(this.lingerTimer)
     this.persist()
   }
 
   /** последняя вкладка закрыта или ушла в фон: существо не бьёт, пока игрока нет у экрана */
   detached() {
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
+    if (this.lingerTimer) { clearTimeout(this.lingerTimer); this.lingerTimer = null }
     this.tickPlay()
     this.persist()
   }
 
-  /** игрок вернулся: у него снова полное окно на решение */
+  /** игрок вернулся: у него снова полное окно на решение; то, что ждало его в этом месте, ждёт ещё пару секунд */
   attached() {
     this.activeSince = Date.now()
     this.refreshWindow()
+    const l = this.live.linger
+    if (l && !this.lingerTimer) this.armLinger(l.spawn, Math.max(2500, l.at - Date.now()))
   }
 
   /* ── сообщения ─────────────────────────────────────────────── */
@@ -146,9 +162,10 @@ export class SoloGame {
       case 'equip': return this.equip(msg.item)
       case 'act': return this.act(msg.action, msg.at)
       case 'run': return this.run_(msg.index)
+      case 'qte': return this.qte(msg.id, msg.key, msg.at)
     }
     // остальное — только когда герой свободен: не в бою, не в погоне, не в разговоре, не над головоломкой, не в сцене
-    if (this.live.encounter || this.live.chase || this.live.scene) return
+    if (this.live.encounter || this.live.chase || this.live.boss || this.live.scene) return
     if (msg.type === 'choose') return this.choose(msg.index)
     if (msg.type === 'closePuzzle') { this.live.puzzle = null; return this.changed() }
     if (msg.type === 'solve') return this.solve(msg.hotspot, msg.answer)
@@ -171,10 +188,11 @@ export class SoloGame {
       ammo: st.ammo, weapon: null, looked: [], used: [], killed: [], passed: [], opened: [], tried: [], otherworld: false,
       score: {}, playMs: 0, deaths: 0, kills: 0, saves: 0, ending: null
     }
-    this.live = { encounter: null, chase: null, puzzle: null, dialogue: null, scene: null, dead: false }
+    this.live = { encounter: null, chase: null, boss: null, linger: null, puzzle: null, dialogue: null, scene: null, dead: false }
     this.feed = []
     this.activeSince = Date.now()
     if (this.timer) clearTimeout(this.timer)
+    this.clearLinger()
     this.showScene(st.scene)
     const enter = this.place().enter
     if (enter) this.apply(enter)
@@ -249,6 +267,8 @@ export class SoloGame {
     this.live.dead = true
     this.live.encounter = null
     this.live.chase = null
+    this.live.boss = null
+    this.clearLinger()
     this.live.puzzle = null
     this.live.dialogue = null
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
@@ -303,9 +323,56 @@ export class SoloGame {
     if (first) r.visited.push(to)
     const p = this.PLACE.get(to)!
     if (first && p.enter) this.apply(p.enter)
-    if (this.live.dead || this.live.encounter || this.live.chase) return
-    const spawn = this.S.spawns.find(s => s.place === to && this.spawnActive(s))
-    if (spawn) this.startEncounter(spawn.id)
+    this.clearLinger()
+    if (this.live.dead || this.live.encounter || this.live.chase || this.live.boss) return
+    // кто ждёт у входа — выходит сразу; кто караулит внутри — через время, если игрок задержится
+    const atOnce = this.S.spawns.find(s => s.place === to && (s.trigger ?? 'enter') === 'enter' && this.spawnActive(s))
+    if (atOnce) return this.startSpawn(atOnce)
+    const later = this.S.spawns.find(s => s.place === to && s.trigger === 'linger' && this.spawnActive(s))
+    if (later) this.armLinger(later.id, later.afterMs ?? 20_000)
+  }
+
+  /* ── появления не сразу: после осмотра или через время ────── */
+
+  private startSpawn(s: SoloSpawn) { if (s.boss) this.startBoss(s.id); else this.startEncounter(s.id) }
+
+  /** после осмотра, действия или решённой головоломки здесь: существо, которое ждало именно этого */
+  private actSpawn(hotspotId: string) {
+    const r = this.run!
+    if (this.live.dead || this.live.encounter || this.live.chase || this.live.boss || r.ending) return
+    const s = this.S.spawns.find(s => s.place === r.place && s.trigger === 'act' && this.spawnActive(s)
+      && (!s.after || s.after === hotspotId || r.looked.includes(s.after) || this.flag(`solved:${s.after}`)))
+    if (s) { this.clearLinger(); this.startSpawn(s) }
+  }
+
+  private armLinger(spawnId: string, ms: number) {
+    this.clearLinger()
+    this.live.linger = { spawn: spawnId, at: Date.now() + ms }
+    this.lingerTimer = setTimeout(() => this.lingerFire(), ms)
+    this.lingerTimer.unref?.()
+  }
+
+  private clearLinger() {
+    if (this.lingerTimer) { clearTimeout(this.lingerTimer); this.lingerTimer = null }
+    this.live.linger = null
+  }
+
+  /** время вышло: игрок всё ещё здесь — существо выходит; занят сценой, разговором или головоломкой — ещё секунда */
+  private lingerFire() {
+    this.lingerTimer = null
+    const l = this.live.linger
+    const s = l && this.SPAWN.get(l.spawn)
+    const r = this.run
+    if (!l || !s || !r || r.place !== s.place || r.ending || this.live.dead || !this.spawnActive(s)) { this.live.linger = null; return }
+    if (this.live.encounter || this.live.chase || this.live.boss) { this.live.linger = null; return }
+    if (this.live.scene || this.live.dialogue || this.live.puzzle) {
+      this.lingerTimer = setTimeout(() => this.lingerFire(), 1000)
+      this.lingerTimer.unref?.()
+      return
+    }
+    this.live.linger = null
+    this.startSpawn(s)
+    this.changed()
   }
 
   private spawnActive(s: SoloSpawn) {
@@ -376,6 +443,7 @@ export class SoloGame {
     if (h.look.once && r.looked.includes(h.id)) { this.say(h.look.after ?? 'Больше здесь ничего нет.', undefined, undefined, { art: h.look.art }); return this.changed() }
     if (!r.looked.includes(h.id)) r.looked.push(h.id)
     this.apply(h.look)
+    this.actSpawn(h.id)
     this.changed()
   }
 
@@ -397,6 +465,7 @@ export class SoloGame {
     if (u.once && r.used.includes(key)) { this.say('Это уже сделано.'); return this.changed() }
     if (!r.used.includes(key)) r.used.push(key)
     this.apply(u.effect)
+    this.actSpawn(h.id)
     this.changed()
   }
 
@@ -422,6 +491,7 @@ export class SoloGame {
     this.live.puzzle = null
     this.apply({ set: [`solved:${h.id}`] })
     this.apply(p.success)
+    this.actSpawn(h.id)
     this.changed()
   }
 
@@ -458,12 +528,12 @@ export class SoloGame {
   /* ── встречи ──────────────────────────────────────────────── */
 
   private startEncounter(spawnId: string) {
-    const s = this.SPAWN.get(spawnId), m = s && this.MON.get(s.monster)
+    const s = this.SPAWN.get(spawnId), m = s?.monster ? this.MON.get(s.monster) : undefined
     if (!s || !m || this.run!.killed.includes(s.id)) return
     const now = Date.now()
     this.live.puzzle = null
     this.live.dialogue = null
-    const windowMs = this.roundWindow(m)
+    const windowMs = this.roundWindow(m, 1)
     this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + windowMs, windowMs, text: m.text.appear, ...this.rollZones(m, windowMs) }
     this.say('', [m.sfx.near])
     this.arm()
@@ -477,7 +547,13 @@ export class SoloGame {
     const prev = r.prev ? this.PLACE.get(r.prev)?.name : null
     const hideWhy: string[] = []
     if (m.seesLight && r.light) hideWhy.push('фонарь горит, а она идёт на свет')
-    if (this.has('radio') && r.radioOn !== false) hideWhy.push('приёмник шипит — выдаст')
+    if (this.has('radio') && r.radioOn !== false) hideWhy.push('приёмник шипит — шанс вдвое ниже')
+    const chance = this.hideChance(m)
+    const charm = this.luck()
+    const hideHint = !p.hide ? 'Здесь негде.'
+      : m.noHide ? 'От этого не спрятаться.'
+      : chance <= 0 ? `Не выйдет: ${hideWhy.join(', ')}.`
+      : `Бросок: шанс ≈ ${Math.round(chance * 100)} %${hideWhy.length ? ` (${hideWhy.join(', ')})` : dim ? ' (темнота прячет)' : ''}.${charm ? ` ${charm.name} даст второй бросок.` : ''}`
     const lightHint = !p.dark ? 'Здесь и так светло — фонарь ничего не меняет'
       : r.light ? `Погасить: темнота прячет${m.seesLight ? ' от неё' : ''}, но окна удара станут уже`
       : `Зажечь: окна удара шире${m.seesLight ? ', но она идёт на свет — раунды короче, не спрятаться' : ''}`
@@ -488,15 +564,32 @@ export class SoloGame {
       ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0,
         hint: r.ammo ? 'Почти на всё здоровье существа; раунд длиннее.' : 'Патроны кончились.' }] : []),
       { id: 'flee', label: 'Бежать назад', enabled: !!r.prev, hint: prev ? `Назад: ${prev}. В синем окне — уйдёте без удара.` : 'Отступать некуда.' },
-      { id: 'hide', label: p.hide ? `Спрятаться: ${p.hide}` : 'Спрятаться', enabled: !!p.hide,
-        hint: !p.hide ? 'Здесь негде.' : hideWhy.length ? `Не выйдет: ${hideWhy.join(', ')}.` : 'Существо пройдёт мимо и уйдёт.' },
+      { id: 'hide', label: p.hide ? `Спрятаться: ${p.hide}` : 'Спрятаться', enabled: !!p.hide && !m.noHide, hint: hideHint },
       ...(this.has('flashlight') ? [{ id: 'light' as const, label: r.light ? 'Погасить фонарь' : 'Включить фонарь', enabled: r.light || r.battery > 0, hint: lightHint }] : [])
     ]
   }
 
-  /** длина раунда: оружие замедляет (tempo), существо, идущее на свет, при зажжённом фонаре торопится */
-  private roundWindow(m: SoloMonster) {
-    return Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1) * (m.seesLight && this.run!.light ? 0.75 : 1))
+  /** длина раунда: оружие замедляет (tempo), существо, идущее на свет, при зажжённом фонаре торопится,
+      торопливое (hurry) с каждым раундом даёт всё меньше времени */
+  private roundWindow(m: SoloMonster, round: number) {
+    const hurry = m.hurry ? Math.pow(m.hurry, Math.max(0, round - 1)) : 1
+    return Math.max(3500, Math.round(m.windowMs * (this.zoneWeapon().tempo ?? 1) * (m.seesLight && this.run!.light ? 0.75 : 1) * hurry))
+  }
+
+  /** шанс, что укрытие сработает: в темноте без фонаря выше, с шипящим приёмником вдвое ниже,
+      на свету от того, кто идёт на свет, — никакого */
+  private hideChance(m: SoloMonster) {
+    const r = this.run!
+    if (m.noHide || !this.place().hide) return 0
+    if (m.seesLight && r.light) return 0
+    let c = this.dim() ? 0.9 : 0.7
+    if (this.has('radio') && r.radioOn !== false) c *= 0.5
+    return c
+  }
+
+  /** оберег в карманах: одноразовый второй бросок, если укрытие подвело */
+  private luck(): SoloItem | null {
+    return Object.keys(this.run!.items).map(i => this.ITEM.get(i)).find((i): i is SoloItem => i?.kind === 'luck' && this.has(i.id)) ?? null
   }
   /** в темноте без фонаря едва видно: окна удара и побега уже */
   private dim() { const p = this.place(); return !!p.dark && !this.run!.light }
@@ -532,7 +625,7 @@ export class SoloGame {
 
   private arm() {
     if (this.timer) clearTimeout(this.timer)
-    const e = this.live.chase ?? this.live.encounter
+    const e = this.live.chase ?? this.live.encounter ?? this.live.boss
     if (!e) return
     this.timer = setTimeout(() => this.onTimeout(), Math.max(0, e.deadline - Date.now()) + 50)
     this.timer.unref?.()
@@ -541,10 +634,11 @@ export class SoloGame {
   /** время вышло — существо бьёт само */
   private onTimeout() {
     if (this.live.chase) return this.chaseTimeout()
+    if (this.live.boss) return this.bossTimeout()
     const e = this.live.encounter
     if (!e || Date.now() < e.deadline) return this.arm()
     if (this.live.scene) return this.refreshWindow()
-    const m = this.MON.get(this.SPAWN.get(e.spawn)!.monster)!
+    const m = this.MON.get(this.SPAWN.get(e.spawn)!.monster ?? '')!
     this.nextRound(m, m.text.attack, [m.sfx.attack], m.damage)
     this.changed()
   }
@@ -555,6 +649,9 @@ export class SoloGame {
     const c = this.live.chase
     const spec = c && this.CHASE.get(c.id)
     if (c && spec) { c.startedAt = now; c.deadline = now + spec.windowMs; return this.arm() }
+    const b = this.live.boss
+    const bs = b && this.bossSpec(b)
+    if (b && bs) { this.bossRound(bs, 1800); return this.arm() }
     const e = this.live.encounter
     const m = e && this.MON.get(this.SPAWN.get(e.spawn)?.monster ?? '')
     if (!e || !m) return
@@ -571,7 +668,7 @@ export class SoloGame {
     e.round++
     e.text = text
     e.startedAt = now
-    e.windowMs = this.roundWindow(m)
+    e.windowMs = this.roundWindow(m, e.round)
     e.deadline = now + e.windowMs
     Object.assign(e, this.rollZones(m, e.windowMs))
     this.say('', sfx)
@@ -589,7 +686,7 @@ export class SoloGame {
     const e = this.live.encounter
     const r = this.run!
     if (!e) return
-    const s = this.SPAWN.get(e.spawn)!, m = this.MON.get(s.monster)!
+    const s = this.SPAWN.get(e.spawn)!, m = this.MON.get(s.monster ?? '')!
     const now = Date.now()
     const rel = (typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now) - e.startedAt
     const inZone = (z: [number, number] | null) => !!z && rel >= z[0] - ZONE_TOL && rel <= z[1] + ZONE_TOL
@@ -637,12 +734,23 @@ export class SoloGame {
       }
       case 'hide': {
         const p = this.place()
-        if (!p.hide) return
-        // укрытие надёжно, если ничем себя не выдать: ни светом (для тех, кто идёт на свет), ни шипящим приёмником
-        if (m.seesLight && r.light) { this.nextRound(m, 'Свет фонаря выдаёт укрытие.', [m.sfx.attack], m.damage); break }
-        if (this.has('radio') && r.radioOn !== false) { this.nextRound(m, 'Приёмник шипит из-под куртки — и голова существа поворачивается на звук.', ['radio-static', m.sfx.attack], m.damage); break }
-        r.passed.push(s.id)
-        this.endEncounter(m.text.hide, ['solo-hide'])
+        if (!p.hide || m.noHide) return
+        // укрытие — бросок кубика: темнота помогает, шипящий приёмник мешает, свет фонаря выдаёт тем, кто идёт на свет;
+        // оберег в кармане даёт один второй бросок
+        const chance = this.hideChance(m)
+        if (chance <= 0) { this.nextRound(m, `Свет фонаря выдаёт укрытие. ${m.text.attack}`, [m.sfx.attack], m.damage); break }
+        let hidden = this.random() < chance
+        if (!hidden) {
+          const charm = this.luck()
+          if (charm) {
+            r.items[charm.id] = Math.max(0, (r.items[charm.id] ?? 0) - 1)
+            this.say(`${charm.name} — в кулак, до боли. Ещё раз, не дыша.`, ['solo-hide'])
+            hidden = this.random() < chance
+          }
+        }
+        if (hidden) { r.passed.push(s.id); this.endEncounter(m.text.hide, ['solo-hide']); break }
+        const radio = this.has('radio') && r.radioOn !== false
+        this.nextRound(m, `${radio ? 'Приёмник шипит из-под куртки — и голова поворачивается на звук.' : m.text.hideFail ?? 'Оно останавливается у самого укрытия. Пауза — и находит вас.'} ${m.text.attack}`, [...(radio ? ['radio-static'] : []), m.sfx.attack], m.damage)
         break
       }
     }
@@ -710,6 +818,110 @@ export class SoloGame {
     this.changed()
   }
 
+  /* ── боссы: серии быстрых нажатий ────────────────────────── */
+
+  private bossSpec(b: Boss) { return this.BOSS.get(this.SPAWN.get(b.spawn)?.boss ?? '') }
+
+  /** темп серии по фазе: действует последняя из фаз, чей порог здоровье уже пробило */
+  private bossPhase(spec: SoloBoss, hp: number) {
+    let idx = -1
+    ;(spec.phases ?? []).forEach((ph, i) => { if (hp <= ph.below * spec.hp) idx = i })
+    const ph = idx >= 0 ? spec.phases![idx]! : null
+    return { idx, series: ph?.series ?? spec.series, need: ph?.need ?? spec.need, promptMs: ph?.promptMs ?? spec.promptMs, text: ph?.text ?? null }
+  }
+
+  private startBoss(spawnId: string) {
+    const s = this.SPAWN.get(spawnId), spec = s?.boss ? this.BOSS.get(s.boss) : undefined
+    if (!s || !spec || this.run!.killed.includes(s.id)) return
+    this.live.puzzle = null
+    this.live.dialogue = null
+    this.live.encounter = null
+    this.live.boss = { spawn: s.id, hp: spec.hp, round: 1, startedAt: Date.now(), deadline: 0, text: spec.text.appear, prompts: [], last: null, phase: -1 }
+    this.bossRound(spec, 2600)
+    this.say('', [spec.sfx.near])
+    this.arm()
+  }
+
+  /** новая серия точек: первая — через lead мс (текст надо успеть прочитать), дальше подряд с короткими паузами;
+      каждая точка не ближе трети арены к предыдущей */
+  private bossRound(spec: SoloBoss, lead: number) {
+    const b = this.live.boss!
+    const ph = this.bossPhase(spec, b.hp)
+    const now = Date.now()
+    let t = now + lead, px = 50, py = 50
+    const prompts: Prompt[] = []
+    for (let k = 0; k < ph.series; k++) {
+      let x = 50, y = 50
+      for (let tries = 0; tries < 20; tries++) {
+        x = Math.round(12 + this.random() * 76); y = Math.round(14 + this.random() * 72)
+        if (Math.hypot(x - px, y - py) >= 30) break
+      }
+      prompts.push({ id: b.round * 10 + k, key: QTE_KEYS[Math.min(QTE_KEYS.length - 1, Math.floor(this.random() * QTE_KEYS.length))]!, x, y, from: t, to: t + ph.promptMs, result: null })
+      t += ph.promptMs + QTE_GAP
+      px = x; py = y
+    }
+    b.startedAt = now
+    b.prompts = prompts
+    b.deadline = t
+  }
+
+  /** нажатие по точке: своя стрелка вовремя — поймана, иначе промах; серия сыграна целиком — итог сразу */
+  private qte(id: number, key: SoloQteKey, at?: number) {
+    const b = this.live.boss
+    if (!b || this.live.scene) return
+    const p = b.prompts.find(x => x.id === id)
+    if (!p || p.result) return
+    const now = Date.now()
+    const t = typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now
+    p.result = key === p.key && t >= p.from - ZONE_TOL && t <= p.to + ZONE_TOL ? 'hit' : 'miss'
+    this.say('', [p.result === 'hit' ? 'solo-swing' : 'solo-wrong'])
+    if (b.prompts.every(x => x.result)) this.bossResolve()
+    this.changed()
+  }
+
+  private bossTimeout() {
+    const b = this.live.boss!
+    if (Date.now() < b.deadline) return this.arm()
+    if (this.live.scene) return this.refreshWindow()
+    this.bossResolve()
+    this.changed()
+  }
+
+  /** серия сыграна: поймали сколько нужно — босс теряет здоровье, нет — бьёт он; дальше новая серия */
+  private bossResolve() {
+    const b = this.live.boss!
+    const spec = this.bossSpec(b)!
+    const r = this.run!
+    for (const p of b.prompts) p.result ??= 'miss'
+    const need = this.bossPhase(spec, b.hp).need
+    const hits = b.prompts.filter(p => p.result === 'hit').length
+    if (hits >= need) {
+      b.hp -= spec.hit
+      b.last = 'hit'
+      if (b.hp <= 0) {
+        r.killed.push(b.spawn); r.kills++
+        this.live.boss = null
+        if (this.timer) { clearTimeout(this.timer); this.timer = null }
+        this.say(spec.text.die, [spec.sfx.die])
+        if (spec.success) this.apply(spec.success)
+        return
+      }
+      const next = this.bossPhase(spec, b.hp)
+      b.text = next.idx !== b.phase && next.text ? next.text : spec.text.hit
+      b.phase = next.idx
+      this.say('', [spec.sfx.hurt])
+    } else {
+      this.hurt(spec.damage)
+      if (this.live.dead) { this.say(spec.text.miss, [spec.sfx.attack]); return }
+      b.last = 'miss'
+      b.text = spec.text.miss
+      this.say('', [spec.sfx.attack])
+    }
+    b.round++
+    this.bossRound(spec, 1800)
+    this.arm()
+  }
+
   /* ── финал ─────────────────────────────────────────────────── */
 
   private finish(id: string) {
@@ -722,6 +934,8 @@ export class SoloGame {
     r.ending = ending
     this.live.encounter = null
     this.live.chase = null
+    this.live.boss = null
+    this.clearLinger()
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
   }
 
@@ -730,7 +944,7 @@ export class SoloGame {
   private saveSlot(slot: number) {
     const r = this.run
     if (!r || !Number.isInteger(slot) || slot < 0 || slot >= SAVE_SLOTS) return
-    if (!this.place().save || this.live.encounter || this.live.chase || this.live.dead || r.ending) return
+    if (!this.place().save || this.live.encounter || this.live.chase || this.live.boss || this.live.dead || r.ending) return
     this.tickPlay()
     r.saves++
     this.slots[slot] = { run: structuredClone(r), place: this.place().name, at: new Date().toISOString() }
@@ -744,10 +958,11 @@ export class SoloGame {
     const deaths = this.run?.deaths ?? s.run.deaths
     this.run = structuredClone(s.run)
     this.run.deaths = Math.max(deaths, this.run.deaths)
-    this.live = { encounter: null, chase: null, puzzle: null, dialogue: null, scene: null, dead: false }
+    this.live = { encounter: null, chase: null, boss: null, linger: null, puzzle: null, dialogue: null, scene: null, dead: false }
     this.feed = []
     this.activeSince = Date.now()
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
+    this.clearLinger()
     this.say(`Загружено: ${s.place}.`)
     this.changed()
   }
@@ -763,9 +978,10 @@ export class SoloGame {
   private radio(): 0 | 1 | 2 {
     const r = this.run!
     if (!this.has('radio') || r.radioOn === false) return 0
-    if (this.live.encounter || this.live.chase) return 2
+    if (this.live.encounter || this.live.chase || this.live.boss) return 2
     const here = this.place()
-    const active = (placeId: string) => this.S.spawns.some(s => s.place === placeId && this.spawnActive(s))
+    // тихие существа приёмник не ловит
+    const active = (placeId: string) => this.S.spawns.some(s => s.place === placeId && this.spawnActive(s) && !this.MON.get(s.monster ?? '')?.silent)
     if (active(here.id)) return 2
     return here.exits.some(x => this.ok(x.when) && active(x.to)) ? 1 : 0
   }
@@ -774,7 +990,7 @@ export class SoloGame {
     const r = this.run
     const empty: SoloView = {
       build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
-      ammo: 0, radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, chase: null, puzzle: null,
+      ammo: 0, radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, boss: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }
     if (!r) return empty
@@ -785,7 +1001,9 @@ export class SoloGame {
     if (p.dark && !r.light) texts.push('Темно. Без света здесь ничего не разглядеть.')
     const now = Date.now()
     const e = this.live.encounter
-    const m = e ? this.MON.get(this.SPAWN.get(e.spawn)!.monster)! : null
+    const m = e ? this.MON.get(this.SPAWN.get(e.spawn)!.monster ?? '')! : null
+    const b = this.live.boss
+    const bs = b ? this.bossSpec(b) : null
     const gun = Object.keys(r.items).map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
     const dl = this.live.dialogue
     const dNode = dl ? this.DIALOG.get(dl.id)!.nodes[dl.node] : null
@@ -831,6 +1049,10 @@ export class SoloGame {
         options: this.encounterOptions(m, p, gun)
       } : null,
       puzzle: ph?.puzzle ? { hotspot: ph.id, puzzle: this.publicPuzzle(ph) } : null,
+      boss: b && bs ? {
+        id: bs.id, name: bs.name, art: bs.art ?? bs.id, hp: Math.max(0, b.hp), maxHp: bs.hp, round: b.round, text: b.text,
+        startedAt: b.startedAt, deadline: b.deadline, serverNow: now, prompts: b.prompts, need: this.bossPhase(bs, b.hp).need, last: b.last
+      } : null,
       dialogue: dl && dNode ? {
         id: dl.id, npc: this.DIALOG.get(dl.id)!.npc, name: this.S.npcs.find(n => n.id === this.DIALOG.get(dl.id)!.npc)?.name ?? '',
         lines: dNode.lines, choices: (dNode.choices ?? []).filter(c => this.ok(c.when)).map((c, index) => ({ index, text: c.text }))
@@ -839,7 +1061,7 @@ export class SoloGame {
       dead: this.live.dead,
       ending: ending ? { id: ending.id, title: ending.title, lines: ending.scene, stats: { minutes: Math.round(r.playMs / 60000), saves: r.saves, deaths: r.deaths, kills: r.kills } } : null,
       saves: this.saveList(),
-      canSave: !!p.save && !e && !this.live.chase && !this.live.dead
+      canSave: !!p.save && !e && !this.live.chase && !this.live.boss && !this.live.dead
     }
   }
 
@@ -925,6 +1147,9 @@ export class SoloGame {
         if (this.live.chase && !this.CHASE.has(this.live.chase.id)) this.live.chase = null
         if (this.live.encounter && !this.MON.has(this.SPAWN.get(this.live.encounter.spawn)?.monster ?? '')) this.live.encounter = null
         this.live.chase ??= null
+        this.live.boss ??= null
+        this.live.linger ??= null
+        if (this.live.boss && !this.bossSpec(this.live.boss)) this.live.boss = null
         this.refreshWindow()
       }
     } catch (e) { console.warn('одиночная партия не прочиталась:', (e as Error).message) }
