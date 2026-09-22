@@ -85,6 +85,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <SoloFog :density="0.9" other />
     <i class="solo-enc__flash" :class="flash && `solo-enc__flash--${flash}`" aria-hidden="true" />
     <div v-if="enc.dodge" class="solo-boss__arena solo-enc__arena solo-enc__arena--dodge"><SoloQte :prompts="enc.dodge.prompts" :now="now" :lead="120" @answer="onDodge" /></div>
+    <Transition name="fade"><span v-if="dodging" class="solo-enc__dodge">Уворот!</span></Transition>
     <Transition name="fade">
       <button v-if="enc.grapple" type="button" class="solo-enc__mash" :class="{ 'solo-enc__mash--pulse': mashPulse % 2 }" :style="{ '--fill': grapShare }" @pointerdown.prevent="mash">
         <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="solo-enc__mash-ring" cx="50" cy="50" r="46" :style="{ strokeDashoffset: (1 - grapShare) * 289 }" /></svg>

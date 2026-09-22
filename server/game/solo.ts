@@ -727,8 +727,9 @@ export class SoloGame {
     let px = 50, py = 50
     for (let k = 0; k < Math.max(1, spec.points ?? 1); k++) {
       let x = 50, y = 50
+      // верхняя четверть арены свободна: там надпись «Уворот!», точка под неё не попадает
       for (let tries = 0; tries < 20; tries++) {
-        x = Math.round(14 + this.random() * 72); y = Math.round(16 + this.random() * 64)
+        x = Math.round(14 + this.random() * 72); y = Math.round(28 + this.random() * 54)
         if (Math.hypot(x - px, y - py) >= 30) break
       }
       if (Math.hypot(x - px, y - py) < 30) x = 100 - x

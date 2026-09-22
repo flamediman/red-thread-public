@@ -343,7 +343,10 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 /* босс: арена над панелью, точки со стрелками и кольцом-таймером; удар по боссу — вспышка, по герою — тряска */
 .solo-enc { --qte: 5rem; }
 .solo-qte-arena { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
-/* уворот во встрече: арена подсвечена красной кромкой, полоса раунда замирает, кнопки гаснут; надпись — ярлыком в шапке */
+/* уворот во встрече: крупная надпись вверху арены (точки под неё не ставятся — сервер держит верхнюю четверть свободной),
+   красная кромка арены, полоса раунда замирает, кнопки гаснут */
+.solo-enc__dodge { position: absolute; z-index: 8; left: 50%; top: 6%; transform: translateX(-50%); font-family: var(--font-display); font-weight: 700; font-size: clamp(1.4rem, 1rem + 2vw, 2.4rem); letter-spacing: 0.12em; text-transform: uppercase; color: #e07a6b; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9); animation: dodge-pop 0.35s ease-out both; pointer-events: none; }
+@keyframes dodge-pop { from { opacity: 0; transform: translateX(-50%) scale(1.5); } }
 .solo-enc__arena--dodge { box-shadow: inset 0 0 0 3px rgba(224, 122, 107, 0.55), inset 0 0 60px rgba(120, 10, 6, 0.35); animation: dodge-in 0.3s ease-out both; }
 .solo-enc__tag--dodge { color: #fff3f0; background: #b63d31; animation: static-bar 0.5s steps(2) infinite; }
 /* вспышки — отдельным слоем поверх арта: сам арт не трогаем, его дыхание не сбивается */
