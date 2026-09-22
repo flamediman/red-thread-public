@@ -96,7 +96,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="solo-enc__head">
         <span class="solo-enc__name">{{ enc.name }}</span>
         <span class="solo-enc__hp"><i :style="{ transform: `scaleX(${enc.maxHp ? enc.hp / enc.maxHp : 0})` }" /></span>
-        <Transition name="fade"><span v-if="dodging" class="solo-enc__tag solo-enc__tag--dodge">уворот: проведите в сторону стрелки</span><span v-else-if="enc.stunned" class="solo-enc__tag solo-enc__tag--stun">оглушено</span><span v-else-if="enc.dazed" class="solo-enc__tag solo-enc__tag--daze">звон в ушах</span><span v-else-if="MODE_TAG[enc.mode]" class="solo-enc__tag solo-enc__tag--mode">{{ MODE_TAG[enc.mode] }}</span></Transition>
+        <Transition name="fade"><span v-if="enc.stunned" class="solo-enc__tag solo-enc__tag--stun">оглушено</span><span v-else-if="enc.dazed" class="solo-enc__tag solo-enc__tag--daze">звон в ушах</span><span v-else-if="MODE_TAG[enc.mode]" class="solo-enc__tag solo-enc__tag--mode">{{ MODE_TAG[enc.mode] }}</span></Transition>
         <span class="solo-enc__you" :class="{ 'solo-enc__you--low': health <= 30 }" :title="`Ваше здоровье: ${health}`"><small>вы</small><i><b :style="{ transform: `scaleX(${health / 100})` }" /></i><span class="tabnum">{{ health }}</span></span>
       </div>
       <div class="solo-enc__floats" aria-live="polite">

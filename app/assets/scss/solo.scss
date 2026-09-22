@@ -347,8 +347,7 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
    красная кромка арены, полоса раунда замирает, кнопки гаснут */
 .solo-enc__dodge { position: absolute; z-index: 8; left: 50%; top: 6%; transform: translateX(-50%); font-family: var(--font-display); font-weight: 700; font-size: clamp(1.4rem, 1rem + 2vw, 2.4rem); letter-spacing: 0.12em; text-transform: uppercase; color: #e07a6b; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9); animation: dodge-pop 0.35s ease-out both; pointer-events: none; }
 @keyframes dodge-pop { from { opacity: 0; transform: translateX(-50%) scale(1.5); } }
-.solo-enc__arena--dodge { box-shadow: inset 0 0 0 3px rgba(224, 122, 107, 0.55), inset 0 0 60px rgba(120, 10, 6, 0.35); animation: dodge-in 0.3s ease-out both; }
-.solo-enc__tag--dodge { color: #fff3f0; background: #b63d31; animation: static-bar 0.5s steps(2) infinite; }
+.solo-enc__arena--dodge { box-shadow: inset 0 0 0 2px rgba(224, 122, 107, 0.45); animation: dodge-in 0.3s ease-out both; }
 /* вспышки — отдельным слоем поверх арта: сам арт не трогаем, его дыхание не сбивается */
 .solo-enc__flash { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: #fff;
   &--hit { animation: flash-hit 0.45s ease-out; }
@@ -406,7 +405,7 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 .qte-enter-active { transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.2, 1.4, 0.4, 1); }
 .qte-leave-active { transition: opacity 0.22s ease, transform 0.22s ease; }
 
-@media (max-width: 640px) { .solo-boss { --qte: 4.4rem; } .solo-boss__arena { inset: 0 0 46% 0; } }
+@media (max-width: 640px) { .solo-enc { --qte: 4.4rem; } .solo-boss__arena { inset: 0 0 46% 0; } .solo-enc__arena { inset: 0 0 52% 0; } }
 /* погоня: жёлтый свет фонаря за спиной разгорается, пока тает время; кадр трясётся на бегу */
 .solo-enc--chase .solo-enc__art { animation: chase-run 0.55s ease-in-out infinite; filter: saturate(0.5) contrast(1.25) brightness(0.7); }
 .solo-chase__lamp { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: var(--glow, 0.3); mix-blend-mode: screen;
