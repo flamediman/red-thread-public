@@ -110,7 +110,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <em class="solo-enc__cursor" :style="{ left: `${pos * 100}%` }" />
 
       </div>
-      <p class="solo-enc__legend"><i class="solo-enc__key solo-enc__key--hit" />удар · <i class="solo-enc__key solo-enc__key--flee" />уход без удара — жмите, пока бегунок в окне. После окон оно бьёт само, когда захочет: ловите стрелку уворота</p>
+      <p class="solo-enc__legend"><span><i class="solo-enc__key solo-enc__key--hit" />удар</span><span><i class="solo-enc__key solo-enc__key--flee" />уход без удара</span><span>жмите, пока бегунок в окне. После окон оно бьёт само, когда захочет: ловите стрелку уворота</span></p>
       <div class="solo-enc__options">
         <button
           v-for="(o, i) in enc.options" :key="o.id" type="button" class="solo-enc__opt"
