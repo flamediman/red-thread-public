@@ -211,7 +211,10 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
       <!-- заставка одна и та же, меняется только кнопка: пока сервер не ответил, место под неё просто пустое -->
       <div class="gate__action">
         <!-- без Transition: в фоновой вкладке переход «выход-вход» ждёт кадра и кнопка не появлялась бы -->
-        <button v-if="gateAction === 'start'" key="start" class="btn btn--stamp gate__appear" @click="begin">Начать игру</button>
+        <div v-if="gateAction === 'start'" key="start" class="gate__open gate__appear">
+          <button class="btn btn--stamp" @click="begin">Начать игру</button>
+          <p v-if="phone" class="gate__hint">С телефона можно посмотреть дела и сыграть в «Туман». Лобби кооператива ведёт планшет или компьютер.</p>
+        </div>
         <div v-else-if="gateAction === 'open'" key="open" class="gate__open gate__appear">
           <button class="btn btn--stamp" :disabled="hostPending" @click="openRoom">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
           <p class="gate__hint">{{ hostReason || (phone ? 'С телефона можно посмотреть дела и сыграть в «Туман». Лобби кооператива ведёт планшет или компьютер.' : 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.') }}</p>
@@ -274,7 +277,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
     <main v-if="state" class="stage__body">
       <Transition name="screen" mode="out-in" @before-enter="shownScreen = screen">
         <StageMenu v-if="screen === 'menu'" :state="state" :phone="phone" @send="hostSend" @world="menuWorld = $event" />
-        <StageLobby v-else-if="screen === 'lobby'" :state="state" @send="hostSend" />
+        <StageLobby v-else-if="screen === 'lobby'" :state="state" :phone="phone" @send="hostSend" />
         <StageTutorial v-else-if="screen === 'tutorial'" :state="state" @send="hostSend" />
 
         <StageScene

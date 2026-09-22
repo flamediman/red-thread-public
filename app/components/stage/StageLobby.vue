@@ -4,7 +4,8 @@ import { INKS } from '#shared/inks'
 import { roomCode } from '~/composables/useGame'
 import { formatRoom } from '~/utils/room'
 
-const props = defineProps<{ state: PublicState }>()
+/* phone — экран телефона: лобби с него не ведут, поверх — записка и выход в меню */
+const props = defineProps<{ state: PublicState; phone?: boolean }>()
 const emit = defineEmits<{ send: [ClientMessage] }>()
 const { config } = useConfig()
 /** в сети телефоны идут на адрес сайта с кодом комнаты; дома — на IP ноутбука в Wi‑Fi */
@@ -197,6 +198,13 @@ function tryStart() {
       </button>
     </div>
 
+    <div v-if="phone" class="veil">
+      <div class="veil__card" role="dialog" aria-modal="true">
+        <h2 class="veil__title">Лобби ведёт планшет или компьютер</h2>
+        <p class="veil__text">Стол с кодом комнаты, обучение и ночь рассчитаны на широкий экран. Откройте этот адрес на планшете или компьютере, а телефон оставьте игроку: redthread-game.ru/play.</p>
+        <div class="veil__actions"><button class="btn" type="button" @click="emit('send', { type: 'toMenu' })">← Все дела</button></div>
+      </div>
+    </div>
     <div v-if="confirm" class="veil" @click.self="confirm = false">
       <div class="veil__card" role="dialog" aria-modal="true">
         <h2 class="veil__title">Не все готовы</h2>
