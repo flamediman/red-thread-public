@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { ClientMessage, PublicState, SettingInfo } from '#shared/types'
-import { roomCode } from '~/composables/useGame'
+import { leaveRoom, roomCode, roomPin } from '~/composables/useGame'
 import { formatRoom } from '~/utils/room'
+
+/* смена комнаты: экран забывает свою и возвращается на ворота; в окне — ПИН, чтобы можно было вернуться */
+const leaving = ref(false)
+useVeil(leaving)
+function confirmLeave() { leaving.value = false; leaveRoom() }
 
 /* phone — экран телефона: дела показываются, но лобби с него не открыть (ведущий экран — планшет или компьютер) */
 const props = defineProps<{ state: PublicState; phone?: boolean }>()
@@ -77,9 +82,28 @@ function openSolo(e: MouseEvent, id: string) {
       <span class="menu__tag">кооперативный детектив</span>
       <div class="menu__aside">
         <ProjectLinks />
-        <span v-if="roomCode" class="menu__room">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
+        <button v-if="roomCode && !phone" class="menu__room" type="button" title="Сменить комнату" @click="leaving = true">
+          комната <b class="tabnum">{{ formatRoom(roomCode) }}</b><span class="menu__room-change">сменить</span>
+        </button>
+        <span v-else-if="roomCode" class="menu__room">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
       </div>
     </header>
+
+    <Teleport to="body">
+      <div v-if="leaving" class="veil" @click.self="leaving = false">
+        <div class="veil__card" role="dialog" aria-modal="true">
+          <h2 class="veil__title">Сменить комнату</h2>
+          <p class="veil__text">
+            Этот экран уйдёт из комнаты <b class="tabnum">{{ formatRoom(roomCode) }}</b> и вернётся на ворота: там можно открыть новую
+            или войти в другую. Эта комната останется открытой ещё несколько часов<template v-if="roomPin"> — вернуться в неё можно по коду и ПИНу <b class="tabnum">{{ roomPin }}</b></template>.
+          </p>
+          <div class="veil__actions">
+            <button class="btn btn--stamp" type="button" @click="confirmLeave">Сменить комнату</button>
+            <button class="btn btn--ghost" type="button" @click="leaving = false">Остаться</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <section v-if="!worlds.length" class="menu__empty">
       <span class="world__eyebrow">Дела не подключены</span>

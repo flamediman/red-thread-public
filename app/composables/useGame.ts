@@ -197,6 +197,21 @@ function open() {
   socket.onerror = () => socket?.close()
 }
 
+/** Экран уходит из своей комнаты: ключ забыт, соединение открывается заново без комнаты — ворота предложат открыть новую
+    или войти в другую по коду и ПИНу. Сама комната живёт на сервере ещё несколько часов, в неё можно вернуться тем же путём */
+export function leaveRoom() {
+  storage()?.removeItem(HOST_ROOM_KEY)
+  roomCode.value = null
+  roomPin.value = null
+  roomPass.value = null
+  hostAuthorized.value = null
+  hostChecked.value = false
+  hostPending.value = true
+  hostReason.value = null
+  retry = 0
+  socket?.close()
+}
+
 export function useGame(as: 'host' | 'player' = 'player') {
   role = as
 
