@@ -106,7 +106,7 @@ const THEME_FALLBACK: Record<string, string[]> = {
   'final-failed': ['verdict-wrong', 'accuse', 'night-early', 'lobby'],
   // «Туман»: если у истории нет частной темы — ближайшая по месту
   'town2': ['town'], 'lake': ['camp', 'town'], 'finale': ['boss', 'camp'], 'people': ['town'],
-  'memory': ['town'], 'confession': ['sanatorium', 'town'], 'fight': ['boss'], 'boss': ['fight']
+  'memory': ['town'], 'confession': ['sanatorium', 'town'], 'fight': ['boss'], 'boss': ['fight'], 'intake': ['otherworld', 'town'], 'gallery': ['otherworld', 'intake']
 }
 
 async function load(url: string): Promise<AudioBuffer | null> {

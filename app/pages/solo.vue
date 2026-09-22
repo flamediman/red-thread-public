@@ -218,12 +218,14 @@ const themeName = computed<string | null>(() => {
   // последний путь: радиорубка и пирс после журнала радиоузла; у воды — своя тишина; город после писем становится тяжелее
   if ((pid === 'camp_radio' || pid === 'camp_pier') && has('n_radio_log')) return 'finale'
   if (LAKE.has(pid)) return 'lake'
+  // водозабор: у воды — озеро, в галерее и колодце — своя тяжесть, в залах — гул машины
+  if (area === 'intake') return pid === 'intake_gallery' || pid === 'intake_well' ? 'gallery' : 'intake'
   if (area === 'camp') return 'camp'
   if (area === 'sana') return s.otherworld ? 'otherworld' : 'sanatorium'
   return has('n_letters') ? 'town2' : 'town'
 })
 /** места у воды, где вместо темы района — озеро */
-const LAKE = new Set(['quay', 'camp_boathouse', 'bridge', 'camp_pier'])
+const LAKE = new Set(['quay', 'camp_boathouse', 'bridge', 'camp_pier', 'shore', 'intake_out'])
 /** существа, под которых включается боевая тема (у остальных — тема района тише и дрон) */
 const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper'])
 const themeLevel = computed(() => {
