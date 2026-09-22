@@ -77,6 +77,7 @@ const PACKS = {
     'diver-fall': ['A heavy canvas diving suit with lead boots collapsing onto a wet concrete floor, water gurgling out of a copper helmet, a last hiss of air, no music', 3],
     'valve-wheel': ['A rusty valve handwheel being forced around with a steel lever: creaking, grinding metal, one loud clunk, concrete echo, no music', 2.5],
     'hatch-open': ['A heavy steel hatch lid falling shut with a loud clang and a long echo in a concrete shaft, no music', 2],
+    'projector-run': ['An old 16mm film projector starting up and running in a small hall: motor whir, the rhythmic clatter of the film gate, a flickering hum, then the film end flapping, no music', 3],
     'radio-static-soft': ['A very quiet old transistor radio left on between stations in a basement: soft hiss and faint crackle with barely audible distant voices, no music, seamless ambience', 12, true],
     'kitchen-simmer': ['A large pot of porridge quietly simmering on an old canteen stove, soft bubbling, a spoon lightly tapping aluminium far away, warm but lonely, no music, seamless ambience', 12, true],
     'radio-static': ['Portable transistor radio loud white noise static with crackling bursts and unstable warbling interference, harsh and nervous, no music, no voices, seamless loop', 8, true],
@@ -175,7 +176,7 @@ const LEVEL = { tuman: { loop: -30, shot: -21 } }
 /* далёкое — заметно ниже ровного уровня: горн за озером не должен звучать как горн в руке (16.09.2026 — «слишком громкий и навязчивый») */
 const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -6, 'bugle-far-cut': -8, 'siren-bugle': -5, 'oarlocks': -5, 'phone-far-bugle': -3, 'announce-far': -8, 'branch-far': -6,
   'fog-drip': -4, 'flag-rope': -3, 'loudspeaker-hum': -3, 'qte-tick': -8, 'radio-click': -6, 'pocket': -5, 'map-unfold': -4, 'flaregun-load': -2,
-  'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2,
+  'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2, 'projector-run': -3,
   'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'leaf-scrape': -8, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
