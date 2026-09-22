@@ -68,6 +68,8 @@ interface Run {
   kills: number
   saves: number
   ending: string | null
+  /** здоровье существ, от которых ушли или спрятались: при новой встрече раны на месте (id появления → hp) */
+  wounds?: Record<string, number>
 }
 
 interface Live {
@@ -565,7 +567,7 @@ export class SoloGame {
     this.live.dialogue = null
     const windowMs = this.roundWindow(m, 1)
     const zones = this.rollZones(m, windowMs)
-    this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + zones.strikeAt, windowMs, text: m.text.appear, ...zones }
+    this.live.encounter = { spawn: s.id, hp: this.woundedHp(s.id, m), round: 1, startedAt: now, deadline: now + zones.strikeAt, windowMs, text: m.text.appear, ...zones }
     this.say('', [m.sfx.near])
     this.arm()
   }
@@ -844,7 +846,20 @@ export class SoloGame {
     this.arm()
   }
 
+  /** здоровье существа при новой встрече: раненое возвращается с прежним, лишь отдышавшись — не меньше 35 % от полного */
+  private woundedHp(spawn: string, m: SoloMonster) {
+    const w = this.run?.wounds?.[spawn]
+    return w == null ? m.hp : Math.min(m.hp, Math.max(w, Math.ceil(m.hp * 0.35)))
+  }
+
   private endEncounter(text: string, sfx: string[]) {
+    const e = this.live.encounter
+    // раны не заживают: убежали или спрятались — существо вернётся с тем же здоровьем (см. woundedHp)
+    if (e && this.run) {
+      const w = { ...(this.run.wounds ?? {}) }
+      if (e.hp > 0) w[e.spawn] = e.hp; else delete w[e.spawn]
+      this.run.wounds = w
+    }
     this.live.encounter = null
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
     this.say(text, sfx)

@@ -194,6 +194,21 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
 }
 
 /** звук мира: /sfx/<мир>/<роль>.m4a, если такого нет — общий /sfx/<роль>.m4a */
+/** у частых звуков боя несколько записей (name-2, name-3, …): подряд одна и та же не идёт */
+const VARIANTS: Record<string, number> = {
+  'solo-hit-land': 3, 'solo-swing': 3, 'solo-hurt': 3, 'solo-dodge': 2, 'solo-shot': 2,
+  'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2
+}
+const lastVariant = new Map<string, number>()
+function variant(name: string) {
+  const n = VARIANTS[name]
+  if (!n) return name
+  let k = 1 + Math.floor(Math.random() * n)
+  if (k === lastVariant.get(name)) k = (k % n) + 1
+  lastVariant.set(name, k)
+  return k === 1 ? name : `${name}-${k}`
+}
+
 async function loadSfx(name: string): Promise<AudioBuffer | null> {
   if (name.includes('.')) return load(`/sfx/${name}`)
   return (await load(`/sfx/${currentSetting.value}/${name}.m4a`)) ?? load(`/sfx/${name}.m4a`)
@@ -303,7 +318,7 @@ export function useAudio() {
       pan — откуда, −1 слева … 1 справа. Остальное идёт через «комнату» — короткое эхо по покрытию места */
   async function sfx(name: string, volume = 1, opts: boolean | { far?: boolean; pan?: number } = false): Promise<number> {
     const c = ensure(); if (!c) return 0
-    const buf = await loadSfx(name)
+    const buf = await loadSfx(variant(name))
     if (!buf) return 0
     const o = typeof opts === 'boolean' ? { far: opts } : opts
     const src = c.createBufferSource()
