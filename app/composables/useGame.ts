@@ -238,11 +238,14 @@ export function useGame(as: 'host' | 'player' = 'player') {
       send(hello())
     },
 
-    /** экран в сети: открыть новую комнату */
-    createRoom() {
+    /** экран: сменить ПИН своей комнаты */
+    setPin(pin: string) { send({ type: 'setPin', pin: pin.replace(/\D/g, '') }) },
+
+    /** экран в сети: открыть новую комнату; pin — четыре цифры, которые ведущий выбрал сам */
+    createRoom(pin?: string) {
       hostPending.value = true
       hostReason.value = null
-      send({ type: 'hello', role: 'host', create: true })
+      send({ type: 'hello', role: 'host', create: true, pin: pin?.replace(/\D/g, '') || undefined })
     },
 
     /** экран в сети: закрыть эту комнату для себя и вернуться к кнопке «Открыть комнату» */

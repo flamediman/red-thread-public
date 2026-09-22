@@ -117,6 +117,11 @@ export default defineWebSocketHandler({
     const g = room.game
 
     if (session.role === 'host') {
+      if (msg.type === 'setPin') {
+        const pin = typeof msg.pin === 'string' ? msg.pin.replace(/\D/g, '') : ''
+        if (room.hostKey && /^\d{4}$/.test(pin)) { room.pin = pin; g.persistNow(); send(peer, { type: 'room', code: room.code, key: room.hostKey, pin: room.pin, pass: room.pass ?? undefined }) }
+        return
+      }
       if (!HOST_ONLY.has(msg.type)) return
       if (msg.type === 'kick') dropPhoto(msg.playerId, g.tokenOf(msg.playerId))
       g.handleHost(msg)
@@ -165,6 +170,9 @@ function helloHost(id: string, entry: Entry, msg: Hello) {
     if (!roomCreates.take(session.ip)) return deny('С этого адреса уже открыто много комнат. Попробуйте позже.')
     room = createRoom() ?? undefined
     if (!room) return deny('Сейчас играет слишком много компаний. Попробуйте через несколько минут.')
+    // ПИН задаёт ведущий при открытии комнаты; без него — случайный
+    const chosen = typeof msg.pin === 'string' ? msg.pin.replace(/\D/g, '') : ''
+    if (/^\d{4}$/.test(chosen)) { room.pin = chosen; room.game.persistNow() }
   } else if (msg.room && msg.pin && !msg.key) {
     // другой экран продолжает комнату: код и ПИН с прежнего экрана — получает ключ, как если бы открыл её сам
     const found = getRoom(normalizeCode(msg.room))

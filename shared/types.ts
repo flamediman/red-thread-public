@@ -725,6 +725,8 @@ export type ClientMessage =
       телефон в сети — room (код комнаты) */
   /** pass — секрет из ссылки QR; pin — ПИН с экрана (телефон по коду или экран, продолжающий комнату) */
   | { type: 'hello'; role: 'host' | 'player'; token?: string; name?: string; ink?: number; room?: string; key?: string; create?: boolean; pass?: string; pin?: string }
+  /** экран меняет ПИН своей комнаты (четыре цифры) */
+  | { type: 'setPin'; pin: string }
   | { type: 'setName'; name: string; ink: number }
   | { type: 'ready'; ready: boolean }
   | { type: 'leave' }

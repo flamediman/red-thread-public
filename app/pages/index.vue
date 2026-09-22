@@ -6,11 +6,15 @@ import { formatRoom } from '~/utils/room'
 useHead({ title: 'Красная нить — кооперативный детектив' })
 
 const { state, connected, ready, hostAuthorized, hostPending, hostChecked, hostReason, roomCode, send, createRoom, resumeRoom } = useGame('host')
-/* продолжить свою комнату с другого экрана: код и ПИН с прежнего */
-const resumeOpen = ref(false)
+/* ворота: «Открыть комнату» спрашивает ПИН (четыре цифры, предложены случайные), «Войти в комнату» — код и ПИН уже открытой */
+const gateForm = ref<'open' | 'enter' | null>(null)
+const newPin = ref('')
 const resumeCode = ref('')
 const resumePin = ref('')
-const canResume = computed(() => resumeCode.value.replace(/[^A-Za-z0-9]/g, '').length === 6 && resumePin.value.replace(/\D/g, '').length === 4)
+const pinOk = (v: string) => v.replace(/\D/g, '').length === 4
+const canResume = computed(() => resumeCode.value.replace(/[^A-Za-z0-9]/g, '').length === 6 && pinOk(resumePin.value))
+function askPin() { newPin.value = String(Math.floor(1000 + Math.random() * 9000)); gateForm.value = 'open' }
+function doOpen() { if (pinOk(newPin.value)) { createRoom(newPin.value); void begin() } }
 function doResume() { if (canResume.value) { resumeRoom(resumeCode.value, resumePin.value); audio.unlock() } }
 const { config, loaded: configLoaded } = useConfig()
 const audio = useAudio()
@@ -164,10 +168,6 @@ async function begin() {
   started.value = true
 }
 /** в сети: нажатие «Открыть комнату» — тоже жест пользователя, звук разблокируется сразу */
-function openRoom() {
-  createRoom()
-  void begin()
-}
 function hostSend(msg: ClientMessage) { send(msg) }
 function skip() {
   if (['prologue', 'resolve', 'verdict', 'epilogue'].includes(screen.value)) scene.value?.skip()
@@ -222,12 +222,26 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
           <p v-if="phone" class="gate__hint">С телефона можно посмотреть дела и сыграть в «Туман». Лобби открывается на планшете или компьютере.</p>
         </div>
         <div v-else-if="gateAction === 'open'" key="open" class="gate__open gate__appear">
-          <button class="btn btn--stamp" :disabled="hostPending" @click="openRoom">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
-          <button v-if="!resumeOpen" class="gate__resume" type="button" @click="resumeOpen = true">Продолжить свою комнату</button>
-          <form v-else class="gate__resume-form" @submit.prevent="doResume">
-            <input v-model="resumeCode" class="gate__field" placeholder="код ABC DEF" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Код комнаты">
-            <input v-model="resumePin" class="gate__field gate__field--pin" placeholder="ПИН" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН">
-            <button class="btn btn--small" type="submit" :disabled="!canResume || hostPending">Продолжить</button>
+          <div v-if="!gateForm" class="gate__buttons">
+            <button class="btn btn--stamp" :disabled="hostPending" @click="askPin">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
+            <button class="btn btn--ghost gate__enter" type="button" @click="gateForm = 'enter'">Войти в комнату</button>
+          </div>
+          <form v-else-if="gateForm === 'open'" class="gate__form" @submit.prevent="doOpen">
+            <label class="gate__label">ПИН новой комнаты<small>четыре цифры: по нему входят телефоны без QR и другие экраны</small></label>
+            <div class="gate__row">
+              <input v-model="newPin" class="gate__field gate__field--pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН">
+              <button class="btn btn--stamp" type="submit" :disabled="!pinOk(newPin) || hostPending">{{ hostPending ? 'Открываю…' : 'Открыть' }}</button>
+              <button class="btn btn--ghost" type="button" @click="gateForm = null">Назад</button>
+            </div>
+          </form>
+          <form v-else class="gate__form" @submit.prevent="doResume">
+            <label class="gate__label">Комната уже открыта на другом экране<small>код и ПИН — в её лобби, под QR</small></label>
+            <div class="gate__row">
+              <input v-model="resumeCode" class="gate__field" placeholder="код ABC DEF" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Код комнаты">
+              <input v-model="resumePin" class="gate__field gate__field--pin" placeholder="ПИН" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН">
+              <button class="btn btn--stamp" type="submit" :disabled="!canResume || hostPending">Войти</button>
+              <button class="btn btn--ghost" type="button" @click="gateForm = null">Назад</button>
+            </div>
           </form>
           <p class="gate__hint">{{ hostReason || (phone ? 'С телефона можно посмотреть дела и сыграть в «Туман». Лобби открывается на планшете или компьютере.' : 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.') }}</p>
         </div>

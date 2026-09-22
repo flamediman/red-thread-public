@@ -1589,6 +1589,9 @@ export class Game {
     this.store.flush()
   }
 
+  /** снимок сейчас — когда изменилось то, что лежит рядом с партией (ПИН комнаты) */
+  persistNow() { this.persist() }
+
   private persist() {
     try {
       const data = {
