@@ -148,6 +148,9 @@ const PACKS = {
     'leaf-scrape': ['Dry leaves and a sheet of newspaper scraping across wet asphalt in a light gust, then still, close, no music', 2],
     'water-surge': ['One larger lake wave slapping against wooden pier posts and receding with dripping, close, calm night, no music', 2.5],
     'metal-groan': ['A long low groan of rusted iron structure under strain in a flooded abandoned building, deep resonant, slowly fading, horror ambience, no music', 3],
+    'solo-hurt': ['A heavy blow landing on a man: a dull body impact, a sharp pained gasp and a stumble on wet ground, close, no music', 1.3],
+    'solo-hit-land': ['A metal pipe connecting hard with something wet and heavy: a deep crunching thud with a short ring of the pipe, close, no music', 0.9],
+    'solo-dodge': ['A man quickly sidestepping a blow: a sharp intake of breath, a fast cloth whoosh and one heavy step on wet ground, then a heavy object whistling past and hitting nothing, close, no music', 1.5],
     'other-pulse': ['Very slow deep sub-bass pulse like the heartbeat of a huge flooded building, one soft thump every few seconds with a faint metallic resonance, oppressive, no melody, no drums, seamless ambience loop', 12, true]
   }
 }
@@ -164,7 +167,7 @@ const LEVEL = { tuman: { loop: -30, shot: -21 } }
 /* далёкое — заметно ниже ровного уровня: горн за озером не должен звучать как горн в руке (16.09.2026 — «слишком громкий и навязчивый») */
 const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -6, 'bugle-far-cut': -8, 'siren-bugle': -5, 'oarlocks': -5, 'phone-far-bugle': -3, 'announce-far': -8, 'branch-far': -6,
   'fog-drip': -4, 'flag-rope': -3, 'loudspeaker-hum': -3, 'qte-tick': -8, 'radio-click': -6, 'pocket': -5, 'map-unfold': -4, 'flaregun-load': -2,
-  'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'leaf-scrape': -8, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
+  'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'leaf-scrape': -8, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']

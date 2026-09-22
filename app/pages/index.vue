@@ -213,11 +213,11 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
         <!-- без Transition: в фоновой вкладке переход «выход-вход» ждёт кадра и кнопка не появлялась бы -->
         <div v-if="gateAction === 'start'" key="start" class="gate__open gate__appear">
           <button class="btn btn--stamp" @click="begin">Начать игру</button>
-          <p v-if="phone" class="gate__hint">С телефона можно посмотреть дела и сыграть в «Туман». Лобби кооператива ведёт планшет или компьютер.</p>
+          <p v-if="phone" class="gate__hint">С телефона можно посмотреть дела и сыграть в «Туман». Лобби открывается на планшете или компьютере.</p>
         </div>
         <div v-else-if="gateAction === 'open'" key="open" class="gate__open gate__appear">
           <button class="btn btn--stamp" :disabled="hostPending" @click="openRoom">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
-          <p class="gate__hint">{{ hostReason || (phone ? 'С телефона можно посмотреть дела и сыграть в «Туман». Лобби кооператива ведёт планшет или компьютер.' : 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.') }}</p>
+          <p class="gate__hint">{{ hostReason || (phone ? 'С телефона можно посмотреть дела и сыграть в «Туман». Лобби открывается на планшете или компьютере.' : 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.') }}</p>
         </div>
         <span v-else key="wait" class="gate__wait" aria-hidden="true" />
       </div>

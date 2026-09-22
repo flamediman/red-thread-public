@@ -88,7 +88,7 @@ watch(view, (nv, ov) => {
     if (f.found) found.value = [...found.value, f.found]
   }
   lastPlayed = maxSeq
-  if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('groan-m', 0.5) }
+  if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('solo-hurt', 0.9); void audio.sfx('groan-m', 0.35) }
   if (nv.dead && !ov?.dead) void audio.sfx('sting-soft', 0.9)
   lastHealth = nv.health
   if (!nv.started) { lastPlace = ''; feedFloor.value = 0; found.value = [] }
@@ -486,7 +486,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
       <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
       <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
-      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" @send="relay" />
+      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" />
       <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].id}`" :item="found[0]" :story="story" :more="found.length - 1" @done="nextFound" />

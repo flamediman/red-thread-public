@@ -70,6 +70,8 @@ export interface SoloEffect {
 export interface SoloText { when?: SoloCond; text: string; voice?: string }
 
 export type SoloQteKey = 'up' | 'down' | 'left' | 'right'
+/** точка быстрого нажатия: стрелка, место на арене в процентах, окно по часам сервера, итог */
+export interface SoloQtePrompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
 
 export interface SoloExit {
   to: string
@@ -212,8 +214,21 @@ export interface SoloMonster {
   silent?: boolean
   /** с каждым раундом торопится: длина раунда умножается на hurry (0.85 — на 15 % короче каждый раунд), не короче 3,5 с */
   hurry?: number
+  /** уворот от удара: через случайную паузу вспыхивает точка со стрелкой (points — сколько подряд), окно каждой ms;
+      поймали все — урона нет. Без поля — одна точка на секунду */
+  dodge?: { ms: number; points?: number }
+  /** его удар оглушает героя на раунд: окна уже, бежать нельзя (горн в ухо, свисток) */
+  stuns?: boolean
+  /** иногда (chance) вместо удара — захват: presses быстрых нажатий за ms, чтобы вырваться. Вырвались — четверть урона,
+      нет — полтора. text — захват, free — вырвались, held — не вырвались */
+  grapple?: { chance: number; ms: number; presses: number; text: string; free: string; held: string }
+  /** его нельзя оглушить точным ударом (толпа, вода) */
+  unstunnable?: boolean
   sfx: { near: string; attack: string; hurt: string; die: string }
-  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string }
+  /** strike — замах перед ударом (виден, пока идёт уворот); dodge — удар прошёл мимо; stagger — оглушено точным ударом;
+      recover — приходит в себя; daze — герой оглушён его ударом; guard/press/circle — как оно ведёт себя в раунде
+      (прикрывается после ваших попаданий, торопится, когда вы слабы, кружит и выжидает) */
+  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string }
 }
 
 /** Босс: серии быстрых нажатий. На экране одна за другой вспыхивают точки со стрелкой: на компьютере — нажать эту
@@ -373,13 +388,22 @@ export interface SoloView {
     text: string
     /** hint — что делает действие и почему может не сработать; показывается под кнопкой */
     options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean; hint?: string }[]
+    /** существо бьёт: точки уворота (как у босса); пока они есть, полоса раунда стоит */
+    dodge: { prompts: SoloQtePrompt[]; deadline: number } | null
+    /** существо оглушено точным ударом (окна шире, ответа не будет) / герой оглушён (окна уже, бежать нельзя) */
+    stunned: boolean
+    dazed: boolean
+    /** захват: жать быстро — presses из need до deadline */
+    grapple: { deadline: number; presses: number; need: number } | null
+    /** как существо ведёт себя в этом раунде */
+    mode: 'normal' | 'guard' | 'press' | 'circle'
   } | null
   puzzle: { hotspot: string; puzzle: SoloPublicPuzzle } | null
   boss: {
     id: string; name: string; art: string; hp: number; maxHp: number; round: number; text: string
     startedAt: number; deadline: number; serverNow: number
     /** точки серии по часам сервера: key — стрелка, x/y — место на арене в процентах, result — как сыграна */
-    prompts: { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }[]
+    prompts: SoloQtePrompt[]
     need: number
     /** итог прошлой серии */
     last: 'hit' | 'miss' | null
@@ -419,6 +443,8 @@ export type SoloClientMessage =
   | { type: 'run'; index: number }
   /** босс: нажата стрелка (или точка) с номером id */
   | { type: 'qte'; id: number; key: SoloQteKey; at?: number }
+  /** захват: одно быстрое нажатие */
+  | { type: 'mash' }
   /** вкладка ушла в фон или вернулась: часы встречи и погони стоят, пока игрок не смотрит */
   | { type: 'away'; on: boolean }
 

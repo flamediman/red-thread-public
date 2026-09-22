@@ -135,6 +135,8 @@ for (const it of S.items) {
 for (const m of S.monsters) {
   for (const s of Object.values(m.sfx)) sfxUsed.set(s, `существо ${m.id}`)
   artUsed.set(`m_${m.id}`, `существо ${m.id}`)
+  if (m.dodge && m.dodge.ms < 650) warn(`существо ${m.id}: окно уворота ${m.dodge.ms} мс — на планшете не успеть`)
+  if (!m.text.strike) warn(`существо ${m.id}: нет текста замаха (text.strike) — перед увором будет общая фраза`)
   if (m.windowMs < 4500) warn(`существо ${m.id}: на решение ${m.windowMs / 1000} с — прочитать текст и выбрать из пяти вариантов не успеть`)
 }
 for (const b of S.bosses ?? []) {

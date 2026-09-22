@@ -200,8 +200,8 @@ function tryStart() {
 
     <div v-if="phone" class="veil">
       <div class="veil__card" role="dialog" aria-modal="true">
-        <h2 class="veil__title">Лобби ведёт планшет или компьютер</h2>
-        <p class="veil__text">Стол с кодом комнаты, обучение и ночь рассчитаны на широкий экран. Откройте этот адрес на планшете или компьютере, а телефон оставьте игроку: redthread-game.ru/play.</p>
+        <h2 class="veil__title">Нужен экран побольше</h2>
+        <p class="veil__text">Лобби открывается на планшете или компьютере. Телефон — для игроков: redthread-game.ru/play</p>
         <div class="veil__actions"><button class="btn" type="button" @click="emit('send', { type: 'toMenu' })">← Все дела</button></div>
       </div>
     </div>

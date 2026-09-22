@@ -113,7 +113,7 @@ function openSolo(e: MouseEvent, id: string) {
             <span class="case-row__sub">{{ c.subtitle }}</span>
             <span class="case-row__meta"><b>{{ c.modeLabel }}</b> · {{ c.meta }}</span>
           </button>
-          <p v-if="phone && world.cases.length" class="world__phone-note">Лобби ведёт планшет или компьютер: откройте этот адрес на большом экране, а телефон оставьте игроку — redthread-game.ru/play.</p>
+          <p v-if="phone && world.cases.length" class="world__phone-note">Лобби открывается на планшете или компьютере. Телефон — для игроков: redthread-game.ru/play</p>
           <a v-for="s in world.solo" :key="s.id" :href="`/solo?story=${s.id}`" class="case-row" :class="{ 'case-row--off': !s.ready }" @click="openSolo($event, s.id)">
             <span class="case-row__stamp">{{ s.date }}</span>
             <span class="case-row__title">{{ s.title }}</span>

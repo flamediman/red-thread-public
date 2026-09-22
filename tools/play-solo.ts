@@ -60,6 +60,13 @@ function resolveOverlays() {
       for (const p of [...b.prompts]) g.handle({ type: 'qte', id: p.id, key: p.key })
       continue
     }
+    if (v.encounter?.dodge) {
+      // уворот: бот ловит каждую точку — окна сдвигаем на «сейчас»
+      const e = (g as any).live.encounter
+      for (const p of e.dodge.prompts) { p.from = Date.now() - 100; p.to = Date.now() + 1000 }
+      for (const p of [...e.dodge.prompts]) g.handle({ type: 'qte', id: p.id, key: p.key })
+      continue
+    }
     if (v.encounter) {
       if (!encounters.includes(v.encounter.monster)) encounters.push(v.encounter.monster)
       const shoot = v.encounter.options.find(o => o.id === 'shoot' && o.enabled)

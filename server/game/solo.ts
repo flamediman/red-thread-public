@@ -26,9 +26,13 @@ const QTE_KEYS: SoloQteKey[] = ['up', 'down', 'left', 'right']
 const QTE_GAP = 340
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
-interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null }
+interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null; dodge?: Dodge | null; strikeAt: number; stun?: number; dazed?: number; grapple?: Grapple | null; mode?: 'normal' | 'guard' | 'press' | 'circle'; streak?: number }
 interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string }
 interface Prompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
+/** существо бьёт: точки уворота, и что случится, если их не поймать */
+interface Dodge { prompts: Prompt[]; damage: number; text: string; sfx: string[]; deadline: number }
+/** захват: сколько раз уже нажали, сколько нужно, что будет */
+interface Grapple { deadline: number; presses: number; need: number; damage: number; free: string; held: string; sfx: string[] }
 /** бой с боссом: серия точек prompts, итог прошлой серии last, phase — какая фаза уже объявлена */
 interface Boss { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string; prompts: Prompt[]; last: 'hit' | 'miss' | null; phase: number }
 
@@ -163,6 +167,7 @@ export class SoloGame {
       case 'act': return this.act(msg.action, msg.at)
       case 'run': return this.run_(msg.index)
       case 'qte': return this.qte(msg.id, msg.key, msg.at)
+      case 'mash': return this.mash()
     }
     // остальное — только когда герой свободен: не в бою, не в погоне, не в разговоре, не над головоломкой, не в сцене
     if (this.live.encounter || this.live.chase || this.live.boss || this.live.scene) return
@@ -547,7 +552,8 @@ export class SoloGame {
     this.live.puzzle = null
     this.live.dialogue = null
     const windowMs = this.roundWindow(m, 1)
-    this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + windowMs, windowMs, text: m.text.appear, ...this.rollZones(m, windowMs) }
+    const zones = this.rollZones(m, windowMs)
+    this.live.encounter = { spawn: s.id, hp: m.hp, round: 1, startedAt: now, deadline: now + zones.strikeAt, windowMs, text: m.text.appear, ...zones }
     this.say('', [m.sfx.near])
     this.arm()
   }
@@ -570,13 +576,15 @@ export class SoloGame {
     const lightHint = !p.dark ? 'Здесь и так светло — фонарь ничего не меняет'
       : r.light ? `Погасить: темнота прячет${m.seesLight ? ' от неё' : ''}, но окна удара станут уже`
       : `Зажечь: окна удара шире${m.seesLight ? ', но она идёт на свет — раунды короче, не спрятаться' : ''}`
+    const e = this.live.encounter
+    const stunNote = e && (e.stun ?? 0) > 0 ? ' Оно оглушено: окно шире, ответа не будет.' : e && (e.dazed ?? 0) > 0 ? ' В голове звон: окно уже.' : ''
     return [
       { id: 'fight', label: melee ? `Ударить: ${melee.name}` : 'Отбиваться руками', enabled: true,
-        hint: `${melee ? '' : 'Голыми руками — слабо и окно узкое. '}Бить, когда бегунок в красном окне${dim ? '; в темноте оно уже' : ''}.` },
+        hint: `${melee ? '' : 'Голыми руками — слабо и окно узкое. '}Бить, когда бегунок в красном окне${dim ? '; в темноте оно уже' : ''}.${stunNote}` },
       // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт
       ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0,
         hint: r.ammo ? 'Почти на всё здоровье существа; раунд длиннее.' : 'Патроны кончились.' }] : []),
-      { id: 'flee', label: 'Бежать назад', enabled: !!r.prev, hint: prev ? `Назад: ${prev}. В синем окне — уйдёте без удара.` : 'Отступать некуда.' },
+      { id: 'flee', label: 'Бежать назад', enabled: !!r.prev && !(e && (e.dazed ?? 0) > 0), hint: e && (e.dazed ?? 0) > 0 ? 'Ноги не слушаются — переждите раунд.' : prev ? `Назад: ${prev}. В синем окне — уйдёте без удара.` : 'Отступать некуда.' },
       { id: 'hide', label: p.hide ? `Спрятаться: ${p.hide}` : 'Спрятаться', enabled: !!p.hide && !m.noHide, hint: hideHint },
       ...(this.has('flashlight') ? [{ id: 'light' as const, label: r.light ? 'Погасить фонарь' : 'Включить фонарь', enabled: r.light || r.battery > 0, hint: lightHint }] : [])
     ]
@@ -615,12 +623,18 @@ export class SoloGame {
     return this.melee()?.weapon ?? HANDS
   }
 
-  /** окна раунда в миллисекундах от его начала: удар — по оружию и вёрткости существа, побег — по его evade */
-  private rollZones(m: SoloMonster, windowMs: number): { hit: [number, number][]; flee: [number, number] | null } {
+  /** окна раунда в миллисекундах от его начала: удар — по оружию и вёрткости существа, побег — по его evade.
+      strikeAt — когда существо бьёт само, если игрок так и не ударил: где-то после последнего окна удара, в случайный
+      момент до конца полосы; игроку этот момент не показывают (22.09.2026 — удары должны приходить непредсказуемо) */
+  private rollZones(m: SoloMonster, windowMs: number): { hit: [number, number][]; flee: [number, number] | null; strikeAt: number } {
     const r = this.run!
     const w = this.zoneWeapon()
     const count = Math.max(1, w.zones ?? 1)
-    const share = Math.min(0.6, (0.08 + 0.3 * w.accuracy) * (1 - (m.guard ?? 0)) * (this.dim() ? 0.55 : 1))
+    const e = this.live.encounter
+    // оглушённое существо открыто: окна вдвое шире; оглушённый герой едва видит: окна уже, побега нет
+    const stun = e && (e.stun ?? 0) > 0 ? 1.7 : e && (e.dazed ?? 0) > 0 ? 0.55 : 1
+    const guard = e?.mode === 'guard' ? 0.7 : 1
+    const share = Math.min(0.7, (0.08 + 0.3 * w.accuracy) * (1 - (m.guard ?? 0)) * (this.dim() ? 0.55 : 1) * stun * guard)
     const width = share / count
     const hit: [number, number][] = []
     for (let k = 0; k < count; k++) {
@@ -633,7 +647,13 @@ export class SoloGame {
     hit.sort((x, y) => x[0] - y[0])
     const fleeShare = (0.1 + 0.4 * m.evade * (r.health < 30 ? 0.7 : 1)) * (this.dim() ? 0.7 : 1)
     const fa = 0.15 + this.random() * (0.95 - fleeShare - 0.15)
-    return { hit, flee: [Math.round(fa * windowMs), Math.round((fa + fleeShare) * windowMs)] }
+    const lastHit = Math.max(...hit.map(z => z[1]), Math.round(windowMs * 0.5))
+    // торопится — бьёт почти сразу после последнего окна; кружит — в этом раунде не бьёт вовсе
+    const strikeAt = e?.mode === 'circle' ? windowMs
+      : e?.mode === 'press' ? Math.min(windowMs, lastHit + 150 + Math.round(this.random() * 500))
+      : Math.min(windowMs, lastHit + 250 + Math.round(this.random() * Math.max(0, windowMs - lastHit - 250)))
+    const dazed = !!e && (e.dazed ?? 0) > 0
+    return { hit, flee: dazed ? null : [Math.round(fa * windowMs), Math.round((fa + fleeShare) * windowMs)], strikeAt }
   }
 
   private arm() {
@@ -652,7 +672,103 @@ export class SoloGame {
     if (!e || Date.now() < e.deadline) return this.arm()
     if (this.live.scene) return this.refreshWindow()
     const m = this.MON.get(this.SPAWN.get(e.spawn)!.monster ?? '')!
-    this.nextRound(m, m.text.attack, [m.sfx.attack], m.damage)
+    if (e.dodge) this.resolveDodge(m)
+    else if (e.grapple) this.resolveGrapple(m, false)
+    else if ((e.stun ?? 0) > 0) this.nextRound(m, m.text.recover ?? 'Оно встряхивается и приходит в себя.', [m.sfx.near], 0)
+    else if (e.mode === 'circle') { e.streak = 0; this.nextRound(m, m.text.circle ? 'Оно так и не подошло.' : 'Оно так и не подошло — только кружило.', [m.sfx.near], 0) }
+    else this.strike(m, m.text.strike, m.text.attack, [m.sfx.attack], m.damage)
+    this.changed()
+  }
+
+  /* ── захват: быстрые нажатия ─────────────────────────────── */
+
+  /** удар прошёл, и существо не отпускает: нужно быстро жать, чтобы вырваться. Бывает не в каждом бою (chance) */
+  private startGrapple(m: SoloMonster, damage: number) {
+    const e = this.live.encounter!
+    const g = m.grapple!
+    const now = Date.now()
+    e.grapple = { deadline: now + g.ms, presses: 0, need: g.presses, damage, free: g.free, held: g.held, sfx: [m.sfx.attack] }
+    e.text = g.text
+    e.deadline = e.grapple.deadline
+    this.say('', [m.sfx.attack])
+    this.arm()
+  }
+
+  private mash() {
+    const e = this.live.encounter
+    if (!e?.grapple || this.live.scene) return
+    e.grapple.presses++
+    if (e.grapple.presses >= e.grapple.need) { const m = this.MON.get(this.SPAWN.get(e.spawn)!.monster ?? '')!; this.resolveGrapple(m, true) }
+    this.changed()
+  }
+
+  /** вырвались — четверть урона; не успели — полтора */
+  private resolveGrapple(m: SoloMonster, free: boolean) {
+    const e = this.live.encounter!
+    const g = e.grapple!
+    e.grapple = null
+    e.streak = 0
+    if (free) this.nextRound(m, g.free, ['solo-dodge'], Math.round(g.damage * 0.25))
+    else this.nextRound(m, g.held, g.sfx, Math.round(g.damage * 1.5))
+  }
+
+  /* ── уворот ───────────────────────────────────────────────── */
+
+  /** Существо бьёт — но удар можно увернуть. Через случайную паузу на арене вспыхивает точка со стрелкой (у тяжёлых
+      существ — две подряд), окно короткое: смотреть надо на экран, а не ловить ритм. Поймали все — урона нет; нет — удар
+      проходит текстом `text` и уроном `damage`. Пока идёт уворот, полоса раунда стоит */
+  private strike(m: SoloMonster, pre: string | undefined, text: string, sfx: string[], damage: number) {
+    const e = this.live.encounter!
+    if (!damage) return this.nextRound(m, text, sfx, 0)
+    const spec = m.dodge ?? { ms: 1000, points: 1 }
+    const now = Date.now()
+    let t = now + 350 + Math.round(this.random() * 700)
+    const prompts: Prompt[] = []
+    let px = 50, py = 50
+    for (let k = 0; k < Math.max(1, spec.points ?? 1); k++) {
+      let x = 50, y = 50
+      for (let tries = 0; tries < 20; tries++) {
+        x = Math.round(14 + this.random() * 72); y = Math.round(16 + this.random() * 64)
+        if (Math.hypot(x - px, y - py) >= 30) break
+      }
+      if (Math.hypot(x - px, y - py) < 30) x = 100 - x
+      prompts.push({ id: e.round * 10 + k, key: QTE_KEYS[Math.min(QTE_KEYS.length - 1, Math.floor(this.random() * QTE_KEYS.length))]!, x, y, from: t, to: t + spec.ms, result: null })
+      t += spec.ms + 250; px = x; py = y
+    }
+    e.dodge = { prompts, damage, text, sfx, deadline: t + ZONE_TOL }
+    e.text = pre ?? 'Оно бросается на вас.'
+    e.deadline = e.dodge.deadline
+    this.say('', [m.sfx.near])
+    this.arm()
+  }
+
+  /** точки уворота сыграны или время вышло: все пойманы — удар мимо, иначе — проходит */
+  private resolveDodge(m: SoloMonster) {
+    const e = this.live.encounter!
+    const d = e.dodge!
+    for (const p of d.prompts) p.result ??= 'miss'
+    const dodged = d.prompts.every(p => p.result === 'hit')
+    e.dodge = null
+    if (dodged) this.nextRound(m, m.text.dodge ?? 'Вы уходите в сторону — удар приходится в пустоту.', ['solo-dodge'], 0)
+    else if (m.grapple && this.random() < m.grapple.chance) this.startGrapple(m, d.damage)
+    else {
+      if (m.stuns) e.dazed = 2
+      this.nextRound(m, m.stuns ? `${d.text} ${m.text.daze ?? 'В голове звон, руки не слушаются.'}` : d.text, d.sfx, d.damage)
+    }
+  }
+
+  private dodgeQte(id: number, key: SoloQteKey, at?: number) {
+    const e = this.live.encounter
+    const d = e?.dodge
+    if (!e || !d || this.live.scene) return
+    const p = d.prompts.find(x => x.id === id)
+    if (!p || p.result) return
+    const now = Date.now()
+    const t = typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now
+    p.result = key === p.key && t >= p.from - ZONE_TOL && t <= p.to + ZONE_TOL ? 'hit' : 'miss'
+    const m = this.MON.get(this.SPAWN.get(e.spawn)!.monster ?? '')!
+    // один промах — удар уже не увернуть: не тянем, бьём сразу
+    if (p.result === 'miss' || d.prompts.every(x => x.result)) this.resolveDodge(m)
     this.changed()
   }
 
@@ -668,8 +784,11 @@ export class SoloGame {
     const e = this.live.encounter
     const m = e && this.MON.get(this.SPAWN.get(e.spawn)?.monster ?? '')
     if (!e || !m) return
+    // уворот шёл, пока игрока не было: замах заново
+    if (e.dodge) { const d = e.dodge; e.dodge = null; this.strike(m, e.text, d.text, d.sfx, d.damage); return }
+    if (e.grapple) { e.grapple.presses = 0; e.grapple.deadline = now + (m.grapple?.ms ?? 2500); e.deadline = e.grapple.deadline; return this.arm() }
     e.startedAt = now
-    e.deadline = now + e.windowMs
+    e.deadline = now + (e.strikeAt || e.windowMs)
     this.arm()
   }
 
@@ -681,9 +800,23 @@ export class SoloGame {
     e.round++
     e.text = text
     e.startedAt = now
-    e.windowMs = this.roundWindow(m, e.round)
-    e.deadline = now + e.windowMs
+    // оглушение живёт один раунд: поставлено на 2, здесь становится 1 (этот раунд), в следующем — 0
+    e.stun = Math.max(0, (e.stun ?? 0) - 1)
+    e.dazed = Math.max(0, (e.dazed ?? 0) - 1)
+    // существо ведёт себя по ситуации: после двух ваших попаданий прикрывается, чуя слабость — торопится,
+    // иногда кружит и не бьёт вовсе. Так бой не читается как один и тот же скрипт
+    e.mode = 'normal'
+    if (!e.stun && !e.dazed) {
+      const roll = this.random()
+      if ((e.streak ?? 0) >= 2 && roll < 0.5) e.mode = 'guard'
+      else if (this.run!.health <= 40 && roll < 0.35) e.mode = 'press'
+      else if (roll > 0.85) e.mode = 'circle'
+    }
+    const cue = e.mode === 'guard' ? m.text.guard ?? 'Оно прикрывается.' : e.mode === 'press' ? m.text.press ?? 'Оно чует слабость и торопится.' : e.mode === 'circle' ? m.text.circle ?? 'Оно кружит, не подходя.' : ''
+    if (cue) e.text = `${text} ${cue}`
+    e.windowMs = Math.round(this.roundWindow(m, e.round) * (e.mode === 'press' ? 0.8 : 1))
     Object.assign(e, this.rollZones(m, e.windowMs))
+    e.deadline = now + e.strikeAt
     this.say('', sfx)
     this.arm()
   }
@@ -700,22 +833,32 @@ export class SoloGame {
     const r = this.run!
     if (!e) return
     const s = this.SPAWN.get(e.spawn)!, m = this.MON.get(s.monster ?? '')!
+    if (e.dodge || e.grapple) return
     const now = Date.now()
     const rel = (typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now) - e.startedAt
     const inZone = (z: [number, number] | null) => !!z && rel >= z[0] - ZONE_TOL && rel <= z[1] + ZONE_TOL
     const hit = (dmg: number, loud: boolean) => {
-      if (e.hit.some(inZone)) {
+      const zone = e.hit.find(inZone)
+      if (zone) {
         e.hp -= dmg
+        e.streak = (e.streak ?? 0) + 1
         if (e.hp <= 0) {
           r.killed.push(s.id); r.kills++
           this.endEncounter(m.text.die, [m.sfx.die])
           return
         }
-        // крепкое существо отвечает на удар: голыми руками такой бой выматывает
-        if (this.random() > 1 - (m.riposte ?? 0)) this.nextRound(m, `${m.text.hit} ${m.text.attack}`, [loud ? 'solo-shot' : 'solo-swing', m.sfx.hurt, m.sfx.attack], m.damage)
-        else this.nextRound(m, m.text.hit, [loud ? 'solo-shot' : 'solo-swing', m.sfx.hurt], 0)
+        const landed = loud ? 'solo-shot' : 'solo-hit-land'
+        // точный удар — в самую середину окна (или выстрел) — оглушает: раунд без ответа, окна шире
+        const mid = (zone[0] + zone[1]) / 2, half = Math.max(1, (zone[1] - zone[0]) / 2)
+        const perfect = loud || Math.abs(rel - mid) <= half * 0.3
+        if (perfect && !m.unstunnable && (e.stun ?? 0) === 0) { e.stun = 2; this.nextRound(m, `${m.text.hit} ${m.text.stagger ?? 'Его шатает — на миг оно беззащитно.'}`, [landed, m.sfx.hurt], 0); return }
+        // крепкое существо отвечает на удар: голыми руками такой бой выматывает — но ответ можно увернуть; оглушённое не отвечает
+        if ((e.stun ?? 0) === 0 && this.random() > 1 - (m.riposte ?? 0)) { this.say('', [landed, m.sfx.hurt]); this.strike(m, `${m.text.hit} ${m.text.strike ?? ''}`.trim(), `${m.text.hit} ${m.text.attack}`, [m.sfx.attack], m.damage) }
+        else this.nextRound(m, m.text.hit, [landed, m.sfx.hurt], 0)
       } else {
-        this.nextRound(m, `${m.text.miss} ${m.text.attack}`, [loud ? 'solo-shot' : 'solo-swing', m.sfx.attack], m.damage)
+        e.streak = 0
+        this.say('', [loud ? 'solo-shot' : 'solo-swing'])
+        this.strike(m, `${m.text.miss} ${m.text.strike ?? ''}`.trim(), `${m.text.miss} ${m.text.attack}`, [m.sfx.attack], m.damage)
       }
     }
     switch (action) {
@@ -751,7 +894,7 @@ export class SoloGame {
         // укрытие — бросок кубика: темнота помогает, шипящий приёмник мешает, свет фонаря выдаёт тем, кто идёт на свет;
         // оберег в кармане даёт один второй бросок
         const chance = this.hideChance(m)
-        if (chance <= 0) { this.nextRound(m, `Свет фонаря выдаёт укрытие. ${m.text.attack}`, [m.sfx.attack], m.damage); break }
+        if (chance <= 0) { this.strike(m, `Свет фонаря выдаёт укрытие. ${m.text.strike ?? ''}`.trim(), `Свет фонаря выдаёт укрытие. ${m.text.attack}`, [m.sfx.attack], m.damage); break }
         let hidden = this.random() < chance
         if (!hidden) {
           const charm = this.luck()
@@ -763,7 +906,9 @@ export class SoloGame {
         }
         if (hidden) { r.passed.push(s.id); this.endEncounter(m.text.hide, ['solo-hide']); break }
         const radio = this.has('radio') && r.radioOn !== false
-        this.nextRound(m, `${radio ? 'Приёмник шипит из-под куртки — и голова поворачивается на звук.' : m.text.hideFail ?? 'Оно останавливается у самого укрытия. Пауза — и находит вас.'} ${m.text.attack}`, [...(radio ? ['radio-static'] : []), m.sfx.attack], m.damage)
+        const found = radio ? 'Приёмник шипит из-под куртки — и голова поворачивается на звук.' : m.text.hideFail ?? 'Оно останавливается у самого укрытия. Пауза — и находит вас.'
+        if (radio) this.say('', ['radio-static'])
+        this.strike(m, `${found} ${m.text.strike ?? ''}`.trim(), `${found} ${m.text.attack}`, [m.sfx.attack], m.damage)
         break
       }
     }
@@ -881,7 +1026,8 @@ export class SoloGame {
   /** нажатие по точке: своя стрелка вовремя — поймана, иначе промах; серия сыграна целиком — итог сразу */
   private qte(id: number, key: SoloQteKey, at?: number) {
     const b = this.live.boss
-    if (!b || this.live.scene) return
+    if (!b) return this.dodgeQte(id, key, at)
+    if (this.live.scene) return
     const p = b.prompts.find(x => x.id === id)
     if (!p || p.result) return
     const now = Date.now()
@@ -1056,9 +1202,13 @@ export class SoloGame {
       feed: this.feed,
       scene: this.live.scene,
       encounter: e && m ? {
-        monster: m.id, name: m.name, hp: Math.max(0, e.hp), maxHp: m.hp, round: e.round, startedAt: e.startedAt, deadline: e.deadline, serverNow: now, text: e.text,
+        monster: m.id, name: m.name, hp: Math.max(0, e.hp), maxHp: m.hp, round: e.round, startedAt: e.startedAt, deadline: e.dodge || e.grapple ? e.deadline : e.startedAt + e.windowMs, serverNow: now, text: e.text,
         windowMs: e.windowMs,
         zones: { hit: e.hit.map(([a, b]) => [e.startedAt + a, e.startedAt + b] as [number, number]), flee: e.flee ? [e.startedAt + e.flee[0], e.startedAt + e.flee[1]] : null },
+        dodge: e.dodge ? { prompts: e.dodge.prompts, deadline: e.dodge.deadline } : null,
+        stunned: (e.stun ?? 0) > 0, dazed: (e.dazed ?? 0) > 0,
+        grapple: e.grapple ? { deadline: e.grapple.deadline, presses: e.grapple.presses, need: e.grapple.need } : null,
+        mode: e.mode ?? 'normal',
         options: this.encounterOptions(m, p, gun)
       } : null,
       puzzle: ph?.puzzle ? { hotspot: ph.id, puzzle: this.publicPuzzle(ph) } : null,
@@ -1163,6 +1313,7 @@ export class SoloGame {
         this.live.boss ??= null
         this.live.linger ??= null
         if (this.live.boss && !this.bossSpec(this.live.boss)) this.live.boss = null
+        if (this.live.encounter && !this.live.encounter.strikeAt) this.live.encounter.strikeAt = this.live.encounter.windowMs
         this.refreshWindow()
       }
     } catch (e) { console.warn('одиночная партия не прочиталась:', (e as Error).message) }

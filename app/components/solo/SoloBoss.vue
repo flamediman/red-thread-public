@@ -14,37 +14,13 @@ const loop = () => { now.value = Date.now() + props.offset; raf = requestAnimati
 onMounted(() => { raf = requestAnimationFrame(loop) })
 onBeforeUnmount(() => cancelAnimationFrame(raf))
 
-const GLYPH: Record<SoloQteKey, string> = { up: '↑', down: '↓', left: '←', right: '→' }
-const KEYS: Record<string, SoloQteKey> = {
-  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-  w: 'up', s: 'down', a: 'left', d: 'right', ц: 'up', ы: 'down', ф: 'left', в: 'right'
-}
-/** мгновенный отклик: что нажали, пока сервер не ответил */
 const local = reactive<Record<number, 'hit' | 'miss'>>({})
 const result = (p: Prompt) => p.result ?? local[p.id] ?? null
-/** точка на экране: чуть раньше своего окна (чтобы глаз успел найти), и чуть после — показать итог */
-const visible = computed(() => props.boss.prompts.filter(p => now.value >= p.from - 260 && now.value <= p.to + 420))
-/** сколько времени у точки осталось, 1 → 0 */
-const ring = (p: Prompt) => Math.max(0, Math.min(1, (p.to - now.value) / Math.max(1, p.to - p.from)))
-/** точка, которую сейчас ловят клавишей: та, чьё окно идёт (с запасом на края) */
-const active = computed(() => props.boss.prompts.find(p => !result(p) && now.value >= p.from - 130 && now.value <= p.to + 130) ?? null)
-
-function answer(p: Prompt, key: SoloQteKey) {
-  if (result(p)) return
-  const inWindow = now.value >= p.from - 130 && now.value <= p.to + 130
-  local[p.id] = key === p.key && inWindow ? 'hit' : 'miss'
-  emit('send', { type: 'qte', id: p.id, key, at: now.value })
+function onAnswer(id: number, key: SoloQteKey, at: number) {
+  const p = props.boss.prompts.find(x => x.id === id)
+  if (p) local[id] = key === p.key && at >= p.from - 130 && at <= p.to + 130 ? 'hit' : 'miss'
+  emit('send', { type: 'qte', id, key, at })
 }
-function tap(p: Prompt) { if (now.value >= p.from - 130) answer(p, p.key) }
-function onKey(e: KeyboardEvent) {
-  const key = KEYS[e.key] ?? KEYS[e.key.toLowerCase()]
-  if (!key) return
-  e.preventDefault()
-  const p = active.value
-  if (p) answer(p, key)
-}
-onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 /* вспышка по итогу серии: удар по боссу — свет, удар по герою — тряска */
 const flash = ref<'hit' | 'miss' | null>(null)
@@ -55,10 +31,6 @@ watch(() => props.boss.round, () => {
   flashTimer = window.setTimeout(() => { flash.value = null }, 600)
 })
 const caught = computed(() => props.boss.prompts.filter(p => result(p) === 'hit').length)
-/* каждая новая точка — короткий тик */
-const audio = useAudio()
-const ticked = new Set<number>()
-watch(visible, list => { for (const p of list) if (!ticked.has(p.id) && now.value >= p.from - 260) { ticked.add(p.id); void audio.sfx('qte-tick', 0.6) } })
 const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - now.value) / 1000)))
 </script>
 
@@ -67,18 +39,7 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - 
     <img class="solo-enc__art" :src="`/art/${story}/m_${boss.art}.jpg`" :style="{ objectPosition: focus?.[`m_${boss.art}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
-    <div class="solo-boss__arena">
-      <TransitionGroup name="qte">
-        <button
-          v-for="p in visible" :key="p.id" type="button" class="solo-qte"
-          :class="[`solo-qte--${p.key}`, result(p) && `solo-qte--${result(p)}`]" :style="{ left: `${p.x}%`, top: `${p.y}%` }"
-          :aria-label="`стрелка ${GLYPH[p.key]}`" @pointerdown.prevent="tap(p)"
-        >
-          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="solo-qte__ring" cx="50" cy="50" r="46" :style="{ strokeDashoffset: (1 - ring(p)) * 289 }" /></svg>
-          <span class="solo-qte__glyph">{{ GLYPH[p.key] }}</span>
-        </button>
-      </TransitionGroup>
-    </div>
+    <div class="solo-boss__arena"><SoloQte :prompts="boss.prompts" :now="now" @answer="onAnswer" /></div>
     <div class="solo-enc__panel">
       <div class="solo-enc__head">
         <span class="solo-enc__name">{{ boss.name }}</span>
