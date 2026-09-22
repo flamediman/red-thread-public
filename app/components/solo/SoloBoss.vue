@@ -35,7 +35,8 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - 
 </script>
 
 <template>
-  <div class="solo-enc solo-boss" :class="flash && `solo-boss--${flash}`" role="alertdialog" aria-modal="true">
+  <div class="solo-enc solo-boss" :class="{ 'solo-enc--hurt': flash === 'miss' }" role="alertdialog" aria-modal="true">
+    <i class="solo-enc__flash" :class="flash === 'hit' && 'solo-enc__flash--hit'" aria-hidden="true" />
     <img class="solo-enc__art" :src="`/art/${story}/m_${boss.art}.jpg`" :style="{ objectPosition: focus?.[`m_${boss.art}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
@@ -53,7 +54,7 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - 
         <i v-for="p in boss.prompts" :key="p.id" :class="result(p)" />
         <span>нужно {{ boss.need }} из {{ boss.prompts.length }}</span>
       </div>
-      <p class="solo-enc__legend">Точки вспыхивают одна за другой: жмите их стрелку на клавиатуре или касайтесь точки, пока кольцо не сомкнулось.</p>
+      <p class="solo-enc__legend">Точки вспыхивают одна за другой: жмите их стрелку на клавиатуре или проводите пальцем в её сторону, пока кольцо не сомкнулось.</p>
     </div>
   </div>
 </template>

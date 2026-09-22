@@ -79,12 +79,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="solo-enc" :class="flash && `solo-enc--${flash}`" role="alertdialog" aria-modal="true">
+  <div class="solo-enc" :class="{ 'solo-enc--hurt': flash === 'hurt' }" role="alertdialog" aria-modal="true">
     <img class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" :style="{ objectPosition: focus?.[`m_${enc.monster}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
-    <div v-if="enc.dodge" class="solo-boss__arena solo-enc__arena"><SoloQte :prompts="enc.dodge.prompts" :now="now" :lead="120" @answer="onDodge" /></div>
-    <Transition name="fade"><span v-if="dodging" class="solo-enc__dodge">Уворот!</span></Transition>
+    <i class="solo-enc__flash" :class="flash && `solo-enc__flash--${flash}`" aria-hidden="true" />
+    <div v-if="enc.dodge" class="solo-boss__arena solo-enc__arena solo-enc__arena--dodge"><SoloQte :prompts="enc.dodge.prompts" :now="now" :lead="120" @answer="onDodge" /></div>
     <Transition name="fade">
       <button v-if="enc.grapple" type="button" class="solo-enc__mash" :class="{ 'solo-enc__mash--pulse': mashPulse % 2 }" :style="{ '--fill': grapShare }" @pointerdown.prevent="mash">
         <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="solo-enc__mash-ring" cx="50" cy="50" r="46" :style="{ strokeDashoffset: (1 - grapShare) * 289 }" /></svg>
@@ -95,7 +95,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="solo-enc__head">
         <span class="solo-enc__name">{{ enc.name }}</span>
         <span class="solo-enc__hp"><i :style="{ transform: `scaleX(${enc.maxHp ? enc.hp / enc.maxHp : 0})` }" /></span>
-        <Transition name="fade"><span v-if="enc.stunned" class="solo-enc__tag solo-enc__tag--stun">оглушено</span><span v-else-if="enc.dazed" class="solo-enc__tag solo-enc__tag--daze">звон в ушах</span><span v-else-if="MODE_TAG[enc.mode]" class="solo-enc__tag solo-enc__tag--mode">{{ MODE_TAG[enc.mode] }}</span></Transition>
+        <Transition name="fade"><span v-if="dodging" class="solo-enc__tag solo-enc__tag--dodge">уворот: проведите в сторону стрелки</span><span v-else-if="enc.stunned" class="solo-enc__tag solo-enc__tag--stun">оглушено</span><span v-else-if="enc.dazed" class="solo-enc__tag solo-enc__tag--daze">звон в ушах</span><span v-else-if="MODE_TAG[enc.mode]" class="solo-enc__tag solo-enc__tag--mode">{{ MODE_TAG[enc.mode] }}</span></Transition>
         <span class="solo-enc__you" :class="{ 'solo-enc__you--low': health <= 30 }" :title="`Ваше здоровье: ${health}`"><small>вы</small><i><b :style="{ transform: `scaleX(${health / 100})` }" /></i><span class="tabnum">{{ health }}</span></span>
       </div>
       <div class="solo-enc__floats" aria-live="polite">
@@ -110,7 +110,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <em class="solo-enc__cursor" :style="{ left: `${pos * 100}%` }" />
 
       </div>
-      <p class="solo-enc__legend"><span><i class="solo-enc__key solo-enc__key--hit" />удар</span><span><i class="solo-enc__key solo-enc__key--flee" />уход без удара</span><span>жмите, пока бегунок в окне. После окон оно бьёт само, когда захочет: ловите стрелку уворота</span></p>
+      <p class="solo-enc__legend"><span><i class="solo-enc__key solo-enc__key--hit" />удар</span><span><i class="solo-enc__key solo-enc__key--flee" />уход без удара</span><span>жмите, пока бегунок в окне. После окон оно бьёт само, когда захочет: стрелка на экране — уворот, нажмите её или проведите пальцем в её сторону</span></p>
       <div class="solo-enc__options">
         <button
           v-for="(o, i) in enc.options" :key="o.id" type="button" class="solo-enc__opt"

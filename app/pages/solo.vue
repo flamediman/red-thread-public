@@ -206,15 +206,21 @@ const themeName = computed<string | null>(() => {
   if (s.ending) return s.ending.id
   if (s.dead) return null
   if (s.chase) return 'chase'
+  // босс и тяжёлые существа — своя музыка; мелочь вроде горниста идёт под тему района и дрон встречи
+  if (s.boss) return 'boss'
+  if (s.encounter && HEAVY.has(s.encounter.monster)) return 'fight'
   const area = place.value?.area
   if (area === 'camp') return 'camp'
   if (area === 'sana') return s.otherworld ? 'otherworld' : 'sanatorium'
   return 'town'
 })
+/** существа, под которых включается боевая тема (у остальных — тема района тише и дрон) */
+const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper'])
 const themeLevel = computed(() => {
   const s = v.value
   if (!s || !entered.value || !s.started || s.ending || s.chase) return 1
-  if (s.encounter || s.boss) return 0.3
+  if (s.boss || (s.encounter && HEAVY.has(s.encounter.monster))) return 1
+  if (s.encounter) return 0.3
   if (s.scene || s.dialogue) return 0.45
   return 0.6
 })

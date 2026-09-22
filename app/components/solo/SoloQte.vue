@@ -24,7 +24,18 @@ function answer(p: SoloQtePrompt, key: SoloQteKey) {
   local[p.id] = key === p.key && inWindow ? 'hit' : 'miss'
   emit('answer', p.id, key, props.now)
 }
-function tap(p: SoloQtePrompt) { if (props.now >= p.from - 130) answer(p, p.key) }
+/* палец или мышь: провести в сторону стрелки от любого места арены; порог 36 px, направление — по большей оси */
+let swipe: { x: number; y: number; id: number } | null = null
+function down(e: PointerEvent) { swipe = { x: e.clientX, y: e.clientY, id: e.pointerId }; (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId) }
+function up(e: PointerEvent) {
+  if (!swipe || swipe.id !== e.pointerId) return
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y
+  swipe = null
+  if (Math.hypot(dx, dy) < 36) return
+  const key: SoloQteKey = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up')
+  const p = active.value
+  if (p) answer(p, key)
+}
 function onKey(e: KeyboardEvent) {
   const key = KEYS[e.key] ?? KEYS[e.key.toLowerCase()]
   if (!key) return
@@ -43,16 +54,16 @@ defineExpose({ result })
 </script>
 
 <template>
-  <div class="solo-qte-arena">
+  <div class="solo-qte-arena" @pointerdown.prevent="down" @pointerup.prevent="up" @pointercancel="swipe = null">
     <TransitionGroup name="qte">
-      <button
-        v-for="p in visible" :key="p.id" type="button" class="solo-qte"
+      <span
+        v-for="p in visible" :key="p.id" class="solo-qte"
         :class="[`solo-qte--${p.key}`, result(p) && `solo-qte--${result(p)}`]" :style="{ left: `${p.x}%`, top: `${p.y}%` }"
-        :aria-label="`стрелка ${GLYPH[p.key]}`" @pointerdown.prevent="tap(p)"
+        :aria-label="`стрелка ${GLYPH[p.key]}`"
       >
         <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="solo-qte__ring" cx="50" cy="50" r="46" :style="{ strokeDashoffset: (1 - ring(p)) * 289 }" /></svg>
         <span class="solo-qte__glyph">{{ GLYPH[p.key] }}</span>
-      </button>
+      </span>
     </TransitionGroup>
   </div>
 </template>
