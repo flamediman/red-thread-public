@@ -162,7 +162,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <defs>
             <filter :id="`${uid}-paper`" x="0" y="0" width="100%" height="100%">
               <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" />
-              <feColorMatrix values="0 0 0 0 0.35  0 0 0 0 0.3  0 0 0 0 0.22  0 0 0 0.09 0" />
+              <feColorMatrix values="0 0 0 0 0.3  0 0 0 0 0.27  0 0 0 0 0.22  0 0 0 0.12 0" />
             </filter>
             <pattern :id="`${uid}-hatch`" width="2.2" height="2.2" patternUnits="userSpaceOnUse" patternTransform="rotate(-25)">
               <path d="M0,1.1 H2.2" class="m-hatch" />
@@ -175,7 +175,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               <path class="m-grass-tick" d="M0.6,2.2 l0.5,-0.9 M2,1.4 l0.5,-0.9" />
             </pattern>
             <radialGradient :id="`${uid}-age`" cx="50%" cy="50%" r="75%">
-              <stop offset="60%" stop-color="#5a4a2c" stop-opacity="0" /><stop offset="100%" stop-color="#5a4a2c" stop-opacity="0.28" />
+              <stop offset="55%" stop-color="#3a3126" stop-opacity="0" /><stop offset="100%" stop-color="#3a3126" stop-opacity="0.34" />
             </radialGradient>
           </defs>
 
@@ -208,14 +208,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <rect :x="b[0] * A" :y="b[1]" :width="b[2] * A" :height="b[3]" :fill="`url(#${uid}-hatch)`" opacity="0.35" />
           </g>
 
-          <!-- площадки под открытым небом -->
-          <g v-for="p in places.filter(x => x.outdoor)" :key="`o-${p.id}`" class="m-open" :class="{ 'm-open--seen': p.visited }">
-            <rect :x="box(p).x" :y="box(p).y" :width="box(p).w" :height="box(p).h" rx="1.4" />
+          <!-- площадки под открытым небом: светлые зоны, как расширения улиц -->
+          <g v-for="p in places.filter(x => x.outdoor)" :key="`o-${p.id}`" class="m-open" :class="{ 'm-open--seen': p.visited, 'm-open--here': p.here }">
+            <rect :x="box(p).x" :y="box(p).y" :width="box(p).w" :height="box(p).h" rx="2" />
           </g>
 
           <!-- здания: контур, комнаты, подпись этажа -->
           <g v-for="g in buildings" :key="g.id" class="m-building">
-            <rect class="m-building__shadow" :x="g.x + 0.7" :y="g.y + 0.8" :width="g.w" :height="g.h" />
             <rect class="m-building__body" :x="g.x" :y="g.y" :width="g.w" :height="g.h" />
             <g v-for="r in g.rooms" :key="r.id" class="m-room" :class="{ 'm-room--seen': r.visited, 'm-room--known': r.known, 'm-room--here': r.here }">
               <rect :x="box(r).x" :y="box(r).y" :width="box(r).w" :height="box(r).h" />
@@ -261,6 +260,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <path d="M-1.4,-1.4 L1.4,1.4 M1.4,-1.4 L-1.4,1.4" />
           </g>
 
+          <!-- роза ветров -->
+          <g class="m-compass" :transform="`translate(${W - 7 * K},${8 * K}) scale(${K})`">
+            <path class="m-compass__star" d="M0,-4.2 L1,-1 L4.2,0 L1,1 L0,4.2 L-1,1 L-4.2,0 L-1,-1 Z" />
+            <path class="m-compass__north" d="M0,-4.2 L1,-1 L-1,-1 Z" />
+            <circle r="1.1" class="m-compass__hub" />
+            <text class="m-compass__n" text-anchor="middle" y="-5.2">N</text>
+          </g>
           <!-- старение по краям и сгибы -->
           <rect :width="W" height="100" :fill="`url(#${uid}-age)`" pointer-events="none" />
           <path class="m-fold" :d="`M${W / 2},0 V100`" /><path class="m-fold" :d="`M0,50 H${W}`" />
