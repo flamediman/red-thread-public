@@ -103,7 +103,10 @@ const THEME_FALLBACK: Record<string, string[]> = {
   'verdict-wrong': ['accuse', 'night-late', 'night-early', 'lobby'],
   'epilogue': ['final-solved', 'lobby'],
   'final-solved': ['epilogue', 'lobby'],
-  'final-failed': ['verdict-wrong', 'accuse', 'night-early', 'lobby']
+  'final-failed': ['verdict-wrong', 'accuse', 'night-early', 'lobby'],
+  // «Туман»: если у истории нет частной темы — ближайшая по месту
+  'town2': ['town'], 'lake': ['camp', 'town'], 'finale': ['boss', 'camp'], 'people': ['town'],
+  'memory': ['town'], 'confession': ['sanatorium', 'town'], 'fight': ['boss'], 'boss': ['fight']
 }
 
 async function load(url: string): Promise<AudioBuffer | null> {
@@ -281,6 +284,19 @@ export function useAudio() {
     }
   }
 
+  /** Музыкальный номер один раз, без петли, через шину музыки: смерть в тумане. Возвращает false, если у дела такой темы нет */
+  async function stinger(name: string, level = 1): Promise<boolean> {
+    const c = ensure(); if (!c) return false
+    const buf = await load(`/music/${currentCase.value}/${name}.mp3`)
+    if (!buf) return false
+    const src = c.createBufferSource()
+    src.buffer = buf
+    const g = c.createGain(); g.gain.value = level
+    src.connect(g); g.connect(gains.music!)
+    src.start()
+    return true
+  }
+
   /** Одиночный эффект. Возвращает длительность, чтобы экран мог подождать. */
   /** Одиночный звук. far — сыграть «издалека»: глухо, с долгим эхом и тише (звуки из FAR_NAMES — всегда так);
       pan — откуда, −1 слева … 1 справа. Остальное идёт через «комнату» — короткое эхо по покрытию места */
@@ -391,5 +407,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, sfx, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, stinger, sfx, voice, stopVoice, stopAll, preload: load }
 }

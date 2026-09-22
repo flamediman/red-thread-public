@@ -94,7 +94,7 @@ watch(view, (nv, ov) => {
   }
   lastPlayed = maxSeq
   if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('solo-hurt', 0.9); void audio.sfx('groan-m', 0.35) }
-  if (nv.dead && !ov?.dead) void audio.sfx('sting-soft', 0.9)
+  if (nv.dead && !ov?.dead) void audio.stinger('death', 0.9).then(ok => { if (!ok) void audio.sfx('sting-soft', 0.9) })
   lastHealth = nv.health
   if (!nv.started) { lastPlace = ''; feedFloor.value = 0; found.value = [] }
 })
@@ -212,11 +212,18 @@ const themeName = computed<string | null>(() => {
   // босс и тяжёлые существа — своя музыка; мелочь вроде горниста идёт под тему района и дрон встречи
   if (s.boss) return 'boss'
   if (s.encounter && HEAVY.has(s.encounter.monster)) return 'fight'
+  const pid = place.value?.id ?? ''
   const area = place.value?.area
+  const has = (id: string) => s.notes.some(n => n.id === id)
+  // последний путь: радиорубка и пирс после журнала радиоузла; у воды — своя тишина; город после писем становится тяжелее
+  if ((pid === 'camp_radio' || pid === 'camp_pier') && has('n_radio_log')) return 'finale'
+  if (LAKE.has(pid)) return 'lake'
   if (area === 'camp') return 'camp'
   if (area === 'sana') return s.otherworld ? 'otherworld' : 'sanatorium'
-  return 'town'
+  return has('n_letters') ? 'town2' : 'town'
 })
+/** места у воды, где вместо темы района — озеро */
+const LAKE = new Set(['quay', 'camp_boathouse', 'bridge', 'camp_pier'])
 /** существа, под которых включается боевая тема (у остальных — тема района тише и дрон) */
 const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper'])
 const themeLevel = computed(() => {
@@ -226,6 +233,8 @@ const themeLevel = computed(() => {
   if (s.scene?.music || s.dialogue?.music) return 0.8
   if (s.encounter) return 0.3
   if (s.scene || s.dialogue) return 0.45
+  // в тёмных местах музыка почти уходит: остаётся дыхание, шаги и то, что в темноте; со светом — чуть громче
+  if (s.place?.dark) return s.place.lit ? 0.4 : 0.25
   return 0.6
 })
 // пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
