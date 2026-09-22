@@ -41,6 +41,8 @@ export interface SoloEffect {
   sfx?: string[]
   /** сцена на весь экран — несколько реплик подряд */
   scene?: SoloLine[]
+  /** музыкальная тема на время этой сцены (файл в music/ истории): воспоминание, откровение */
+  music?: string
   give?: string[]
   take?: string[]
   set?: string[]
@@ -304,7 +306,8 @@ export interface SoloDialogueNode {
 }
 /** again — узел, с которого разговор начинается во второй раз и куда ведёт «Дальше» из веток: без него персонаж
     здоровался бы заново при каждом возврате к вопросам */
-export interface SoloDialogue { id: string; npc: string; start: string; again?: string; nodes: Record<string, SoloDialogueNode> }
+/** music — тема на время разговора (признание) */
+export interface SoloDialogue { music?: string; id: string; npc: string; start: string; again?: string; nodes: Record<string, SoloDialogueNode> }
 
 export interface SoloEnding { id: string; title: string; scene: SoloLine[] }
 
@@ -378,7 +381,7 @@ export interface SoloView {
   map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; visited: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
   /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
   feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string } }[]
-  scene: { seq: number; lines: SoloLine[] } | null
+  scene: { seq: number; lines: SoloLine[]; music?: string } | null
   encounter: {
     monster: string; name: string; hp: number; maxHp: number; round: number
     startedAt: number; deadline: number; serverNow: number
@@ -413,7 +416,7 @@ export interface SoloView {
     startedAt: number; deadline: number; serverNow: number
     options: { index: number; label: string }[]
   } | null
-  dialogue: { id: string; npc: string; name: string; lines: SoloLine[]; choices: { index: number; text: string }[] } | null
+  dialogue: { id: string; npc: string; name: string; lines: SoloLine[]; choices: { index: number; text: string }[]; music?: string } | null
   dead: boolean
   ending: { id: string; title: string; lines: SoloLine[]; stats: { minutes: number; saves: number; deaths: number; kills: number } } | null
   saves: { slot: number; place: string; at: string; minutes: number }[]

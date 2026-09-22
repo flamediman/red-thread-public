@@ -76,7 +76,7 @@ interface Live {
   linger?: { spawn: string; at: number } | null
   puzzle: string | null
   dialogue: { id: string; node: string } | null
-  scene: { seq: number; lines: SoloLine[] } | null
+  scene: { seq: number; lines: SoloLine[]; music?: string } | null
   dead: boolean
 }
 
@@ -227,9 +227,9 @@ export class SoloGame {
   }
   private artOf(item: SoloItem) { return item.art ?? `i_${item.id}` }
 
-  private showScene(lines?: SoloLine[]) {
+  private showScene(lines?: SoloLine[], music?: string) {
     if (!lines?.length) return
-    this.live.scene = { seq: ++this.seq, lines }
+    this.live.scene = { seq: ++this.seq, lines, music }
   }
 
   /** последствия: порядок — предметы и флаги, потом текст и сцена, потом переход, встреча, финал */
@@ -254,7 +254,7 @@ export class SoloGame {
     for (const [k, v] of Object.entries(e.score ?? {})) r.score[k] = (r.score[k] ?? 0) + v
     if (e.otherworld !== undefined) r.otherworld = e.otherworld
     this.say(e.text, e.sfx, e.voice, { art: e.art })
-    this.showScene(e.scene)
+    this.showScene(e.scene, e.music)
     if (e.hurt) this.hurt(e.hurt)
     if (this.live.dead) return
     if (e.goto && this.PLACE.has(e.goto)) this.enter(e.goto, false)
@@ -1219,7 +1219,7 @@ export class SoloGame {
       } : null,
       dialogue: dl && dNode ? {
         id: dl.id, npc: this.DIALOG.get(dl.id)!.npc, name: this.S.npcs.find(n => n.id === this.DIALOG.get(dl.id)!.npc)?.name ?? '',
-        lines: dNode.lines, choices: (dNode.choices ?? []).filter(c => this.ok(c.when)).map((c, index) => ({ index, text: c.text }))
+        lines: dNode.lines, choices: (dNode.choices ?? []).filter(c => this.ok(c.when)).map((c, index) => ({ index, text: c.text })), music: this.DIALOG.get(dl.id)!.music
       } : null,
       chase: this.chaseView(now),
       dead: this.live.dead,

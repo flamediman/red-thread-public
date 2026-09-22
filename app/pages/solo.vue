@@ -206,6 +206,9 @@ const themeName = computed<string | null>(() => {
   if (s.ending) return s.ending.id
   if (s.dead) return null
   if (s.chase) return 'chase'
+  // сцена или разговор со своей темой — воспоминание, признание
+  if (s.scene?.music) return s.scene.music
+  if (s.dialogue?.music) return s.dialogue.music
   // босс и тяжёлые существа — своя музыка; мелочь вроде горниста идёт под тему района и дрон встречи
   if (s.boss) return 'boss'
   if (s.encounter && HEAVY.has(s.encounter.monster)) return 'fight'
@@ -220,6 +223,7 @@ const themeLevel = computed(() => {
   const s = v.value
   if (!s || !entered.value || !s.started || s.ending || s.chase) return 1
   if (s.boss || (s.encounter && HEAVY.has(s.encounter.monster))) return 1
+  if (s.scene?.music || s.dialogue?.music) return 0.8
   if (s.encounter) return 0.3
   if (s.scene || s.dialogue) return 0.45
   return 0.6
