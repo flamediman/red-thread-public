@@ -5,22 +5,41 @@ import { SOLO_STORIES } from '../scenario'
 import { clientIp, IS_PUBLIC } from '../utils/mode'
 import { Bucket, WindowLimiter } from '../utils/limits'
 import { DATA_DIR } from '../utils/data-dir'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import type { SoloClientMessage, SoloServerMessage } from '../../shared/types'
 
 type Peer = { id: string; send: (data: string) => void; close: (code?: number, reason?: string) => void }
 interface Session { ip: string; bucket: Bucket; dropped: number; key?: string }
 
-/** коды переноса партии на другое устройство: код → жетон. Живут неделю и лежат на диске — партию продолжают
-    и через несколько дней, а сервер за это время пересобирается */
+/** коды партии: код → жетон. У партии один код, живёт год с последнего запроса и не сгорает при вводе — его можно
+    записать и через месяцы продолжить с любого устройства. Лежат на диске: сервер пересобирается часто */
 const transfers = new Map<string, { token: string; exp: number }>()
 const TRANSFER_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-const TRANSFER_DAYS = 7
+const TRANSFER_DAYS = 365
 const TRANSFER_FILE = resolve(DATA_DIR, 'solo', 'transfers.json')
 try {
   if (existsSync(TRANSFER_FILE)) for (const [c, t] of Object.entries(JSON.parse(readFileSync(TRANSFER_FILE, 'utf8')) as Record<string, { token: string; exp: number }>)) if (t.exp > Date.now()) transfers.set(c, t)
 } catch { /* файла нет или он битый — начинаем с пустого */ }
+/** партии, к которым не притрагивались дольше года, уходят с диска (сохранение внутри партии — тоже) */
+const SAVE_KEEP_DAYS = Math.max(30, Number(process.env.SOLO_KEEP_DAYS) || 365)
+function purgeSaves() {
+  const root = resolve(DATA_DIR, 'solo')
+  let gone = 0
+  try {
+    for (const story of readdirSync(root, { withFileTypes: true })) {
+      if (!story.isDirectory()) continue
+      for (const f of readdirSync(resolve(root, story.name))) {
+        if (!f.endsWith('.json')) continue
+        const file = resolve(root, story.name, f)
+        try { if (Date.now() - statSync(file).mtimeMs > SAVE_KEEP_DAYS * 86_400_000) { unlinkSync(file); gone++ } } catch { /* пропал сам */ }
+      }
+    }
+  } catch { /* папки ещё нет */ }
+  if (gone) console.log(`партий «Тумана» стёрто с диска: ${gone}`)
+}
+purgeSaves()
+setInterval(purgeSaves, 24 * 3_600_000).unref?.()
 function saveTransfers() {
   try { mkdirSync(dirname(TRANSFER_FILE), { recursive: true }); writeFileSync(TRANSFER_FILE, JSON.stringify(Object.fromEntries(transfers))) } catch (e) { console.warn('коды переноса не записались:', (e as Error).message) }
 }
@@ -79,23 +98,22 @@ export default defineWebSocketHandler({
     try { msg = JSON.parse(text) } catch { return }
     if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return
 
-    // перенос партии: код на неделю → жетон. Забрать может любой, кто знает код; подбор ограничен
+    // перенос партии: код партии → жетон. Забрать может любой, кто знает код; подбор ограничен
     if (msg.type === 'adopt') {
       if (!adopts.take(session.ip)) return send(entry.peer, { type: 'adopt', token: null, reason: 'Слишком много попыток. Подождите минуту.' })
       const code = typeof msg.code === 'string' ? msg.code.toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
       const t = transfers.get(code)
       if (!t || t.exp < Date.now()) { transfers.delete(code); saveTransfers(); return send(entry.peer, { type: 'adopt', token: null, reason: 'Код не подошёл или истёк. Возьмите новый на первом устройстве.' }) }
-      transfers.delete(code)
-      saveTransfers()
       return send(entry.peer, { type: 'adopt', token: t.token })
     }
     if (msg.type === 'transfer') {
       const g0 = session.key ? games.get(session.key) : null
       const token = session.key?.split(':').slice(1).join(':')
       if (!g0 || !token) return
+      // у партии уже есть код — тот же, срок продлевается; протухшие чужие коды заодно вычищаются
       let code = ''
-      do { code = Array.from({ length: 6 }, () => TRANSFER_ABC[Math.floor(Math.random() * TRANSFER_ABC.length)]).join('') } while (transfers.has(code))
-      for (const [c, t] of transfers) if (t.token === token || t.exp < Date.now()) transfers.delete(c)
+      for (const [c, t] of transfers) { if (t.exp < Date.now()) transfers.delete(c); else if (t.token === token) code = c }
+      if (!code) do { code = Array.from({ length: 6 }, () => TRANSFER_ABC[Math.floor(Math.random() * TRANSFER_ABC.length)]).join('') } while (transfers.has(code))
       transfers.set(code, { token, exp: Date.now() + TRANSFER_DAYS * 24 * 3_600_000 })
       saveTransfers()
       return send(entry.peer, { type: 'transfer', code, minutes: TRANSFER_DAYS * 24 * 60 })

@@ -95,7 +95,7 @@ function openSolo(e: MouseEvent, id: string) {
           <h2 class="veil__title">Сменить комнату</h2>
           <p class="veil__text">
             Этот экран уйдёт из комнаты <b class="tabnum">{{ formatRoom(roomCode) }}</b> и вернётся на ворота: там можно открыть новую
-            или войти в другую. Эта комната остаётся на сервере месяц<template v-if="roomPin">: вернуться в неё можно с любого экрана по коду и ПИНу <b class="tabnum">{{ roomPin }}</b></template>.
+            или войти в другую. Эта комната остаётся на сервере три месяца<template v-if="roomPin">: вернуться в неё можно с любого экрана по коду и ПИНу <b class="tabnum">{{ roomPin }}</b></template>.
           </p>
           <div class="veil__actions">
             <button class="btn btn--stamp" type="button" @click="confirmLeave">Сменить комнату</button>

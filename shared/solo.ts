@@ -140,6 +140,10 @@ export interface SoloPlace {
   enter?: SoloEffect
   /** значок места на карте: post, shop, food, culture, radio, phone, road, barrier, bridge, monument, yard, anchor, gate, door, book, stairs, medical, office, bed, water, tunnel, boat, flag */
   poi?: string
+  /** комнаты одного здания на карте: общий контур, двери в общих стенах (у этажей — по подложке floors) */
+  building?: string
+  /** на карте не показывается, пока герой там не побывал (потайной ход) */
+  hidden?: boolean
 }
 
 export type SoloPuzzle =
@@ -381,7 +385,8 @@ export interface SoloView {
   radioOn: boolean
   otherworld: boolean
   weapon: string | null
-  map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; visited: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
+  /** карта — вся схема района, как на бумажной туристической карте; visited — где были, known — что видно с соседних мест */
+  map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; building?: string; visited: boolean; known: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
   /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
   feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string }; note?: { id: string; title: string; text: string } }[]
   scene: { seq: number; lines: SoloLine[]; music?: string } | null

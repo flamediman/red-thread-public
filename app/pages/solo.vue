@@ -9,7 +9,7 @@ useHead({ title: 'Туман — Красная нить', htmlAttrs: { 'data-se
 const route = useRoute()
 const storyId = typeof route.query.story === 'string' ? route.query.story : undefined
 const { view, connected, error, clockOffset, send, transferCode, adoptError, transfer, adopt } = useSolo(storyId)
-/* перенос партии между устройствами: код на неделю */
+/* перенос партии между устройствами: у партии один код на год */
 const moveOpen = ref<'give' | 'take' | null>(null)
 const adoptCode = ref('')
 const adoptShown = computed({ get: () => { const c = adoptCode.value; return c.length > 3 ? `${c.slice(0, 3)} ${c.slice(3)}` : c }, set: (v: string) => { adoptCode.value = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) } })
@@ -379,7 +379,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         <p class="solo-title__hint">{{ v?.info.minutes }} минут · лучше в наушниках и в темноте · сохраняться можно только у телефонов</p>
         <div v-if="v" class="solo-move">
           <template v-if="moveOpen === 'give'">
-            <p v-if="transferCode" class="solo-move__code">Код на другом устройстве: <b class="tabnum">{{ transferCode.code.slice(0, 3) }} {{ transferCode.code.slice(3) }}</b><small>действует {{ transferCode.minutes >= 1440 ? Math.round(transferCode.minutes / 1440) + ' дней' : transferCode.minutes + ' минут' }}; там: заставка «Тумана» → «Продолжить с другого устройства»</small></p>
+            <p v-if="transferCode" class="solo-move__code">Код на другом устройстве: <b class="tabnum">{{ transferCode.code.slice(0, 3) }} {{ transferCode.code.slice(3) }}</b><small>действует {{ transferCode.minutes >= 300 * 1440 ? 'год' : transferCode.minutes >= 1440 ? Math.round(transferCode.minutes / 1440) + ' дней' : transferCode.minutes + ' минут' }}; там: заставка «Тумана» → «Продолжить с другого устройства»</small></p>
             <p v-else class="solo-muted">Получаю код…</p>
             <button type="button" class="solo-move__link" @click="moveOpen = null">Скрыть</button>
           </template>

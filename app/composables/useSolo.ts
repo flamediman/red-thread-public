@@ -1,6 +1,7 @@
 /* Одиночная игра на клиенте: свой сокет /_solo, жетон партии в localStorage.
    Всё состояние приходит с сервера целиком (view); клиент только показывает и шлёт намерения. */
 import type { SoloClientMessage, SoloServerMessage, SoloView } from '#shared/types'
+import { cookieValue, keep } from '~/utils/keep'
 import { setCurrentCase, setCurrentSetting } from '~/utils/case-store'
 
 const view = shallowRef<SoloView | null>(null)
@@ -24,12 +25,15 @@ const adoptError = ref<string | null>(null)
 function token() {
   let t = ''
   try { t = localStorage.getItem(TOKEN_KEY) || '' } catch { /* приватный режим */ }
+  // localStorage пуст (Safari чистит его через неделю без захода) — жетон ждёт в cookie сервера
+  if (!/^[a-z0-9]{12,40}$/.test(t)) t = cookieValue('solo')
   if (!/^[a-z0-9]{12,40}$/.test(t)) {
     const abc = 'abcdefghijkmnpqrstuvwxyz23456789'
     const bytes = crypto.getRandomValues(new Uint8Array(24))
     t = [...bytes].map(b => abc[b % abc.length]).join('')
-    try { localStorage.setItem(TOKEN_KEY, t) } catch { /* без сохранения — партия проживёт до закрытия вкладки */ }
   }
+  try { localStorage.setItem(TOKEN_KEY, t) } catch { /* без сохранения — партия проживёт до закрытия вкладки */ }
+  keep('solo', t)
   return t
 }
 
@@ -59,6 +63,7 @@ function open() {
       if (!msg.token) { adoptError.value = msg.reason ?? 'Код не подошёл.'; return }
       // партия с другого устройства: берём её жетон и заново здороваемся с сервером
       try { localStorage.setItem(TOKEN_KEY, msg.token) } catch { /* приватный режим */ }
+      keep('solo', msg.token)
       adoptError.value = null
       transferCode.value = null
       socket?.close()

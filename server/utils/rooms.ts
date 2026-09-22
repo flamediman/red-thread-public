@@ -213,7 +213,7 @@ function sweep(force = false) {
 }
 
 /** Файлы комнат живут KEEP_DAYS с последнего действия; комната, в которой так и не начали партию, — KEEP_EMPTY_DAYS */
-const KEEP_DAYS = Math.max(1, Number(process.env.ROOM_KEEP_DAYS) || 30)
+const KEEP_DAYS = Math.max(1, Number(process.env.ROOM_KEEP_DAYS) || 90)
 const KEEP_EMPTY_DAYS = 3
 function purgeFiles() {
   let gone = 0

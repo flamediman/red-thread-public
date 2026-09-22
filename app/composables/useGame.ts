@@ -1,4 +1,5 @@
 import { setCurrentCase, setCurrentSetting } from '~/utils/case-store'
+import { cookieValue, keep } from '~/utils/keep'
 import type { ClientMessage, PublicState, ServerMessage, YouState } from '#shared/types'
 import { useConfig } from './useConfig'
 
@@ -60,8 +61,13 @@ function storage(): Storage | null {
 function savedHostRoom(): { code: string; key: string } | null {
   try {
     const v = JSON.parse(storage()?.getItem(HOST_ROOM_KEY) || 'null')
-    return v && typeof v.code === 'string' && typeof v.key === 'string' ? v : null
-  } catch { return null }
+    if (v && typeof v.code === 'string' && typeof v.key === 'string') return v
+  } catch { /* мусор в хранилище */ }
+  // localStorage пуст (Safari чистит его через неделю без захода) — ключ экрана ждёт в cookie сервера
+  const c = cookieValue('host')
+  const dot = c.indexOf('.')
+  if (dot > 0) { const room = { code: c.slice(0, dot), key: c.slice(dot + 1) }; storage()?.setItem(HOST_ROOM_KEY, JSON.stringify(room)); return room }
+  return null
 }
 /** жетон игрока — свой в каждой комнате, дома — один, как раньше */
 const tokenKey = () => (role === 'player' && roomCode.value ? `${TOKEN_KEY}:${roomCode.value}` : TOKEN_KEY)
@@ -128,12 +134,14 @@ function open() {
       hostReason.value = msg.ok ? null : msg.reason ?? null
       if (!msg.ok) {
         storage()?.removeItem(HOST_ROOM_KEY)
+        if (tried) keep('host', '')
         roomCode.value = null
       }
       return
     }
     if (msg.type === 'room') {
       storage()?.setItem(HOST_ROOM_KEY, JSON.stringify({ code: msg.code, key: msg.key }))
+      keep('host', `${msg.code}.${msg.key}`)
       roomCode.value = msg.code
       roomPin.value = msg.pin ?? null
       roomPass.value = msg.pass ?? null
@@ -198,9 +206,10 @@ function open() {
 }
 
 /** Экран уходит из своей комнаты: ключ забыт, соединение открывается заново без комнаты — ворота предложат открыть новую
-    или войти в другую по коду и ПИНу. Сама комната лежит на сервере месяц, в неё можно вернуться тем же путём */
+    или войти в другую по коду и ПИНу. Сама комната лежит на сервере три месяца, в неё можно вернуться тем же путём */
 export function leaveRoom() {
   storage()?.removeItem(HOST_ROOM_KEY)
+  keep('host', '')
   roomCode.value = null
   roomPin.value = null
   roomPass.value = null
