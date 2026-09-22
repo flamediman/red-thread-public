@@ -149,6 +149,8 @@ export class Game {
   lieMarks = new Map<string, Record<string, boolean>>()
   /** кого каким противоречием уже уличали: «свидетель:противоречие» */
   confronted = new Set<string>()
+  /** сколько раз перед свидетелем уже клали карточку-доказательство: реплики не повторяются */
+  proofs = new Map<string, number>()
   /** когда вопрос впервые стал доступен: шаг партии (раунд×2, разбор — нечётный) и время («на время») — для пометки «новое» */
   openedAt = new Map<string, { step: number; at: number }>()
 
@@ -378,7 +380,7 @@ export class Game {
     this.paused = false
     this.board.clear(); this.pins.clear(); this.links.clear(); this.items.clear()
     this.searched.clear(); this.hiddenDone.clear(); this.memoryDone.clear(); this.asked.clear(); this.presented.clear()
-    this.unlocked.clear(); this.greeted.clear(); this.lieMarks.clear(); this.confronted.clear(); this.openedAt.clear(); this.tutorialStep = 0
+    this.unlocked.clear(); this.greeted.clear(); this.lieMarks.clear(); this.confronted.clear(); this.proofs.clear(); this.openedAt.clear(); this.tutorialStep = 0
     this.beats = []; this.proceedVotes.clear(); this.accusation = null; this.verdict = null
     this.attemptsLeft = 2; this.hintsUsed = 0; this.hintsFired.clear(); this.eventsFired.clear(); this.outcome = null
     this.emit()
@@ -929,6 +931,7 @@ export class Game {
     for (const u of q.unlocks ?? []) this.unlocked.add(u)
     if (!honest && kind === 'psychologist' && q.factId) { this.lieMarks.set(p.id, { ...(this.lieMarks.get(p.id) ?? {}), [q.factId]: q.answer.lie }); const e = this.board.get(q.factId); if (e) e.verdict = { lie: q.answer.lie, by: this.roleOf(p)?.title ?? 'психолог' } }
     out.push(this.narrate(`ask_${q.id}`, `${p.name} спрашивает: «${q.text}»`, undefined, 200))
+    if (honest) out.push(this.proofBeat(`proof_${q.id}`, p, w, honest.proof))
     const a = honest?.answer ?? q.answer
     out.push({ id: honest ? honestBeatId(q.id, honest.index) : q.id, speaker: w.id, text: a.text, voice: a.voice, mood: a.mood, sfx: a.sfx, pauseAfter: 600 })
     return out
@@ -953,7 +956,11 @@ export class Game {
     else this.addFact(pr.factId, p.id, from)
     for (const u of pr.unlocks ?? []) this.unlocked.add(u)
     if (!honest && this.roleOf(p)?.ability.kind === 'psychologist' && pr.factId) { this.lieMarks.set(p.id, { ...(this.lieMarks.get(p.id) ?? {}), [pr.factId]: pr.answer.lie }); const e = this.board.get(pr.factId); if (e) e.verdict = { lie: pr.answer.lie, by: this.roleOf(p)?.title ?? 'психолог' } }
-    out.push({ ...this.narrate(`show_${pr.id}`, `${p.name} выкладывает на стол улику «${item.name}». ${w.name} смотрит на неё.`, ['drawer'], 300), itemId: item.id, itemName: item.name })
+    // сыщик не просто кладёт улику — он что-то говорит; если у бригады есть и карточка, бьющая ложь, она ложится рядом
+    const lines = ['«Узнаёте?»', '«Объясните, как это здесь оказалось».', '«Я подожду».', '«Это не наша находка. Это ваша».']
+    const line = lines[[...pr.id].reduce((a, c) => a + c.charCodeAt(0), 0) % lines.length]!
+    out.push({ ...this.narrate(`show_${pr.id}`, `${p.name} кладёт на стол улику «${item.name}»: ${line} ${w.name} смотрит на неё.`, ['drawer'], 300), itemId: item.id, itemName: item.name })
+    if (honest) out.push(this.proofBeat(`proof_${pr.id}`, p, w, honest.proof))
     const a = honest?.answer ?? pr.answer
     out.push({ id: honest ? honestBeatId(pr.id, honest.index) : pr.id, speaker: w.id, text: a.text, voice: a.voice, mood: a.mood, sfx: a.sfx, pauseAfter: 600 })
     return out
@@ -962,23 +969,42 @@ export class Game {
   /** Честный ответ вместо лжи, которую бригада уже раскрыла. Лживая карточка при этом не ложится, поэтому вариант годится,
       только если выводы из её противоречий не потеряются: уже на доске, приходят с ответом или добываются другим противоречием,
       которое ещё может сойтись (его карточки не сгорели в чужом честном ответе). */
-  private honestOf(x: Question | Presentation): { answer: HonestAnswer; index: number } | null {
+  private honestOf(x: Question | Presentation): { answer: HonestAnswer; index: number; proof: string } | null {
     if (!x.answer.lie || !x.honest?.length) return null
     const lieFact = x.factId
     const burned = (f: string) => {
       const src = this.sourceOf(f)
       return !!src && !this.board.has(f) && ('text' in src ? this.asked.has(src.id) : this.presented.has(src.id))
     }
+    // ложь бьют не только карточки, названные в честных вариантах, но и вторая сторона любого противоречия с ней:
+    // если у бригады есть доказательство, свидетель не врёт — карточка ложится на стол сама (22.09.2026)
+    const partners = lieFact
+      ? this.S.contradictions.filter(c => c.facts.includes(lieFact)).map(c => c.facts[0] === lieFact ? c.facts[1] : c.facts[0]).filter(f => this.board.has(f))
+      : []
     for (const [index, h] of x.honest.entries()) {
-      if (!h.when.some(f => this.board.has(f))) continue
+      const proof = h.when.find(f => this.board.has(f)) ?? partners[0]
+      if (!proof) continue
       const safe = !lieFact || this.S.contradictions.every(c => {
         const y = c.yieldsFactId
         if (!y || !c.facts.includes(lieFact) || this.board.has(y) || h.facts?.includes(y)) return true
         return this.S.contradictions.some(o => o.yieldsFactId === y && !o.facts.includes(lieFact) && !o.facts.some(burned))
       })
-      if (safe) return { answer: h, index }
+      if (safe) return { answer: h, index, proof }
     }
     return null
+  }
+
+  /** Доказательство ложится на стол само: сыщик кладёт карточку, которая бьёт ложь, и только потом свидетель отвечает */
+  private proofBeat(id: string, p: PlayerRecord, w: Witness, proof: string): Beat {
+    const title = this.b.FACT.get(proof)?.title ?? ''
+    const n = this.proofs.get(w.id) ?? 0
+    this.proofs.set(w.id, n + 1)
+    const said = [
+      `${p.name} кладёт на стол карточку «${title}»: «Прежде чем ответите — вот это».`,
+      `${p.name} молча кладёт на стол карточку «${title}».`,
+      `${p.name} придвигает карточку «${title}»: «Мы это уже знаем».`
+    ]
+    return this.narrate(id, `${said[n % said.length]} ${w.name} смотрит на неё и ${n ? 'уже не спорит' : 'долго молчит'}.`, ['drawer', 'suspense-04'], 700)
   }
 
   /* ── обвинение ──────────────────────────────────────────────── */
