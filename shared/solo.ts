@@ -274,7 +274,8 @@ export interface SoloChase {
   sfx: { near: string; hit: string; run: string }
   /** что происходит, если игрок медлит */
   late: string
-  steps: { text: string; options: { label: string; right?: boolean; text?: string }[] }[]
+  /** art у шага — своя картинка (x_<погоня>_<шаг>); без неё — картинка погони m_<art> */
+  steps: { text: string; art?: string; options: { label: string; right?: boolean; text?: string }[] }[]
   success: SoloEffect
 }
 
@@ -419,10 +420,11 @@ export interface SoloView {
     /** итог прошлой серии */
     last: 'hit' | 'miss' | null
   } | null
+  /** art — файл картинки целиком (m_… существо или x_… кадр шага); tried — неверные варианты, уже испробованные на этом шаге */
   chase: {
-    id: string; name: string; art: string; step: number; total: number; text: string
+    id: string; name: string; art: string; base: string; step: number; total: number; text: string
     startedAt: number; deadline: number; serverNow: number
-    options: { index: number; label: string }[]
+    options: { index: number; label: string; tried: boolean }[]
   } | null
   dialogue: { id: string; npc: string; name: string; lines: SoloLine[]; choices: { index: number; text: string }[]; music?: string } | null
   dead: boolean

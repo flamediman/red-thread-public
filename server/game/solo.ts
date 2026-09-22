@@ -27,7 +27,7 @@ const QTE_GAP = 340
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
 interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null; dodge?: Dodge | null; strikeAt: number; stun?: number; dazed?: number; grapple?: Grapple | null; mode?: 'normal' | 'guard' | 'press' | 'circle'; streak?: number; comboed?: boolean }
-interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string }
+interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string; tried?: number[] }
 interface Prompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
 /** существо бьёт: точки уворота, и что случится, если их не поймать */
 interface Dodge { prompts: Prompt[]; damage: number; text: string; sfx: string[]; deadline: number }
@@ -1000,9 +1000,11 @@ export class SoloGame {
     if (!c || !spec || this.live.scene) return
     const option = spec.steps[c.step]?.options[index]
     if (!option) return
-    if (!option.right) { this.chaseHit(spec, option.text ?? spec.late); return this.changed() }
+    // неверный выбор бьёт, но запоминается: второй раз в ту же сторону не побежишь
+    if (!option.right) { c.tried = [...(c.tried ?? []), index]; this.chaseHit(spec, option.text ?? spec.late); return this.changed() }
     this.say('', [spec.sfx.run])
     c.step++
+    c.tried = []
     if (c.step >= spec.steps.length) {
       this.live.chase = null
       if (this.timer) { clearTimeout(this.timer); this.timer = null }
@@ -1274,9 +1276,9 @@ export class SoloGame {
     const step = spec?.steps[c!.step]
     if (!c || !spec || !step) return null
     return {
-      id: c.id, name: spec.name, art: spec.art, step: c.step, total: spec.steps.length, text: c.text,
+      id: c.id, name: spec.name, art: step.art ?? `m_${spec.art}`, base: `m_${spec.art}`, step: c.step, total: spec.steps.length, text: c.text,
       startedAt: c.startedAt, deadline: c.deadline, serverNow: now,
-      options: step.options.map((o, index) => ({ index, label: o.label }))
+      options: step.options.map((o, index) => ({ index, label: o.label, tried: (c.tried ?? []).includes(index) }))
     }
   }
 

@@ -175,7 +175,7 @@ for (const c of S.chases ?? []) {
   if (c.windowMs < 5000) warn(`${w}: на выбор ${c.windowMs / 1000} с — мало, чтобы прочитать шаг и варианты`)
   c.steps.forEach((st, i) => {
     if (st.options.filter(o => o.right).length !== 1) err(`${w}: на шаге ${i + 1} должен быть ровно один верный путь`)
-    if (st.text.length > 130) warn(`${w}: шаг ${i + 1} — ${st.text.length} знаков, за окно не прочитать`)
+    if (st.text.length > (c.windowMs >= 7500 ? 160 : 130)) warn(`${w}: шаг ${i + 1} — ${st.text.length} знаков, за окно не прочитать`)
   })
 }
 

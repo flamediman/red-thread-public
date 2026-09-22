@@ -430,6 +430,8 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   i { width: 1.6rem; height: 3px; border-radius: 2px; background: rgba(230, 227, 218, 0.15); }
   i.done { background: var(--paper-2); }
   i.now { background: #d0493a; animation: static-bar 0.5s steps(2) infinite; } }
+/* испробованный неверный поворот гаснет и подписывается */
+.solo-enc__opt--tried { opacity: 0.35 !important; text-decoration: line-through; small { margin-left: auto; font-size: 0.72rem; font-weight: 600; color: #e07a6b; text-decoration: none; } }
 @keyframes chase-run { 0%, 100% { transform: scale(1.08) translate(0, 0); } 25% { transform: scale(1.08) translate(-0.6%, 0.5%); } 50% { transform: scale(1.08) translate(0, -0.3%); } 75% { transform: scale(1.08) translate(0.6%, 0.5%); } }
 @keyframes lamp-sway { 0%, 100% { transform: translateX(-3%); } 50% { transform: translateX(3%); } }
 @keyframes enc-breathe { 0%, 100% { transform: scale(1.04); } 50% { transform: scale(1.09) translateY(-0.5%); } }
