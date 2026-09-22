@@ -17,6 +17,8 @@ const typeNewPin = onPinInput(newPin), typeCode = onCodeInput(resumeCode), typeP
 function askPin() { newPin.value = String(Math.floor(1000 + Math.random() * 9000)); gateForm.value = 'open' }
 function doOpen() { if (pinOk(newPin.value)) { createRoom(newPin.value); void begin() } }
 function doResume() { if (canResume.value) { resumeRoom(resumeCode.value, resumePin.value); audio.unlock() } }
+// экран впустили в комнату — формы ворот сбрасываются: после смены комнаты ворота начинаются с двух кнопок, а не с прошлого ПИНа
+watch(hostAuthorized, ok => { if (ok) { gateForm.value = null; newPin.value = ''; resumeCode.value = ''; resumePin.value = '' } })
 const { config, loaded: configLoaded } = useConfig()
 const audio = useAudio()
 
