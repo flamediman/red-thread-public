@@ -106,22 +106,33 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   /* озвучка и звук на заставке — справа сверху, той же таблеткой, что и «← Красная нить» */
   &__ctl { position: absolute; right: 1rem; top: 1rem; z-index: 7; display: flex; gap: 0.4rem; }
     background: rgba(6, 7, 7, 0.72); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.14); transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease; }
-  &__dark { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: background 0.8s ease, opacity 0.8s ease;
+  /* переход только по прозрачности: градиенты не интерполируются, и transition по background при каждом движении курсора
+     давал ступенчатый скачок пятна фонаря — мерцание в тёмных местах */
+  &__dark { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: opacity 0.8s ease;
     background: radial-gradient(ellipse 120% 90% at 50% 40%, transparent 40%, rgba(4, 5, 5, 0.7) 100%), linear-gradient(180deg, rgba(6, 7, 7, 0.4) 0%, transparent 25%, transparent 45%, rgba(6, 7, 7, 0.94) 100%); }
   &__art--black { filter: brightness(0.12) saturate(0.2); }
   &--black &__dark { background: radial-gradient(ellipse at 50% 50%, rgba(3, 4, 4, 0.82) 0%, rgba(2, 3, 3, 0.98) 70%); }
   /* фонарь: пятно света у курсора, по краям — чернота; свет чуть дрожит */
   &__art--torch { filter: saturate(0.5) contrast(1.15) brightness(1.05); }
-  &--torch &__dark { background: radial-gradient(circle at var(--lx) var(--ly), rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.12) 7rem, rgba(2, 3, 3, 0.9) 17rem, rgba(2, 3, 3, 0.97) 100%);
+  /* дрожит само пятно (радиус через --tf), а не весь слой темноты: раньше слой мигал прозрачностью целиком,
+     и чернота по краям вспыхивала серым — читалось как сбой */
+  &--torch &__dark { background: radial-gradient(circle at var(--lx) var(--ly), rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.12) calc(7rem * var(--tf)), rgba(2, 3, 3, 0.9) calc(17rem * var(--tf)), rgba(2, 3, 3, 0.97) 100%);
     animation: torch-flicker 5s steps(1) infinite; }
   /* батарейка села: пятно маленькое и дрожит чаще */
-  &--torch.solo-view--weak &__dark { background: radial-gradient(circle at var(--lx) var(--ly), rgba(0, 0, 0, 0.2) 0, rgba(0, 0, 0, 0.45) 3.5rem, rgba(2, 3, 3, 0.95) 9rem, rgba(2, 3, 3, 0.98) 100%);
+  &--torch.solo-view--weak &__dark { background: radial-gradient(circle at var(--lx) var(--ly), rgba(0, 0, 0, 0.2) 0, rgba(0, 0, 0, 0.45) calc(3.5rem * var(--tf)), rgba(2, 3, 3, 0.95) calc(9rem * var(--tf)), rgba(2, 3, 3, 0.98) 100%);
     animation-duration: 1.6s; }
+  /* в чёрной комнате зерно плёнки над почти чёрным кадром выглядит как мерцание — тише */
+  &--black .solo-fog__grain { opacity: 0.035; }
   &__hurt { position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 30%, rgba(140, 20, 12, 0.75) 100%);
     &.on { animation: hurt 0.7s ease-out; } }
   &__pulse { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: radial-gradient(ellipse at center, transparent 45%, rgba(120, 16, 10, 0.55) 100%); animation: low-pulse 1.1s ease-in-out infinite; }
 }
-@keyframes torch-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 0.93; } 48% { opacity: 1; } 83% { opacity: 0.96; } 84% { opacity: 1; } }
+@keyframes torch-flicker { 0%, 100% { --tf: 1; } 47% { --tf: 0.92; } 48% { --tf: 1; } 83% { --tf: 0.96; } 84% { --tf: 1; } }
+/* координаты пятна и его дрожание — зарегистрированные свойства: тогда градиент пересчитывается каждый кадр и пятно идёт за курсором плавно */
+@property --lx { syntax: '<percentage>'; inherits: true; initial-value: 62%; }
+@property --ly { syntax: '<percentage>'; inherits: true; initial-value: 42%; }
+@property --tf { syntax: '<number>'; inherits: false; initial-value: 1; }
+.solo-view { transition: --lx 0.12s linear, --ly 0.12s linear; }
 @keyframes hurt { 0% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes low-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .solo-cut-enter-active { transition: opacity 1.4s ease; }
