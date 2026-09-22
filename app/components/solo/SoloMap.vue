@@ -79,22 +79,33 @@ const doors = computed<Door[]>(() => {
   return out
 })
 const doorKeys = computed(() => new Set(doors.value.map(d => d.key)))
-const routes = computed<Route[]>(() => {
+/* остальные известные проходы — проём на той стене комнаты, что смотрит на соседнее место (вход с улицы, лестница
+   на другой этаж, дверь в дальнюю комнату); линий по плану не рисуем — они режут комнаты */
+function wallPoint(r: Place, tx: number, ty: number): Door {
+  const b = box(r)
+  const x0 = cx(r), y0 = cy(r)
+  const dx = tx - x0, dy = ty - y0
+  const hw = b.w / 2, hh = b.h / 2
+  const kx = dx ? hw / Math.abs(dx) : Infinity, ky = dy ? hh / Math.abs(dy) : Infinity
+  const k = Math.min(kx, ky)
+  const vertical = kx <= ky
+  return { key: '', x: x0 + dx * k, y: y0 + dy * k, vertical, locked: false }
+}
+const wallDoors = computed<Door[]>(() => {
   const at = new Map(places.value.map(p => [p.id, p]))
-  const out: Route[] = []
+  const out: Door[] = []
   for (const [ia, ib] of props.map.links) {
     const a = at.get(ia), b = at.get(ib)
     if (!a || !b || doorKeys.value.has(`${ia}-${ib}`)) continue
-    if (a.outdoor && b.outdoor && (geo.value.roads?.length || geo.value.paths?.length)) continue
-    const x1 = cx(a), y1 = cy(a), x2 = cx(b), y2 = cy(b)
-    // лёгкая дуга, чтобы линия не резала комнаты по прямой
-    const mx = (x1 + x2) / 2 + (y2 - y1) * 0.12, my = (y1 + y2) / 2 - (x2 - x1) * 0.12
-    out.push({ key: `${ia}-${ib}`, d: `M${x1},${y1} Q${mx},${my} ${x2},${y2}`, locked: lockedPair(a, b) })
+    const locked = lockedPair(a, b)
+    if (!a.outdoor) out.push({ ...wallPoint(a, cx(b), cy(b)), key: `${ia}-${ib}:a`, locked: locked && a.locked && !a.visited })
+    if (!b.outdoor) out.push({ ...wallPoint(b, cx(a), cy(a)), key: `${ia}-${ib}:b`, locked: locked && b.locked && !b.visited })
   }
   return out
 })
-/* запертые места без найденной двери: крест у названия */
-const lockMarks = computed(() => places.value.filter(p => p.locked && !p.visited && !doors.value.some(d => d.locked && d.key.includes(p.id)) && !routes.value.some(r => r.locked && r.key.includes(p.id))))
+const allDoors = computed(() => [...doors.value, ...wallDoors.value])
+/* запертые места без найденной двери: крест в углу */
+const lockMarks = computed(() => places.value.filter(p => p.locked && !p.visited && !allDoors.value.some(d => d.locked && d.key.includes(p.id))))
 
 /* длинное название — в две строки, по ближайшему к середине пробелу */
 function nameLines(p: Place) {
@@ -106,7 +117,7 @@ function nameLines(p: Place) {
   return best < 0 ? [t] : [t.slice(0, best), t.slice(best + 1)]
 }
 /* подпись умещается в комнату — внутри; иначе под ней */
-const labelInside = (p: Place) => p.h >= 9 && p.w * A.value >= 9
+const labelInside = (p: Place) => p.h >= 7 && p.w * A.value >= 9
 /* маркерный круг «вы здесь» — чуть неровный, как от руки */
 const marker = (p: Place) => {
   const r = Math.min(Math.max(p.w * A.value, p.h) * 0.42 + 1.5, 9) * (labelInside(p) ? 1 : 0.8)
@@ -212,9 +223,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <text v-if="g.label" class="m-floor-label" text-anchor="middle" :transform="`translate(${g.x + 1.7},${g.y + g.h / 2}) rotate(-90)`">{{ g.label }}</text>
           </g>
 
-          <!-- проходы между зданиями и улицей; двери в общих стенах -->
-          <path v-for="r in routes" :key="r.key" class="m-route" :class="{ 'm-route--locked': r.locked }" :d="r.d" />
-          <g v-for="d in doors" :key="d.key" class="m-door" :class="{ 'm-door--locked': d.locked }" :transform="`translate(${d.x},${d.y}) rotate(${d.vertical ? 90 : 0})`">
+          <!-- двери: в общих стенах и на стенах, обращённых к соседним местам -->
+          <g v-for="d in allDoors" :key="d.key" class="m-door" :class="{ 'm-door--locked': d.locked }" :transform="`translate(${d.x},${d.y}) rotate(${d.vertical ? 90 : 0})`">
             <rect class="m-door__gap" x="-1.3" y="-0.55" width="2.6" height="1.1" />
             <path class="m-door__leaf" d="M-1.1,0 A2.2,2.2 0 0 1 1.1,0" />
           </g>
@@ -231,7 +241,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
           <!-- названия мест и пометки героя -->
           <g v-for="p in places" :key="`n-${p.id}`" class="m-name" :class="{ 'm-name--seen': p.visited, 'm-name--known': p.known, 'm-name--out': p.outdoor }">
-            <text text-anchor="middle" :transform="`translate(${cx(p)},${labelInside(p) ? cy(p) - (nameLines(p).length - 1) * 1.2 + 0.9 : box(p).y + box(p).h + 3.1}) scale(${K})`">
+            <text text-anchor="middle" :transform="`translate(${cx(p)},${p.outdoor && labelInside(p) ? box(p).y + 3.4 : labelInside(p) ? cy(p) - (nameLines(p).length - 1) * 1.2 + 0.9 : box(p).y + box(p).h + 3.1}) scale(${K})`">
               <tspan v-for="(t, i) in nameLines(p)" :key="i" x="0" :dy="i ? 2.6 : 0">{{ t }}</tspan>
             </text>
             <g v-if="p.save && p.visited" class="m-save" :transform="`translate(${box(p).x + box(p).w - 2.2},${box(p).y + 2.2}) scale(${K * 0.12})`">
@@ -247,7 +257,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <path d="M-1.3,-1.3 L1.3,1.3 M1.3,-1.3 L-1.3,1.3" />
           </g>
           <!-- крест на запертой двери или тропке -->
-          <g v-for="d in doors.filter(x => x.locked)" :key="`dx-${d.key}`" class="m-cross" :transform="`translate(${d.x},${d.y}) scale(${K})`">
+          <g v-for="d in allDoors.filter(x => x.locked)" :key="`dx-${d.key}`" class="m-cross" :transform="`translate(${d.x},${d.y}) scale(${K})`">
             <path d="M-1.4,-1.4 L1.4,1.4 M1.4,-1.4 L-1.4,1.4" />
           </g>
 
@@ -259,8 +269,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </div>
       <p class="solo-map__legend">
         <span><i class="solo-map__key solo-map__key--here" />вы здесь</span>
-        <span><i class="solo-map__key solo-map__key--lock" />заперто</span>
-        <span><i class="solo-map__key solo-map__key--save" />можно сохраниться</span>
+        <span><b class="solo-map__key-x">✕</b>заперто</span>
+        <span><b class="solo-map__key-phone">☎</b>можно сохраниться</span>
         <span>серое — где ещё не были</span>
         <span class="solo-keys">клавиша M</span>
       </p>
