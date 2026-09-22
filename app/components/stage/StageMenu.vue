@@ -4,9 +4,9 @@ import { leaveRoom, roomCode, roomPin } from '~/composables/useGame'
 import { formatRoom } from '~/utils/room'
 
 /* смена комнаты: экран забывает свою и возвращается на ворота; в окне — ПИН, чтобы можно было вернуться */
-const leaving = ref(false)
-useVeil(leaving)
-function confirmLeave() { leaving.value = false; leaveRoom() }
+const roomDialog = ref(false)
+useVeil(roomDialog)
+function confirmLeave() { roomDialog.value = false; leaveRoom() }
 
 /* phone — экран телефона: дела показываются, но лобби с него не открыть (ведущий экран — планшет или компьютер) */
 const props = defineProps<{ state: PublicState; phone?: boolean }>()
@@ -82,7 +82,7 @@ function openSolo(e: MouseEvent, id: string) {
       <span class="menu__tag">кооперативный детектив</span>
       <div class="menu__aside">
         <ProjectLinks />
-        <button v-if="roomCode && !phone" class="menu__room" type="button" title="Сменить комнату" @click="leaving = true">
+        <button v-if="roomCode && !phone" class="menu__room" type="button" title="Сменить комнату" @click="roomDialog = true">
           комната <b class="tabnum">{{ formatRoom(roomCode) }}</b><span class="menu__room-change">сменить</span>
         </button>
         <span v-else-if="roomCode" class="menu__room">комната <b class="tabnum">{{ formatRoom(roomCode) }}</b></span>
@@ -90,7 +90,7 @@ function openSolo(e: MouseEvent, id: string) {
     </header>
 
     <Teleport to="body">
-      <div v-if="leaving" class="veil" @click.self="leaving = false">
+      <div v-if="roomDialog" class="veil" @click.self="roomDialog = false">
         <div class="veil__card" role="dialog" aria-modal="true">
           <h2 class="veil__title">Сменить комнату</h2>
           <p class="veil__text">
@@ -99,7 +99,7 @@ function openSolo(e: MouseEvent, id: string) {
           </p>
           <div class="veil__actions">
             <button class="btn btn--stamp" type="button" @click="confirmLeave">Сменить комнату</button>
-            <button class="btn btn--ghost" type="button" @click="leaving = false">Остаться</button>
+            <button class="btn btn--ghost" type="button" @click="roomDialog = false">Остаться</button>
           </div>
         </div>
       </div>
