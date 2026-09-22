@@ -460,6 +460,21 @@ html, body { overscroll-behavior: none; }
   .case-row:not(:disabled):hover .case-row__go { opacity: 1; }
   .case__change:hover { color: var(--paper); }
 }
+/* телефон: меню в одну колонку, всё переносится, ничего не режется; строки дел кооператива закрыты (лобби — не с телефона) */
+@media (max-width: 700px) {
+  .menu { gap: 0.9rem; }
+  .menu__brand { flex-wrap: wrap; row-gap: 0.5rem; }
+  .menu__aside { margin-inline-start: 0; flex-basis: 100%; flex-wrap: wrap; }
+  .menu__art-img { width: 100%; mask-image: linear-gradient(90deg, transparent 0%, #000 55%); opacity: 0.8; }
+  .menu__scrim { background: linear-gradient(0deg, rgba(10, 11, 14, 0.9) 0%, rgba(10, 11, 14, 0.55) 50%, rgba(10, 11, 14, 0.35) 100%); }
+  .world { max-width: 100%; }
+  .world__title { font-size: min(var(--step-4), 14vw); }
+  .world__sub { max-width: 100%; font-size: var(--step--1); }
+  .world__crew { flex-wrap: wrap; row-gap: 0.4rem; }
+  .world__phone-note { padding: 0.7rem 0.9rem; border-radius: 10px; font-size: 0.8rem; line-height: 1.45; color: var(--paper-2); background: rgba(10, 11, 14, 0.72); box-shadow: inset 0 0 0 1px rgba(201, 168, 76, 0.35); }
+  .case-row--phone { opacity: 0.55; .case-row__go { display: none; } }
+  .menu__nav { justify-self: center; }
+}
 /* невысокий экран ноутбука: дела мира должны помещаться целиком — сначала плотнее отступы и заголовок,
    потом прячутся бригада и подзаголовок мира; прокрутка колонки — только совсем на низких экранах */
 @media (max-height: 940px) {

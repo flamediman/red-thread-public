@@ -47,6 +47,15 @@ watch(screen, (s, prev) => { if (!prev || branchOf(s) === branchOf(prev)) shownS
 watch(() => !!state.value, ok => { if (ok) shownScreen.value = screen.value }, { immediate: true })
 /** мир, который сейчас на экране меню: от него тема, музыка и атмосфера */
 const menuWorld = ref<SettingInfo | null>(null)
+/* телефон: меню и дела видны, «Туман» играется, но лобби кооператива с него не открыть — ведущий экран должен быть
+   планшетом или компьютером (вёрстка лобби и стола рассчитана на широкий экран) */
+const phone = ref(false)
+onMounted(() => {
+  const mq = window.matchMedia('(max-width: 700px)')
+  const sync = () => { phone.value = mq.matches }
+  sync(); mq.addEventListener('change', sync)
+  onBeforeUnmount(() => mq.removeEventListener('change', sync))
+})
 /* тема оформления: заставка и меню — бренд «Красной нити», дальше — сеттинг дела */
 const brand = computed(() => hostAuthorized.value !== true || !started.value)
 useHead({ htmlAttrs: { 'data-setting': computed(() => brand.value ? 'brand' : shownScreen.value === 'menu' ? menuWorld.value?.theme ?? 'noir' : state.value?.setting.theme ?? 'noir') } })
@@ -205,7 +214,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
         <button v-if="gateAction === 'start'" key="start" class="btn btn--stamp gate__appear" @click="begin">Начать игру</button>
         <div v-else-if="gateAction === 'open'" key="open" class="gate__open gate__appear">
           <button class="btn btn--stamp" :disabled="hostPending" @click="openRoom">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
-          <p class="gate__hint">{{ hostReason || 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.' }}</p>
+          <p class="gate__hint">{{ hostReason || (phone ? 'С телефона можно посмотреть дела и сыграть в «Туман». Лобби кооператива ведёт планшет или компьютер.' : 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.') }}</p>
         </div>
         <span v-else key="wait" class="gate__wait" aria-hidden="true" />
       </div>
@@ -264,7 +273,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
 
     <main v-if="state" class="stage__body">
       <Transition name="screen" mode="out-in" @before-enter="shownScreen = screen">
-        <StageMenu v-if="screen === 'menu'" :state="state" @send="hostSend" @world="menuWorld = $event" />
+        <StageMenu v-if="screen === 'menu'" :state="state" :phone="phone" @send="hostSend" @world="menuWorld = $event" />
         <StageLobby v-else-if="screen === 'lobby'" :state="state" @send="hostSend" />
         <StageTutorial v-else-if="screen === 'tutorial'" :state="state" @send="hostSend" />
 

@@ -3,7 +3,8 @@ import type { ClientMessage, PublicState, SettingInfo } from '#shared/types'
 import { roomCode } from '~/composables/useGame'
 import { formatRoom } from '~/utils/room'
 
-const props = defineProps<{ state: PublicState }>()
+/* phone — экран телефона: дела показываются, но лобби с него не открыть (ведущий экран — планшет или компьютер) */
+const props = defineProps<{ state: PublicState; phone?: boolean }>()
 const emit = defineEmits<{ send: [ClientMessage]; world: [SettingInfo] }>()
 
 /* ── миры: карусель, у каждого — арт, бригада, дела ── */
@@ -102,7 +103,8 @@ function openSolo(e: MouseEvent, id: string) {
             :key="c.id"
             type="button"
             class="case-row"
-            :disabled="!c.ready"
+            :class="{ 'case-row--phone': phone }"
+            :disabled="!c.ready || phone"
             @click="emit('send', { type: 'selectCase', caseId: c.id })"
           >
             <span class="case-row__stamp">{{ c.stamp }}</span>
@@ -111,6 +113,7 @@ function openSolo(e: MouseEvent, id: string) {
             <span class="case-row__sub">{{ c.subtitle }}</span>
             <span class="case-row__meta"><b>{{ c.modeLabel }}</b> · {{ c.meta }}</span>
           </button>
+          <p v-if="phone && world.cases.length" class="world__phone-note">Лобби ведёт планшет или компьютер: откройте этот адрес на большом экране, а телефон оставьте игроку — redthread-game.ru/play.</p>
           <a v-for="s in world.solo" :key="s.id" :href="`/solo?story=${s.id}`" class="case-row" :class="{ 'case-row--off': !s.ready }" @click="openSolo($event, s.id)">
             <span class="case-row__stamp">{{ s.date }}</span>
             <span class="case-row__title">{{ s.title }}</span>
