@@ -3,6 +3,7 @@ import type { PublicState } from '#shared/types'
 import { ART } from '~/utils/art'
 
 const props = defineProps<{ state: PublicState; secondsLeft: number | null }>()
+const suspects = computed(() => props.state.accusationOptions.suspects.map(id => props.state.witnesses.find(w => w.id === id)).filter((w): w is NonNullable<typeof w> => !!w))
 
 const votes = computed(() => Object.values(props.state.accusation?.votes ?? {}))
 const tally = (field: 'culprit' | 'method' | 'motive', id: string) => votes.value.filter(v => v[field] === id).length
@@ -30,7 +31,7 @@ const caller = computed(() => props.state.players.find(p => p.id === props.state
     <div class="accuse__cols">
       <div class="accuse__col">
         <p class="label">Кто</p>
-        <div v-for="w in state.witnesses" :key="w.id" class="accuse__opt" :class="{ 'accuse__opt--lead': lead('culprit', w.id) }">
+        <div v-for="w in suspects" :key="w.id" class="accuse__opt" :class="{ 'accuse__opt--lead': lead('culprit', w.id) }">
           <img class="face" :src="ART.witness(w.id)" :alt="w.name">
           <span>{{ w.name }}</span><b class="tabnum">{{ tally('culprit', w.id) || '' }}</b>
         </div>

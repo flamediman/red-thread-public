@@ -3,6 +3,8 @@ import type { ClientMessage, PublicState, YouState } from '#shared/types'
 import { ART } from '~/utils/art'
 
 const props = defineProps<{ you: YouState; state: PublicState; secondsLeft: number | null }>()
+/* подозреваемые — в порядке этой партии, а не в порядке сценария */
+const suspects = computed(() => props.state.accusationOptions.suspects.map(id => props.state.witnesses.find(w => w.id === id)).filter((w): w is NonNullable<typeof w> => !!w))
 const emit = defineEmits<{ send: [ClientMessage] }>()
 
 const mine = computed(() => props.state.accusation?.votes[props.you.id] ?? {})
@@ -16,7 +18,7 @@ const done = computed(() => !!(mine.value.culprit && mine.value.method && mine.v
 
     <p class="label">Кто</p>
     <div class="vote__group">
-      <button v-for="w in state.witnesses" :key="w.id" type="button" class="vote__opt" :class="{ 'vote__opt--on': mine.culprit === w.id }" @click="emit('send', { type: 'vote', culprit: w.id })">
+      <button v-for="w in suspects" :key="w.id" type="button" class="vote__opt" :class="{ 'vote__opt--on': mine.culprit === w.id }" @click="emit('send', { type: 'vote', culprit: w.id })">
         <img class="face" :src="ART.witness(w.id)" alt="">
         <span>{{ w.name }} <small>— {{ w.role }}</small></span>
       </button>

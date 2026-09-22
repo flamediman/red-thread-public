@@ -161,6 +161,8 @@ export class Game {
   set beats(v: Beat[]) { this._beats = v; this.beatIndex = 0 }
   proceedVotes = new Set<string>()
   accusation: PublicState['accusation'] = null
+  /** порядок вариантов обвинения на эту партию: перемешан при старте, чтобы верный ответ не стоял первым (22.09.2026) */
+  order: { suspects: string[]; methods: string[]; motives: string[] } | null = null
   verdict: Verdict | null = null
   attemptsLeft = 2
   hintsUsed = 0
@@ -390,6 +392,7 @@ export class Game {
     if (this.screen !== 'lobby') return
     const roster = [...this.players.values()]
     if (roster.length < 2) return
+    this.order = { suspects: shuffle(this.S.witnesses.map(w => w.id)), methods: shuffle(this.S.accusation.methods.map(m => m.id)), motives: shuffle(this.S.accusation.motives.map(m => m.id)) }
     // кто не выбрал сыщика — получает свободного
     if (this.settings.roles === 'random') { for (const p of roster) { p.detectiveId = null; p.usesLeft = null } }
     const free = (this.settings.roles === 'random' ? shuffle(this.S.detectives) : this.S.detectives).filter(d => !roster.some(p => p.detectiveId === d.id))
@@ -784,6 +787,13 @@ export class Game {
       return [{ ...this.narrate(`cor_${p.id}_${this.round}`, `${p.name} ${cor.text}`, ['heartbeat', 'suspense-06'], 900), locationId: spot?.locationId }]
     }
     return []
+  }
+
+  /** варианты обвинения в порядке этой партии; без порядка (старый снимок) — как в сценарии */
+  private accusationOptions(): PublicState['accusationOptions'] {
+    const o = this.order
+    const by = <T extends { id: string }>(list: T[], ids?: string[]) => ids ? ids.map(id => list.find(x => x.id === id)).filter((x): x is T => !!x) : list
+    return { suspects: o?.suspects ?? this.S.witnesses.map(w => w.id), methods: by(this.S.accusation.methods, o?.methods), motives: by(this.S.accusation.motives, o?.motives) }
   }
 
   /** Чьи это слова: вопрос или предъявление, которые кладут карточку на доску */
@@ -1183,7 +1193,7 @@ export class Game {
       setting: SETTINGS[this.b.info.settingId]!,
       catalog: catalog(),
       history: (this.screen === 'lobby' || this.screen === 'menu') ? this.store.history().slice(-30).reverse() : [],
-      accusationOptions: { methods: this.S.accusation.methods, motives: this.S.accusation.motives },
+      accusationOptions: this.accusationOptions(),
       outcome: this.outcome,
       standings: null,
       field: this.realtime && ['field', 'accuse', 'verdict', 'epilogue', 'final'].includes(this.screen) ? this.fieldState() : null
@@ -1587,7 +1597,7 @@ export class Game {
         settings: this.settings, board: [...this.board.entries()], pins: [...this.pins], links: [...this.links], items: [...this.items],
         searched: [...this.searched], hiddenDone: [...this.hiddenDone], memoryDone: [...this.memoryDone], asked: [...this.asked], presented: [...this.presented],
         unlocked: [...this.unlocked], greeted: [...this.greeted], lieMarks: [...this.lieMarks.entries()], confronted: [...this.confronted], openedAt: [...this.openedAt], tutorialStep: this.tutorialStep,
-        beats: this.beats, beatIndex: this.beatIndex, proceedVotes: [...this.proceedVotes], accusation: this.accusation, verdict: this.verdict,
+        beats: this.beats, beatIndex: this.beatIndex, proceedVotes: [...this.proceedVotes], accusation: this.accusation, verdict: this.verdict, order: this.order,
         attemptsLeft: this.attemptsLeft, hintsUsed: this.hintsUsed, hintsFired: [...this.hintsFired], eventsFired: [...this.eventsFired], outcome: this.outcome, pausedAt: this.pausedAt,
         fieldTotalMs: this.fieldTotalMs, fieldPenaltyMs: this.fieldPenaltyMs, fieldLeftMs: this.fieldLeftMs, solved: [...this.solved], solveCooldown: [...this.solveCooldown], qpins: [...this.qpins],
         gone: [...this.gone], openedLocs: [...this.openedLocs], feed: this.feed, moments: this.moments, seq: this.seq, savedAt: Date.now()
@@ -1613,6 +1623,7 @@ export class Game {
       for (const k of Object.keys(this.settings) as (keyof PublicState['settings'])[]) if (d.settings?.[k]) (this.settings as Record<string, string>)[k] = d.settings[k]
       this.board = new Map(d.board ?? []); this.pins = new Set(d.pins ?? []); this.links = new Set(d.links ?? []); this.items = new Set(d.items ?? [])
       this.searched = new Set(d.searched ?? []); this.hiddenDone = new Set(d.hiddenDone ?? []); this.memoryDone = new Set(d.memoryDone ?? []); this.asked = new Set(d.asked ?? [])
+      this.order = d.order ?? null
       this.presented = new Set(d.presented ?? []); this.unlocked = new Set(d.unlocked ?? []); this.greeted = new Set(d.greeted ?? []); this.confronted = new Set(d.confronted ?? []); this.openedAt = new Map(d.openedAt ?? []); this.tutorialStep = d.tutorialStep ?? 0
       this.lieMarks = new Map(d.lieMarks ?? []); this.beats = d.beats ?? []; this.beatIndex = d.beatIndex ?? 0; this.proceedVotes = new Set(d.proceedVotes ?? [])
       this.accusation = d.accusation ?? null; this.verdict = d.verdict ?? null

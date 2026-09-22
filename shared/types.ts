@@ -643,7 +643,8 @@ export interface PublicState {
   /** история сыгранных партий этого дела (только в лобби, последние записи) */
   history: GameRecord[]
   /** варианты для голосования — списки без ответа */
-  accusationOptions: { methods: AccusationOption[]; motives: AccusationOption[] }
+  /** варианты обвинения в порядке этой партии (перемешаны при старте) */
+  accusationOptions: { suspects: string[]; methods: AccusationOption[]; motives: AccusationOption[] }
   /** чем закончилось; null — партия идёт */
   outcome: 'solved' | 'partial' | 'failed' | null
   standings: null
