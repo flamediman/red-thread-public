@@ -369,7 +369,8 @@ export interface SoloView {
   exits: { to: string; label: string; locked: string | null; known: boolean }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]
   inventory: { id: string; name: string; description: string; kind: SoloItemKind; icon: string; art: string; count: number; equipped: boolean; usable: boolean }[]
-  notes: SoloNote[]
+  /** read — записку уже открывали в журнале; значок «Записки» считает непрочитанные */
+  notes: (SoloNote & { read: boolean })[]
   health: number
   battery: number
   light: boolean
@@ -382,7 +383,7 @@ export interface SoloView {
   weapon: string | null
   map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; visited: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
   /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
-  feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string } }[]
+  feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string }; note?: { id: string; title: string; text: string } }[]
   scene: { seq: number; lines: SoloLine[]; music?: string } | null
   encounter: {
     monster: string; name: string; hp: number; maxHp: number; round: number
@@ -438,6 +439,7 @@ export type SoloClientMessage =
   | { type: 'closePuzzle' }
   | { type: 'choose'; index: number }
   | { type: 'sceneDone'; seq: number }
+  | { type: 'noteRead'; id: string }
   | { type: 'light'; on: boolean }
   /** приёмник: выключить, чтобы не шипел (и не подсказывал) */
   | { type: 'radio'; on: boolean }

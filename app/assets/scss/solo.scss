@@ -239,6 +239,10 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &__text { font-family: var(--font-story); font-size: 1rem; line-height: 1.55; color: var(--paper-2); }
   &__next { margin-top: 0.4rem; font-family: var(--font-ui); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.04em; color: var(--paper-faint); }
   &--noart { grid-template-columns: minmax(0, 1fr); width: min(30rem, 100%); }
+  /* записка: без снимка, вместо него — клочок той же бумаги, что в журнале */
+  &--note { grid-template-columns: minmax(0, 1fr); width: min(32rem, 100%); }
+  &__paper { padding: 1rem 1.2rem; border-radius: 4px; background: #dcd6c5; color: #23231f; box-shadow: inset 0 0 40px rgba(90, 70, 40, 0.3); font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.6; }
+  &__row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-top: 0.2rem; .solo-found__next { margin-top: 0; } }
 }
 @media (max-width: 720px) { .solo-found { grid-template-columns: minmax(0, 1fr); width: min(30rem, 100%); &__art { min-height: 0; } } }
 .solo-puzzle__art { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; filter: var(--photo-filter); background: #0b0d0d; }
@@ -567,6 +571,8 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 .solo-notes { position: relative; display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: 1rem; width: min(56rem, 100%); height: min(76vh, 44rem); padding: 3.4rem 1rem 1rem; border-radius: 14px; background: #121515; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); animation: veil-in 0.3s var(--ease-out) both;
   &__list { display: flex; flex-direction: column; gap: 0.25rem; overflow-y: auto;
     .solo-label { position: absolute; top: 1.35rem; left: 1.5rem; margin: 0; }
+    .solo-notes__dot { display: inline-block; width: 0.45rem; height: 0.45rem; margin-right: 0.45rem; border-radius: 50%; background: var(--tuman-red, #b8493b); vertical-align: middle; }
+    button.unread { color: var(--paper); }
     button { padding: 0.55rem 0.7rem; border-radius: 7px; text-align: left; font-family: var(--font-ui); font-size: 0.84rem; font-weight: 600; line-height: 1.3; color: var(--paper-dim); &.on { background: rgba(230, 227, 218, 0.1); color: var(--paper); } } }
   &__paper { overflow-y: auto; padding: 1.6rem 1.8rem; border-radius: 4px; background: #dcd6c5; color: #23231f; box-shadow: inset 0 0 50px rgba(90, 70, 40, 0.3);
     h3 { font-family: var(--font-mono); font-size: 1.05rem; font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1rem; padding-right: 2rem; }

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 /* Записки: список слева, текст справа. Машинописный шрифт — бумаги так и выглядели. */
-import type { SoloNote } from '#shared/types'
+import type { SoloView } from '#shared/types'
 
-const props = defineProps<{ notes: SoloNote[] }>()
-const emit = defineEmits<{ close: [] }>()
-const open = ref(props.notes.at(-1)?.id ?? null)
+/* focus — какую записку открыть сразу (нажали «Прочитать» на карточке находки); открытая записка считается прочитанной */
+const props = defineProps<{ notes: SoloView['notes']; focus?: string | null }>()
+const emit = defineEmits<{ close: []; read: [string] }>()
+const open = ref(props.focus ?? props.notes.at(-1)?.id ?? null)
 const current = computed(() => props.notes.find(n => n.id === open.value) ?? null)
+watch(open, id => { const n = props.notes.find(x => x.id === id); if (n && !n.read) emit('read', n.id) }, { immediate: true })
 function onKey(e: KeyboardEvent) { if (e.code === 'Escape' || e.code === 'KeyJ') { e.preventDefault(); emit('close') } }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -16,7 +18,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <div class="solo-notes" role="dialog" aria-modal="true" aria-label="Записки">
       <div class="solo-notes__list">
         <p class="solo-label">Записки · {{ notes.length }}</p>
-        <button v-for="n in [...notes].reverse()" :key="n.id" type="button" :class="{ on: open === n.id }" @click="open = n.id">{{ n.title }}</button>
+        <button v-for="n in [...notes].reverse()" :key="n.id" type="button" :class="{ on: open === n.id, unread: !n.read && open !== n.id }" @click="open = n.id"><i v-if="!n.read && open !== n.id" class="solo-notes__dot" aria-label="не прочитано" />{{ n.title }}</button>
         <p v-if="!notes.length" class="solo-muted">Пока ничего.</p>
       </div>
       <article v-if="current" class="solo-notes__paper">

@@ -45,6 +45,8 @@ interface Run {
   flags: string[]
   items: Record<string, number>
   notes: string[]
+  /** прочитанные записки (открывали в журнале) */
+  read?: string[]
   health: number
   battery: number
   light: boolean
@@ -177,6 +179,11 @@ export class SoloGame {
     if (this.live.dialogue || this.live.puzzle) return
     switch (msg.type) {
       case 'go': return this.go(msg.to)
+      case 'noteRead': {
+        const r = this.run
+        if (r && r.notes.includes(msg.id) && !(r.read ?? []).includes(msg.id)) { r.read = [...(r.read ?? []), msg.id]; this.changed() }
+        return
+      }
       case 'look': return this.look(msg.hotspot)
       case 'use': return this.use(msg.item, msg.hotspot)
       case 'combine': return this.combine(msg.item, msg.with)
@@ -221,8 +228,8 @@ export class SoloGame {
     return true
   }
 
-  private say(text?: string, sfx?: string[], voice?: string, extra: { art?: string; found?: SoloView['feed'][number]['found'] } = {}) {
-    if (!text && !sfx?.length && !extra.art && !extra.found) return
+  private say(text?: string, sfx?: string[], voice?: string, extra: { art?: string; found?: SoloView['feed'][number]['found']; note?: SoloView['feed'][number]['note'] } = {}) {
+    if (!text && !sfx?.length && !extra.art && !extra.found && !extra.note) return
     this.feed = [...this.feed, { seq: ++this.seq, text: text ?? '', sfx, voice, ...extra }].slice(-FEED)
   }
   private artOf(item: SoloItem) { return item.art ?? `i_${item.id}` }
@@ -247,7 +254,12 @@ export class SoloGame {
     }
     for (const f of e.set ?? []) if (!r.flags.includes(f)) r.flags.push(f)
     if (e.unset) r.flags = r.flags.filter(f => !e.unset!.includes(f))
-    if (e.note && !r.notes.includes(e.note)) r.notes.push(e.note)
+    if (e.note && !r.notes.includes(e.note)) {
+      r.notes.push(e.note)
+      // записка показывается карточкой, как находка: иначе о ней узнаёшь только из ленты
+      const n = this.S.notes.find(x => x.id === e.note)
+      if (n) this.say(undefined, undefined, undefined, { note: { id: n.id, title: n.title, text: n.text } })
+    }
     if (e.heal) r.health = clamp(r.health + e.heal)
     if (e.battery) r.battery = clamp(r.battery + e.battery)
     if (e.ammo) r.ammo = Math.max(0, r.ammo + e.ammo)
@@ -1199,7 +1211,7 @@ export class SoloGame {
         const it = this.ITEM.get(id)!
         return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, art: this.artOf(it), count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon' }
       }),
-      notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x),
+      notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x).map(n => ({ ...n, read: (r.read ?? []).includes(n.id) })),
       health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, radio: this.radio(), radioOn: r.radioOn !== false, otherworld: r.otherworld,
       weapon: r.weapon ? this.ITEM.get(r.weapon)?.name ?? null : null,
       map: {

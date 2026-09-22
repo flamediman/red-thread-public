@@ -90,7 +90,8 @@ watch(view, (nv, ov) => {
   for (const f of nv.feed) {
     if (f.seq <= lastPlayed) continue
     for (const s of f.sfx ?? []) void audio.sfx(s, 0.9)
-    if (f.found) found.value = [...found.value, f.found]
+    if (f.found) found.value = [...found.value, { item: f.found }]
+    if (f.note) found.value = [...found.value, { note: f.note }]
   }
   lastPlayed = maxSeq
   if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('solo-hurt', 0.9) }
@@ -147,8 +148,15 @@ const itemVerb = (kind: string) => kind === 'heal' ? 'Перевязаться' 
 /* ── оверлеи ── */
 const endingPlayed = ref<string | null>(null)
 /** находки ждут своей очереди: карточка — когда закончились сцена, разговор и головоломка */
-const found = ref<NonNullable<SoloView['feed'][number]['found']>[]>([])
+type Found = { item?: NonNullable<SoloView['feed'][number]['found']>; note?: NonNullable<SoloView['feed'][number]['note']> }
+const found = ref<Found[]>([])
 const nextFound = () => { found.value = found.value.slice(1) }
+/* записки: значок считает непрочитанные; «Прочитать» на карточке открывает журнал сразу на ней */
+const unread = computed(() => v.value?.notes.filter(n => !n.read).length ?? 0)
+const notesFocus = ref<string | null>(null)
+function readNote(id: string) { send({ type: 'noteRead', id }) }
+function openNote(id: string) { nextFound(); notesFocus.value = id; notesOpen.value = true }
+watch(notesOpen, on => { if (!on) notesFocus.value = null })
 const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'boss' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
   const s = v.value
   if (!s?.started || !entered.value) return null
@@ -431,7 +439,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <aside class="solo-side">
         <div class="solo-tools">
           <button type="button" class="solo-tool" title="Карта (M)" @click="mapOpen = true"><SoloIcon name="map" /><span>Карта</span></button>
-          <button type="button" class="solo-tool" title="Записки (J)" @click="notesOpen = true"><SoloIcon name="notes" /><span>Записки</span><b v-if="v.notes.length" class="tabnum">{{ v.notes.length }}</b></button>
+          <button type="button" class="solo-tool" title="Записки (J)" @click="notesOpen = true"><SoloIcon name="notes" /><span>Записки</span><b v-if="unread" class="tabnum">{{ unread }}</b></button>
           <button type="button" class="solo-tool" :disabled="!v.canSave" :title="v.canSave ? place?.save ?? '' : 'Сохраниться можно только у телефона'" @click="saveOpen = true"><SoloIcon name="phone" /><span>Сохранить</span></button>
           <button type="button" class="solo-tool" title="Меню (Esc)" @click="menuOpen = true"><SoloIcon name="menu" /><span>Меню</span></button>
         </div>
@@ -501,7 +509,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
 
       <!-- ── панели ── -->
       <SoloMap v-if="mapOpen" :map="v.map" :area="place?.area ?? ''" @close="mapOpen = false" />
-      <SoloNotes v-if="notesOpen" :notes="v.notes" @close="notesOpen = false" />
+      <SoloNotes v-if="notesOpen" :notes="v.notes" :focus="notesFocus" @close="notesOpen = false" @read="readNote" />
 
       <div v-if="saveOpen" class="solo-veil" @click.self="saveOpen = false">
         <div class="solo-card" role="dialog" aria-modal="true">
@@ -534,7 +542,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" />
-      <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].id}`" :item="found[0]" :story="story" :more="found.length - 1" @done="nextFound" />
+      <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].item?.id ?? found[0].note?.id}`" :item="found[0].item" :note="found[0].note" :story="story" :more="found.length - 1" @done="nextFound" @read="openNote" />
 
       <div v-if="overlay === 'dead'" class="solo-end solo-end--dead" role="alertdialog">
         <SoloFog :density="1.2" other />
