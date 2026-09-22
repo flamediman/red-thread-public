@@ -44,6 +44,14 @@ const PHOTO_KEY = 'party-photo'
 const HOST_ROOM_KEY = 'rt-host-room'
 /** телефон в сети: последний код комнаты */
 const PLAYER_ROOM_KEY = 'rt-player-room'
+/** ПИН и секрет QR этой комнаты — на экране (показать под кодом) */
+export const roomPin = ref<string | null>(null)
+export const roomPass = ref<string | null>(null)
+/** телефон: комната найдена, но нужен ПИН (строка — причина, '' — просто спросить) */
+const needPin = ref<string | null>(null)
+const PASS_KEY = (code: string) => `rt-pass:${code}`
+const PIN_KEY = (code: string) => `rt-pin:${code}`
+function session(): Storage | null { try { return window.sessionStorage } catch { return null } }
 
 function storage(): Storage | null {
   try { return window.localStorage } catch { return null }
@@ -66,12 +74,15 @@ function hello(): ClientMessage {
     hostPending.value = true
     return { type: 'hello', role, room: room?.code, key: room?.key }
   }
+  const code = roomCode.value
   return {
     type: 'hello',
     role,
-    room: roomCode.value ?? undefined,
+    room: code ?? undefined,
     token: s?.getItem(tokenKey()) || undefined,
-    name: s?.getItem(NAME_KEY) || undefined
+    name: s?.getItem(NAME_KEY) || undefined,
+    pass: code ? session()?.getItem(PASS_KEY(code)) || undefined : undefined,
+    pin: code ? session()?.getItem(PIN_KEY(code)) || undefined : undefined
   }
 }
 
@@ -124,10 +135,22 @@ function open() {
     if (msg.type === 'room') {
       storage()?.setItem(HOST_ROOM_KEY, JSON.stringify({ code: msg.code, key: msg.key }))
       roomCode.value = msg.code
+      roomPin.value = msg.pin ?? null
+      roomPass.value = msg.pass ?? null
       return
     }
     if (msg.type === 'noRoom') {
       noRoom.value = msg.reason
+      needPin.value = null
+      state.value = null
+      you.value = null
+      ready.value = true
+      return
+    }
+    if (msg.type === 'needPin') {
+      roomCode.value = msg.code
+      needPin.value = msg.reason ?? ''
+      noRoom.value = null
       state.value = null
       you.value = null
       ready.value = true
@@ -140,6 +163,7 @@ function open() {
       }
       build = msg.state.build
       noRoom.value = null
+      needPin.value = null
       setCurrentCase(msg.state.caseInfo?.id)
       setCurrentSetting(msg.state.setting?.id)
       state.value = msg.state
@@ -192,8 +216,27 @@ export function useGame(as: 'host' | 'player' = 'player') {
     hostChecked,
     hostReason,
     noRoom,
+    needPin,
     roomCode,
+    roomPin,
+    roomPass,
     send,
+
+    /** экран: продолжить свою комнату с другого устройства — код и ПИН с прежнего экрана */
+    resumeRoom(code: string, pin: string) {
+      hostPending.value = true
+      hostReason.value = null
+      roomCode.value = code.toUpperCase().replace(/[^A-Z0-9]/g, '')
+      send({ type: 'hello', role: 'host', room: roomCode.value, pin: pin.replace(/\D/g, '') })
+    },
+
+    /** телефон: ПИН с экрана, когда вошли по коду без QR */
+    enterPin(pin: string) {
+      const code = roomCode.value
+      if (!code) return
+      session()?.setItem(PIN_KEY(code), pin.replace(/\D/g, ''))
+      send(hello())
+    },
 
     /** экран в сети: открыть новую комнату */
     createRoom() {
@@ -211,11 +254,13 @@ export function useGame(as: 'host' | 'player' = 'player') {
       send({ type: 'hello', role: 'host' })
     },
 
-    /** телефон в сети: код комнаты из ссылки (?r=) или из поля ввода; null — взять последний сохранённый */
-    enterRoom(code: string | null, reconnect = true) {
+    /** телефон в сети: код комнаты из ссылки (?r=) или из поля ввода; null — взять последний сохранённый.
+        pass — секрет из QR-ссылки (?p=): с ним ПИН не нужен */
+    enterRoom(code: string | null, reconnect = true, pass?: string | null) {
       const clean = (code ?? storage()?.getItem(PLAYER_ROOM_KEY) ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
       roomCode.value = clean || null
       if (clean) storage()?.setItem(PLAYER_ROOM_KEY, clean)
+      if (clean && pass) session()?.setItem(PASS_KEY(clean), pass)
       if (reconnect) send(hello())
     },
 
@@ -224,7 +269,8 @@ export function useGame(as: 'host' | 'player' = 'player') {
       s?.setItem(NAME_KEY, name)
       if (photo) s?.setItem(PHOTO_KEY, photo)
       pendingPhoto = config.value.photos ? photo : null
-      send({ type: 'hello', role: 'player', room: roomCode.value ?? undefined, token: s?.getItem(tokenKey()) || undefined, name, ink })
+      const code = roomCode.value
+      send({ type: 'hello', role: 'player', room: code ?? undefined, token: s?.getItem(tokenKey()) || undefined, name, ink, pass: code ? session()?.getItem(PASS_KEY(code)) || undefined : undefined, pin: code ? session()?.getItem(PIN_KEY(code)) || undefined : undefined })
     },
 
     /** Правка из лобби: имя и краска — сообщением, новое фото — отдельной загрузкой. */

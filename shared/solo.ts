@@ -445,9 +445,16 @@ export type SoloClientMessage =
   | { type: 'qte'; id: number; key: SoloQteKey; at?: number }
   /** захват: одно быстрое нажатие */
   | { type: 'mash' }
+  /** перенос партии на другое устройство: получить код / забрать партию по коду */
+  | { type: 'transfer' }
+  | { type: 'adopt'; code: string }
   /** вкладка ушла в фон или вернулась: часы встречи и погони стоят, пока игрок не смотрит */
   | { type: 'away'; on: boolean }
 
 export type SoloServerMessage =
   | { type: 'view'; view: SoloView }
   | { type: 'error'; reason: string }
+  /** код переноса: ввести на другом устройстве, пока не истёк */
+  | { type: 'transfer'; code: string; minutes: number }
+  /** ответ на код: жетон партии или причина отказа */
+  | { type: 'adopt'; token: string | null; reason?: string }

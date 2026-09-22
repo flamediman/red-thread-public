@@ -5,7 +5,13 @@ import { formatRoom } from '~/utils/room'
 
 useHead({ title: 'Красная нить — кооперативный детектив' })
 
-const { state, connected, ready, hostAuthorized, hostPending, hostChecked, hostReason, roomCode, send, createRoom } = useGame('host')
+const { state, connected, ready, hostAuthorized, hostPending, hostChecked, hostReason, roomCode, send, createRoom, resumeRoom } = useGame('host')
+/* продолжить свою комнату с другого экрана: код и ПИН с прежнего */
+const resumeOpen = ref(false)
+const resumeCode = ref('')
+const resumePin = ref('')
+const canResume = computed(() => resumeCode.value.replace(/[^A-Za-z0-9]/g, '').length === 6 && resumePin.value.replace(/\D/g, '').length === 4)
+function doResume() { if (canResume.value) { resumeRoom(resumeCode.value, resumePin.value); audio.unlock() } }
 const { config, loaded: configLoaded } = useConfig()
 const audio = useAudio()
 
@@ -217,6 +223,12 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
         </div>
         <div v-else-if="gateAction === 'open'" key="open" class="gate__open gate__appear">
           <button class="btn btn--stamp" :disabled="hostPending" @click="openRoom">{{ hostPending ? 'Открываю…' : 'Открыть комнату' }}</button>
+          <button v-if="!resumeOpen" class="gate__resume" type="button" @click="resumeOpen = true">Продолжить свою комнату</button>
+          <form v-else class="gate__resume-form" @submit.prevent="doResume">
+            <input v-model="resumeCode" class="gate__field" placeholder="код ABC DEF" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Код комнаты">
+            <input v-model="resumePin" class="gate__field gate__field--pin" placeholder="ПИН" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН">
+            <button class="btn btn--small" type="submit" :disabled="!canResume || hostPending">Продолжить</button>
+          </form>
           <p class="gate__hint">{{ hostReason || (phone ? 'С телефона можно посмотреть дела и сыграть в «Туман». Лобби открывается на планшете или компьютере.' : 'Этот экран станет общим столом. Телефоны подключатся по коду комнаты — без регистрации.') }}</p>
         </div>
         <span v-else key="wait" class="gate__wait" aria-hidden="true" />

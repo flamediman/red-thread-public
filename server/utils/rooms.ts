@@ -16,6 +16,10 @@ export interface Room {
   game: Game
   /** ключ экрана; дома его нет — экран входит по коду ведущего */
   hostKey: string | null
+  /** ПИН из четырёх цифр: вход телефона по коду без QR и продолжение комнаты с другого экрана; дома нет */
+  pin: string | null
+  /** секрет в ссылке QR: кто отсканировал код с экрана, входит без ПИНа */
+  pass: string | null
   createdAt: number
   touchedAt: number
   /** id сокетов, которые смотрят в эту комнату */
@@ -56,6 +60,17 @@ export function verifyHost(room: Room, key: unknown): boolean {
 }
 
 export function roomCount() { return rooms.size }
+
+const same = (a: string | null, b: unknown) => {
+  if (!a || typeof b !== 'string') return false
+  const x = Buffer.from(a), y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
+/** комната без ПИНа (дома) пускает всех */
+export function verifyPin(room: Room, pin: unknown) { return !room.pin || same(room.pin, typeof pin === 'string' ? pin.replace(/\D/g, '') : pin) }
+export function verifyPass(room: Room, pass: unknown) { return !room.pass || same(room.pass, pass) }
+const newPin = () => String(randomInt(0, 10000)).padStart(4, '0')
+const newPass = () => randomBytes(9).toString('base64url')
 
 /* ── снимки ─────────────────────────────────────────────────── */
 
@@ -104,7 +119,7 @@ function localStore(): GameStore {
   }
 }
 
-interface RoomFile { code: string; hostKey: string; createdAt: number; touchedAt: number; history: GameRecord[]; game: unknown }
+interface RoomFile { code: string; hostKey: string; pin?: string; pass?: string; createdAt: number; touchedAt: number; history: GameRecord[]; game: unknown }
 
 /** В сети: один файл на комнату — ключ экрана, история этой комнаты и снимок партии */
 function roomStore(room: () => Room, saved: RoomFile | null): GameStore {
@@ -113,7 +128,7 @@ function roomStore(room: () => Room, saved: RoomFile | null): GameStore {
   let game: unknown = saved?.game ?? null
   const dump = () => {
     const r = room()
-    const data: RoomFile = { code: r.code, hostKey: r.hostKey!, createdAt: r.createdAt, touchedAt: r.touchedAt, history, game }
+    const data: RoomFile = { code: r.code, hostKey: r.hostKey!, pin: r.pin ?? undefined, pass: r.pass ?? undefined, createdAt: r.createdAt, touchedAt: r.touchedAt, history, game }
     return JSON.stringify(data)
   }
   // новая комната сразу ложится на диск: переживёт перезапуск, даже если в ней ещё ничего не делали
@@ -129,7 +144,7 @@ function roomStore(room: () => Room, saved: RoomFile | null): GameStore {
 }
 
 function open(code: string, hostKey: string | null, saved: RoomFile | null): Room {
-  const room: Room = { code, hostKey, createdAt: saved?.createdAt ?? Date.now(), touchedAt: saved?.touchedAt ?? Date.now(), peers: new Set(), game: null as unknown as Game }
+  const room: Room = { code, hostKey, pin: hostKey ? saved?.pin ?? newPin() : null, pass: hostKey ? saved?.pass ?? newPass() : null, createdAt: saved?.createdAt ?? Date.now(), touchedAt: saved?.touchedAt ?? Date.now(), peers: new Set(), game: null as unknown as Game }
   const store = hostKey ? roomStore(() => room, saved) : localStore()
   room.game = new Game(() => {
     room.touchedAt = Date.now()

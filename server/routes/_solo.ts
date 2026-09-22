@@ -9,6 +9,10 @@ import type { SoloClientMessage, SoloServerMessage } from '../../shared/types'
 type Peer = { id: string; send: (data: string) => void; close: (code?: number, reason?: string) => void }
 interface Session { ip: string; bucket: Bucket; dropped: number; key?: string }
 
+/** коды переноса партии на другое устройство: код → жетон, живут 15 минут */
+const transfers = new Map<string, { token: string; exp: number }>()
+const TRANSFER_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const adopts = new WindowLimiter(20, 60_000)
 const peers = new Map<string, { peer: Peer; session: Session }>()
 const games = new Map<string, { game: SoloGame; peers: Set<string>; idle: ReturnType<typeof setTimeout> | null }>()
 const perIp = new Map<string, number>()
@@ -63,6 +67,25 @@ export default defineWebSocketHandler({
     try { msg = JSON.parse(text) } catch { return }
     if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return
 
+    // перенос партии: код на 15 минут → жетон. Забрать может любой, кто знает код; подбор ограничен
+    if (msg.type === 'adopt') {
+      if (!adopts.take(session.ip)) return send(entry.peer, { type: 'adopt', token: null, reason: 'Слишком много попыток. Подождите минуту.' })
+      const code = typeof msg.code === 'string' ? msg.code.toUpperCase().replace(/[^A-Z0-9]/g, '') : ''
+      const t = transfers.get(code)
+      if (!t || t.exp < Date.now()) { transfers.delete(code); return send(entry.peer, { type: 'adopt', token: null, reason: 'Код не подошёл или истёк. Возьмите новый на первом устройстве.' }) }
+      transfers.delete(code)
+      return send(entry.peer, { type: 'adopt', token: t.token })
+    }
+    if (msg.type === 'transfer') {
+      const g0 = session.key ? games.get(session.key) : null
+      const token = session.key?.split(':').slice(1).join(':')
+      if (!g0 || !token) return
+      let code = ''
+      do { code = Array.from({ length: 6 }, () => TRANSFER_ABC[Math.floor(Math.random() * TRANSFER_ABC.length)]).join('') } while (transfers.has(code))
+      for (const [c, t] of transfers) if (t.token === token || t.exp < Date.now()) transfers.delete(c)
+      transfers.set(code, { token, exp: Date.now() + 15 * 60_000 })
+      return send(entry.peer, { type: 'transfer', code, minutes: 15 })
+    }
     if (msg.type === 'hello') {
       const storyId = typeof msg.story === 'string' && SOLO_STORIES[msg.story] ? msg.story : Object.keys(SOLO_STORIES)[0]
       const entryStory = storyId ? SOLO_STORIES[storyId] : null

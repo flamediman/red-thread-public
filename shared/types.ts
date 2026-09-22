@@ -722,7 +722,8 @@ export type PlanAction =
 export type ClientMessage =
   /** дома экран просто здоровается; в сети — create (новая комната) или room + key (своя комната);
       телефон в сети — room (код комнаты) */
-  | { type: 'hello'; role: 'host' | 'player'; token?: string; name?: string; ink?: number; room?: string; key?: string; create?: boolean }
+  /** pass — секрет из ссылки QR; pin — ПИН с экрана (телефон по коду или экран, продолжающий комнату) */
+  | { type: 'hello'; role: 'host' | 'player'; token?: string; name?: string; ink?: number; room?: string; key?: string; create?: boolean; pass?: string; pin?: string }
   | { type: 'setName'; name: string; ink: number }
   | { type: 'ready'; ready: boolean }
   | { type: 'leave' }
@@ -768,7 +769,9 @@ export type ServerMessage =
   | { type: 'welcome'; playerId: string; token: string }
   | { type: 'hostAuth'; ok: boolean; reason?: string }
   /** экран в сети создал комнату: код для телефонов и ключ, по которому экран вернётся в неё */
-  | { type: 'room'; code: string; key: string }
+  | { type: 'room'; code: string; key: string; pin?: string; pass?: string }
+  /** комната есть, но без QR нужен ПИН с экрана */
+  | { type: 'needPin'; code: string; reason?: string }
   /** телефон в сети: комнаты нет (или код не указан) */
   | { type: 'noRoom'; reason: string }
   | { type: 'kicked'; reason: string }

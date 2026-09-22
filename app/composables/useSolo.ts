@@ -17,6 +17,9 @@ let build = ''
 let story = ''
 
 const TOKEN_KEY = 'solo-token'
+/** перенос партии: код для другого устройства и ответ на введённый код */
+const transferCode = ref<{ code: string; minutes: number } | null>(null)
+const adoptError = ref<string | null>(null)
 
 function token() {
   let t = ''
@@ -51,6 +54,18 @@ function open() {
     let msg: SoloServerMessage
     try { msg = JSON.parse(event.data) } catch { return }
     if (msg.type === 'error') { error.value = msg.reason; return }
+    if (msg.type === 'transfer') { transferCode.value = { code: msg.code, minutes: msg.minutes }; return }
+    if (msg.type === 'adopt') {
+      if (!msg.token) { adoptError.value = msg.reason ?? 'Код не подошёл.'; return }
+      // партия с другого устройства: берём её жетон и заново здороваемся с сервером
+      try { localStorage.setItem(TOKEN_KEY, msg.token) } catch { /* приватный режим */ }
+      adoptError.value = null
+      transferCode.value = null
+      socket?.close()
+      socket = null
+      open()
+      return
+    }
     if (msg.type === 'view') {
       if (build && build !== msg.view.build) { location.reload(); return }
       build = msg.view.build
@@ -88,5 +103,11 @@ export function useSolo(storyId?: string) {
     connected.value = false
     view.value = null
   })
-  return { view, connected, error, clockOffset, send }
+  return {
+    view, connected, error, clockOffset, send, transferCode, adoptError,
+    /** код переноса на другое устройство */
+    transfer() { transferCode.value = null; send({ type: 'transfer' }) },
+    /** забрать партию с другого устройства по коду */
+    adopt(code: string) { adoptError.value = null; send({ type: 'adopt', code: code.toUpperCase().replace(/[^A-Z0-9]/g, '') }) }
+  }
 }

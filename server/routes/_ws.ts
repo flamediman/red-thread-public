@@ -1,6 +1,6 @@
 import { dropPhoto, restorePhoto } from '../utils/photos'
 import { IS_PUBLIC, clientIp } from '../utils/mode'
-import { LOCAL_ROOM, createRoom, getRoom, normalizeCode, onRoomChange, touch, verifyHost, type Room } from '../utils/rooms'
+import { LOCAL_ROOM, createRoom, getRoom, normalizeCode, onRoomChange, touch, verifyHost, verifyPass, verifyPin, type Room } from '../utils/rooms'
 import { Bucket, WindowLimiter } from '../utils/limits'
 import type { ClientMessage, ServerMessage } from '../../shared/types'
 
@@ -165,7 +165,14 @@ function helloHost(id: string, entry: Entry, msg: Hello) {
     if (!roomCreates.take(session.ip)) return deny('С этого адреса уже открыто много комнат. Попробуйте позже.')
     room = createRoom() ?? undefined
     if (!room) return deny('Сейчас играет слишком много компаний. Попробуйте через несколько минут.')
-    send(entry.peer, { type: 'room', code: room.code, key: room.hostKey! })
+  } else if (msg.room && msg.pin && !msg.key) {
+    // другой экран продолжает комнату: код и ПИН с прежнего экрана — получает ключ, как если бы открыл её сам
+    const found = getRoom(normalizeCode(msg.room))
+    if (found && found.hostKey && verifyPin(found, msg.pin)) room = found
+    else {
+      hostFails.take(session.ip)
+      return deny(found ? 'Неверный ПИН.' : 'Комнаты с таким кодом нет.')
+    }
   } else if (msg.room || msg.key) {
     const found = getRoom(normalizeCode(msg.room))
     if (found && verifyHost(found, msg.key)) room = found
@@ -175,6 +182,7 @@ function helloHost(id: string, entry: Entry, msg: Hello) {
     }
   }
   if (!room) return deny()
+  if (room.hostKey) send(entry.peer, { type: 'room', code: room.code, key: room.hostKey, pin: room.pin ?? undefined, pass: room.pass ?? undefined })
 
   session.role = 'host'
   session.playerId = undefined
@@ -204,6 +212,19 @@ function helloPlayer(id: string, entry: Entry, msg: Hello) {
     }
   }
   if (!room) return
+
+  // в сети без QR нужен ПИН с экрана: секрет из ссылки или ПИН; тот, кто уже в бригаде (жетон известен), входит так
+  if (IS_PUBLIC && room.pin) {
+    const known = typeof msg.token === 'string' && !!room.game.byToken(msg.token)
+    if (!known && !verifyPass(room, msg.pass) && !verifyPin(room, msg.pin)) {
+      if (msg.pin) roomMisses.take(session.ip)
+      detach(id, entry)
+      session.role = 'guest'
+      session.playerId = undefined
+      send(entry.peer, { type: 'needPin', code: room.code, reason: msg.pin ? 'Неверный ПИН. Он на экране, под кодом комнаты.' : '' })
+      return
+    }
+  }
 
   // сменил комнату — уходит из старой (там он «не на связи»), в новой пока никто
   if (session.room !== room.code) {

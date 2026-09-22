@@ -8,7 +8,12 @@ useHead({ title: 'Туман — Красная нить', htmlAttrs: { 'data-se
 
 const route = useRoute()
 const storyId = typeof route.query.story === 'string' ? route.query.story : undefined
-const { view, connected, error, clockOffset, send } = useSolo(storyId)
+const { view, connected, error, clockOffset, send, transferCode, adoptError, transfer, adopt } = useSolo(storyId)
+/* перенос партии между устройствами: код на 15 минут */
+const moveOpen = ref<'give' | 'take' | null>(null)
+const adoptCode = ref('')
+const adoptShown = computed({ get: () => { const c = adoptCode.value; return c.length > 3 ? `${c.slice(0, 3)} ${c.slice(3)}` : c }, set: (v: string) => { adoptCode.value = v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) } })
+function giveCode() { moveOpen.value = 'give'; transfer() }
 const audio = useAudio()
 
 const v = computed(() => view.value)
@@ -341,6 +346,23 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <button v-for="s in v.saves" :key="s.slot" type="button" class="solo-btn solo-btn--ghost" @click="enter({ load: s.slot })">Загрузить: {{ s.place }} · {{ when(s.at) }}</button>
         </div>
         <p class="solo-title__hint">{{ v?.info.minutes }} минут · лучше в наушниках и в темноте · сохраняться можно только у телефонов</p>
+        <div v-if="v" class="solo-move">
+          <template v-if="moveOpen === 'give'">
+            <p v-if="transferCode" class="solo-move__code">Код на другом устройстве: <b class="tabnum">{{ transferCode.code.slice(0, 3) }} {{ transferCode.code.slice(3) }}</b><small>действует {{ transferCode.minutes }} минут; там: заставка «Тумана» → «Продолжить с другого устройства»</small></p>
+            <p v-else class="solo-muted">Получаю код…</p>
+            <button type="button" class="solo-move__link" @click="moveOpen = null">Скрыть</button>
+          </template>
+          <form v-else-if="moveOpen === 'take'" class="solo-move__form" @submit.prevent="adoptCode.length === 6 && adopt(adoptCode)">
+            <input v-model="adoptShown" class="solo-move__input" placeholder="ABC DEF" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Код переноса">
+            <button type="submit" class="solo-btn solo-btn--small" :disabled="adoptCode.length !== 6">Забрать партию</button>
+            <button type="button" class="solo-move__link" @click="moveOpen = null">Отмена</button>
+            <p v-if="adoptError" class="solo-title__error">{{ adoptError }}</p>
+          </form>
+          <template v-else>
+            <button v-if="canContinue" type="button" class="solo-move__link" @click="giveCode">Продолжить на другом устройстве</button>
+            <button type="button" class="solo-move__link" @click="moveOpen = 'take'">Продолжить с другого устройства</button>
+          </template>
+        </div>
         <p v-if="!connected && v" class="solo-title__error">Нет связи — переподключаюсь…</p>
       </div>
     </section>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ClientMessage, PublicState } from '#shared/types'
 import { INKS } from '#shared/inks'
-import { roomCode } from '~/composables/useGame'
+import { roomCode, roomPass, roomPin } from '~/composables/useGame'
 import { formatRoom } from '~/utils/room'
 
 /* phone — экран телефона: лобби с него не ведут, поверх — записка и выход в меню */
@@ -32,7 +32,7 @@ const publicPort = computed(() => {
 })
 const host = computed(() => manualHost.value.trim() || net.value?.host || '')
 const joinUrl = computed(() => online.value
-  ? (roomCode.value ? `${location.origin}/play?r=${roomCode.value}` : '')
+  ? (roomCode.value ? `${location.origin}/play?r=${roomCode.value}${roomPass.value ? `&p=${roomPass.value}` : ''}` : '')
   : host.value ? `http://${host.value}${publicPort.value}/play` : '')
 const needsHost = computed(() => !online.value && net.value !== null && !host.value)
 
@@ -122,6 +122,7 @@ function tryStart() {
           <template v-if="online">
             <p class="lobby__hint">или откройте {{ siteHost }}/play и введите код</p>
             <p class="lobby__room tabnum">{{ formatRoom(roomCode) }}</p>
+            <p v-if="roomPin" class="lobby__pin">ПИН <b class="tabnum">{{ roomPin }}</b><small>для входа по коду и чтобы продолжить комнату с другого экрана; по QR — без него</small></p>
           </template>
           <form v-else-if="editingHost || needsHost" class="lobby__host-form" @submit.prevent="saveHost">
             <span class="lobby__hint">Адрес ноутбука в Wi-Fi</span>

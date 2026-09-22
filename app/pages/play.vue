@@ -6,10 +6,10 @@ import { ART } from '~/utils/art'
 
 useHead({ title: 'Красная нить' })
 
-const { state, you, send, connected, ready, kicked, noRoom, roomCode, enterRoom, joinGame, updateProfile, savedName, savedPhoto } = useGame('player')
+const { state, you, send, connected, ready, kicked, noRoom, needPin, roomCode, enterRoom, enterPin, joinGame, updateProfile, savedName, savedPhoto } = useGame('player')
 /* в сети код комнаты приходит в ссылке из QR (?r=ABCDEF); без него — последний сохранённый */
 const route = useRoute()
-enterRoom(typeof route.query.r === 'string' ? route.query.r : null, false)
+enterRoom(typeof route.query.r === 'string' ? route.query.r : null, false, typeof route.query.p === 'string' ? route.query.p : null)
 function onRoom(code: string) {
   enterRoom(code)
   void navigateTo({ query: { r: code } }, { replace: true })
@@ -46,7 +46,7 @@ function onJoin(name: string, ink: number, photo: string | null, photoChanged: b
     <p v-else-if="!connected" class="pad__offline">Нет связи — переподключаюсь…</p>
     <p v-else-if="kicked" class="pad__offline">{{ kicked }}</p>
 
-    <PadRoom v-else-if="noRoom !== null" :reason="noRoom" :code="roomCode" @enter="onRoom" />
+    <PadRoom v-else-if="noRoom !== null || needPin !== null" :reason="needPin ?? noRoom ?? ''" :code="roomCode" :pin="needPin !== null" @enter="onRoom" @pin="enterPin" />
 
     <PadJoin
       v-else-if="!you || (editing && screen === 'lobby')"
