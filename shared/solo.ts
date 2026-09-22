@@ -219,6 +219,8 @@ export interface SoloMonster {
   /** уворот от удара: через случайную паузу вспыхивает точка со стрелкой (points — сколько подряд), окно каждой ms;
       поймали все — урона нет. Без поля — одна точка на секунду */
   dodge?: { ms: number; points?: number }
+  /** шанс, что после увёрнутого удара существо тут же бьёт ещё раз (вторая рука, второй из отряда) — один раз за раунд */
+  combo?: number
   /** его удар оглушает героя на раунд: окна уже, бежать нельзя (горн в ухо, свисток) */
   stuns?: boolean
   /** иногда (chance) вместо удара — захват: presses быстрых нажатий за ms, чтобы вырваться. Вырвались — четверть урона,
@@ -230,7 +232,7 @@ export interface SoloMonster {
   /** strike — замах перед ударом (виден, пока идёт уворот); dodge — удар прошёл мимо; stagger — оглушено точным ударом;
       recover — приходит в себя; daze — герой оглушён его ударом; guard/press/circle — как оно ведёт себя в раунде
       (прикрывается после ваших попаданий, торопится, когда вы слабы, кружит и выжидает) */
-  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string }
+  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; combo?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string }
 }
 
 /** Босс: серии быстрых нажатий. На экране одна за другой вспыхивают точки со стрелкой: на компьютере — нажать эту

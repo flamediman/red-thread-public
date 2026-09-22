@@ -238,7 +238,9 @@ const themeLevel = computed(() => {
   return 0.6
 })
 // пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
-watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok && v.value) void audio.theme(t, lvl) }, { immediate: true })
+// бой и погоня начинаются резко — музыка входит за полторы секунды, а не за четыре
+const FAST = new Set(['boss', 'fight', 'chase'])
+watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok && v.value) void audio.theme(t, lvl, t && FAST.has(t) ? 1.5 : undefined) }, { immediate: true })
 
 /* далёкие звуки: раз в минуту-полторы где-то в тумане что-то есть — горн, шёпот, ветка, громкоговоритель. Только когда герой
    просто идёт; всё играет через цепочку «далеко» (глухо, с эхом, тише ветра) */

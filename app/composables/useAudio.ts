@@ -261,12 +261,13 @@ export function useAudio() {
 
   /** Музыка: одна тема; смена — перекрёстным затуханием. null — тишина.
       Имя темы ищется в папке активного дела; путь с «/» — файл как есть (музыка меню мира). */
-  async function theme(name: string | null, level = 1) {
+  /** fade — секунд на смену: в бой музыка входит быстрее, чем сменяется тема района */
+  async function theme(name: string | null, level = 1, fade = MUSIC_FADE) {
     const c = ensure(); if (!c) return
     const wanted = name ? (name.startsWith('/') ? name : `/music/${currentCase.value}/${name}.mp3`) : null
     musicWanted = wanted
     musicLevel = level
-    if (!wanted || !name) { music?.stop(MUSIC_FADE); music = null; return }
+    if (!wanted || !name) { music?.stop(fade); music = null; return }
     // у дела может не быть всех тем: берём ближайшую по настроению из тех, что есть
     // у нового дела музыки может не быть совсем — тогда тема мира из меню, лишь бы не тишина
     const chain = name.startsWith('/') ? [wanted] : [...[name, ...(THEME_FALLBACK[name] ?? [])].map(n => `/music/${currentCase.value}/${n}.mp3`), `/music/settings/${currentSetting.value}.mp3`]
@@ -278,8 +279,8 @@ export function useAudio() {
       if (music?.name === key) return
       // тот же трек под другим адресом (тема мира в меню = заставка истории) — играет дальше, без перезапуска
       if (music && music.sig === signature(buf)) { music.name = key; music.gain.gain.linearRampToValueAtTime(musicLevel, c.currentTime + 2); return }
-      music?.stop(MUSIC_FADE)
-      music = startLoop(key, buf, musicLevel, gains.music!, MUSIC_FADE)
+      music?.stop(fade)
+      music = startLoop(key, buf, musicLevel, gains.music!, fade)
       return
     }
   }

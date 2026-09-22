@@ -26,7 +26,7 @@ const QTE_KEYS: SoloQteKey[] = ['up', 'down', 'left', 'right']
 const QTE_GAP = 340
 export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
-interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null; dodge?: Dodge | null; strikeAt: number; stun?: number; dazed?: number; grapple?: Grapple | null; mode?: 'normal' | 'guard' | 'press' | 'circle'; streak?: number }
+interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null; dodge?: Dodge | null; strikeAt: number; stun?: number; dazed?: number; grapple?: Grapple | null; mode?: 'normal' | 'guard' | 'press' | 'circle'; streak?: number; comboed?: boolean }
 interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string }
 interface Prompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
 /** существо бьёт: точки уворота, и что случится, если их не поймать */
@@ -717,7 +717,7 @@ export class SoloGame {
   /** Существо бьёт — но удар можно увернуть. Через случайную паузу на арене вспыхивает точка со стрелкой (у тяжёлых
       существ — две подряд), окно короткое: смотреть надо на экран, а не ловить ритм. Поймали все — урона нет; нет — удар
       проходит текстом `text` и уроном `damage`. Пока идёт уворот, полоса раунда стоит */
-  private strike(m: SoloMonster, pre: string | undefined, text: string, sfx: string[], damage: number) {
+  private strike(m: SoloMonster, pre: string | undefined, text: string, sfx: string[], damage: number, combo = false) {
     const e = this.live.encounter!
     if (!damage) return this.nextRound(m, text, sfx, 0)
     const spec = m.dodge ?? { ms: 1000, points: 1 }
@@ -733,7 +733,8 @@ export class SoloGame {
         if (Math.hypot(x - px, y - py) >= 30) break
       }
       if (Math.hypot(x - px, y - py) < 30) x = 100 - x
-      prompts.push({ id: e.round * 10 + k, key: QTE_KEYS[Math.min(QTE_KEYS.length - 1, Math.floor(this.random() * QTE_KEYS.length))]!, x, y, from: t, to: t + spec.ms, result: null })
+      // у второго удара в том же раунде свои номера точек: клиент не спутает их с уже сыгранными
+      prompts.push({ id: e.round * 10 + (combo ? 5 : 0) + k, key: QTE_KEYS[Math.min(QTE_KEYS.length - 1, Math.floor(this.random() * QTE_KEYS.length))]!, x, y, from: t, to: t + spec.ms, result: null })
       t += spec.ms + 250; px = x; py = y
     }
     e.dodge = { prompts, damage, text, sfx, deadline: t + ZONE_TOL }
@@ -750,7 +751,15 @@ export class SoloGame {
     for (const p of d.prompts) p.result ??= 'miss'
     const dodged = d.prompts.every(p => p.result === 'hit')
     e.dodge = null
-    if (dodged) this.nextRound(m, m.text.dodge ?? 'Вы уходите в сторону — удар приходится в пустоту.', ['solo-dodge'], 0)
+    const dodgeText = m.text.dodge ?? 'Вы уходите в сторону — удар приходится в пустоту.'
+    // увернулись — а оно не останавливается: вторая рука, второй из отряда. Раз за раунд, чтобы не было бесконечной серии
+    if (dodged && m.combo && !e.comboed && this.random() < m.combo) {
+      e.comboed = true
+      this.say('', ['solo-dodge'])
+      this.strike(m, `${dodgeText} ${m.text.combo ?? 'Оно не останавливается — второй замах.'}`, m.text.attack, [m.sfx.attack], m.damage, true)
+      return
+    }
+    if (dodged) this.nextRound(m, dodgeText, ['solo-dodge'], 0)
     else if (m.grapple && this.random() < m.grapple.chance) this.startGrapple(m, d.damage)
     else {
       if (m.stuns) e.dazed = 2
@@ -801,6 +810,7 @@ export class SoloGame {
     e.round++
     e.text = text
     e.startedAt = now
+    e.comboed = false
     // оглушение живёт один раунд: поставлено на 2, здесь становится 1 (этот раунд), в следующем — 0
     e.stun = Math.max(0, (e.stun ?? 0) - 1)
     e.dazed = Math.max(0, (e.dazed ?? 0) - 1)
