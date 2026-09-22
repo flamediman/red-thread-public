@@ -49,8 +49,31 @@ export function normalizeCode(input: unknown): string | null {
   return CODE.test(code) ? code : null
 }
 
+/** комната в памяти — или поднятая с диска: партию можно продолжить и через неделю, с другого экрана и телефонов */
 export function getRoom(code: string | null | undefined): Room | undefined {
-  return code ? rooms.get(code) : undefined
+  if (!code) return undefined
+  return rooms.get(code) ?? (IS_PUBLIC ? loadRoom(code) : undefined)
+}
+
+function readRoomFile(code: string): RoomFile | null {
+  const file = roomFile(code)
+  if (!existsSync(file)) return null
+  try {
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as RoomFile
+    return saved.code === code && typeof saved.hostKey === 'string' ? saved : null
+  } catch { return null }
+}
+
+function loadRoom(code: string): Room | undefined {
+  if (!CODE.test(code)) return undefined
+  const saved = readRoomFile(code)
+  if (!saved) return undefined
+  if (rooms.size >= MAX_ROOMS) sweep(true)
+  if (rooms.size >= MAX_ROOMS) return undefined
+  const room = open(code, saved.hostKey, saved)
+  room.touchedAt = Date.now()
+  console.log(`комната ${code} поднята с диска · всего ${rooms.size}`)
+  return room
 }
 
 export function verifyHost(room: Room, key: unknown): boolean {
@@ -166,15 +189,15 @@ export function createRoom(): Room | null {
   return room
 }
 
-function close(room: Room) {
+/** выгружает комнату из памяти; снимок остаётся на диске и поднимется по коду с ПИНом или ключом экрана */
+function unload(room: Room) {
   room.game.dispose()
   rooms.delete(room.code)
-  if (room.hostKey) {
-    try { unlinkSync(roomFile(room.code)) } catch { /* уже нет */ }
-  }
 }
+/** то же снаружи (проверки): комната без людей уходит из памяти, файл остаётся */
+export function unloadRoom(code: string) { const r = rooms.get(code); if (r && !r.peers.size) unload(r) }
 
-/** Закрывает брошенные комнаты. force — сервер заполнен: закрыть и те, что просто стоят без людей. */
+/** Выгружает брошенные комнаты из памяти. force — сервер заполнен: выгрузить и те, что просто стоят без людей. */
 function sweep(force = false) {
   const now = Date.now()
   for (const room of rooms.values()) {
@@ -183,10 +206,34 @@ function sweep(force = false) {
     const quiet = ['menu', 'lobby', 'final'].includes(room.game.screen)
     const limit = force ? (quiet ? 10 * 60_000 : 2 * HOUR) : quiet ? 3 * HOUR : 12 * HOUR
     if (idle > limit) {
-      close(room)
-      console.log(`комната ${room.code} закрыта: пустая ${Math.round(idle / 60_000)} мин`)
+      unload(room)
+      console.log(`комната ${room.code} выгружена: пустая ${Math.round(idle / 60_000)} мин`)
     }
   }
+}
+
+/** Файлы комнат живут KEEP_DAYS с последнего действия; комната, в которой так и не начали партию, — KEEP_EMPTY_DAYS */
+const KEEP_DAYS = Math.max(1, Number(process.env.ROOM_KEEP_DAYS) || 30)
+const KEEP_EMPTY_DAYS = 3
+function purgeFiles() {
+  let gone = 0
+  try {
+    for (const name of existsSync(ROOM_DIR) ? readdirSync(ROOM_DIR) : []) {
+      if (!name.endsWith('.json')) continue
+      const code = name.slice(0, -5)
+      if (rooms.has(code)) continue
+      const file = join(ROOM_DIR, name)
+      let drop = false
+      try {
+        const saved = JSON.parse(readFileSync(file, 'utf8')) as RoomFile
+        const age = Date.now() - (saved.touchedAt || 0)
+        const empty = !saved.history?.length && (!saved.game || (saved.game as { screen?: string }).screen === 'menu')
+        drop = !normalizeCode(saved.code) || typeof saved.hostKey !== 'string' || age > KEEP_DAYS * 24 * HOUR || (empty && age > KEEP_EMPTY_DAYS * 24 * HOUR)
+      } catch { drop = true }
+      if (drop) { try { unlinkSync(file); gone++ } catch { /* не удалось — не страшно */ } }
+    }
+  } catch (e) { console.warn('файлы комнат не прочитались:', (e as Error).message) }
+  if (gone) console.log(`комнат стёрто с диска: ${gone}`)
 }
 
 export function touch(room: Room) { room.touchedAt = Date.now() }
@@ -204,23 +251,22 @@ export function initRooms() {
     open(LOCAL_ROOM, null, null)
     return
   }
-  let restored = 0
+  // старые файлы — прочь; свежие (сутки) комнаты поднимаются сразу, остальные лежат на диске и поднимутся по коду
+  purgeFiles()
+  let restored = 0, kept = 0
   try {
     for (const name of existsSync(ROOM_DIR) ? readdirSync(ROOM_DIR) : []) {
       if (!name.endsWith('.json')) continue
-      const file = join(ROOM_DIR, name)
-      try {
-        const saved = JSON.parse(readFileSync(file, 'utf8')) as RoomFile
-        if (!normalizeCode(saved.code) || typeof saved.hostKey !== 'string' || Date.now() - saved.touchedAt > 24 * HOUR) {
-          unlinkSync(file)
-          continue
-        }
-        open(saved.code, saved.hostKey, saved)
-        restored++
-      } catch { try { unlinkSync(file) } catch { /* не удалось — не страшно */ } }
+      const saved = readRoomFile(name.slice(0, -5))
+      if (!saved) continue
+      if (Date.now() - saved.touchedAt > 24 * HOUR) { kept++; continue }
+      open(saved.code, saved.hostKey, saved)
+      restored++
     }
   } catch (e) { console.warn('комнаты не прочитались:', (e as Error).message) }
-  console.log(`режим «в сети»: комнат восстановлено ${restored}, предел ${MAX_ROOMS}`)
+  console.log(`режим «в сети»: комнат поднято ${restored}, на диске ещё ${kept}, предел в памяти ${MAX_ROOMS}`)
   const t = setInterval(() => sweep(), 5 * 60_000)
   t.unref?.()
+  const p = setInterval(() => purgeFiles(), 6 * HOUR)
+  p.unref?.()
 }

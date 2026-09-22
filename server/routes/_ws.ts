@@ -186,7 +186,7 @@ function helloHost(id: string, entry: Entry, msg: Hello) {
     if (found && verifyHost(found, msg.key)) room = found
     else {
       hostFails.take(session.ip)
-      return deny('Комната закрыта: в ней долго никого не было. Откройте новую.')
+      return deny('Комнаты больше нет: её не открывали дольше месяца. Откройте новую.')
     }
   }
   if (!room) return deny()

@@ -148,7 +148,7 @@ const PACKS = {
     'leaf-scrape': ['Dry leaves and a sheet of newspaper scraping across wet asphalt in a light gust, then still, close, no music', 2],
     'water-surge': ['One larger lake wave slapping against wooden pier posts and receding with dripping, close, calm night, no music', 2.5],
     'metal-groan': ['A long low groan of rusted iron structure under strain in a flooded abandoned building, deep resonant, slowly fading, horror ambience, no music', 3],
-    'solo-hurt': ['A heavy blow landing on a man: a dull body impact, a sharp pained gasp and a stumble on wet ground, close, no music', 1.3],
+    'solo-hurt': ['A heavy blow landing on a man\'s body: one dull deep thud, a short sharp hiss of breath through clenched teeth, one stumbling boot step on wet ground; no groan, no voice, no retching, close, no music', 1.3],
     'solo-hit-land': ['A metal pipe connecting hard with something wet and heavy: a deep crunching thud with a short ring of the pipe, close, no music', 0.9],
     'solo-dodge': ['A man quickly sidestepping a blow: a sharp intake of breath, a fast cloth whoosh and one heavy step on wet ground, then a heavy object whistling past and hitting nothing, close, no music', 1.5],
     'other-pulse': ['Very slow deep sub-bass pulse like the heartbeat of a huge flooded building, one soft thump every few seconds with a faint metallic resonance, oppressive, no melody, no drums, seamless ambience loop', 12, true]

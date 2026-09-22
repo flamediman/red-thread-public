@@ -42,6 +42,8 @@ interface PlayerRecord {
   token: string
   name: string
   ink: number
+  /** когда телефон отключился: по имени в своего сыщика пускают только после паузы */
+  left?: number
   photo: number | null
   connected: boolean
   ready: boolean
@@ -212,6 +214,15 @@ export class Game {
         return existing
       }
     }
+    // с другого телефона (жетон незнакомый) под именем сыщика, которого давно нет на связи, — это он и есть:
+    // партию продолжают и через неделю, телефоны за это время меняются
+    const same = name && [...this.players.values()].find(p => !p.connected && p.name.toLowerCase() === name.toLowerCase() && Date.now() - (p.left ?? 0) > 3 * 60_000)
+    if (same) {
+      same.token = token && TOKEN.test(token) ? token : uid(16)
+      same.connected = true
+      this.emit()
+      return same
+    }
     if (this.players.size >= 10) return null
     const id = uid(6)
     const used = new Set([...this.players.values()].map(p => p.ink))
@@ -243,6 +254,7 @@ export class Game {
     const p = this.players.get(id)
     if (!p) return
     p.connected = connected
+    if (!connected) p.left = Date.now()
     this.emit()
   }
 
