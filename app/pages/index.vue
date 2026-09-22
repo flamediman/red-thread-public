@@ -11,8 +11,9 @@ const gateForm = ref<'open' | 'enter' | null>(null)
 const newPin = ref('')
 const resumeCode = ref('')
 const resumePin = ref('')
-const pinOk = (v: string) => v.replace(/\D/g, '').length === 4
-const canResume = computed(() => resumeCode.value.replace(/[^A-Za-z0-9]/g, '').length === 6 && pinOk(resumePin.value))
+const pinOk = (v: string) => v.length === 4
+const canResume = computed(() => resumeCode.value.length === 6 && pinOk(resumePin.value))
+const typeNewPin = onPinInput(newPin), typeCode = onCodeInput(resumeCode), typePin = onPinInput(resumePin)
 function askPin() { newPin.value = String(Math.floor(1000 + Math.random() * 9000)); gateForm.value = 'open' }
 function doOpen() { if (pinOk(newPin.value)) { createRoom(newPin.value); void begin() } }
 function doResume() { if (canResume.value) { resumeRoom(resumeCode.value, resumePin.value); audio.unlock() } }
@@ -229,7 +230,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
           <form v-else-if="gateForm === 'open'" class="gate__form" @submit.prevent="doOpen">
             <label class="gate__label">ПИН новой комнаты<small>четыре цифры: по нему входят телефоны без QR и другие экраны</small></label>
             <div class="gate__row">
-              <input v-model="newPin" class="gate__field gate__field--pin" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН">
+              <input :value="newPin" class="gate__field gate__field--pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0000" aria-label="ПИН" @input="typeNewPin">
               <button class="btn btn--stamp" type="submit" :disabled="!pinOk(newPin) || hostPending">{{ hostPending ? 'Открываю…' : 'Открыть' }}</button>
               <button class="btn btn--ghost" type="button" @click="gateForm = null">Назад</button>
             </div>
@@ -237,8 +238,8 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
           <form v-else class="gate__form" @submit.prevent="doResume">
             <label class="gate__label">Комната уже открыта на другом экране<small>код и ПИН — в её лобби, под QR</small></label>
             <div class="gate__row">
-              <input v-model="resumeCode" class="gate__field" placeholder="код ABC DEF" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Код комнаты">
-              <input v-model="resumePin" class="gate__field gate__field--pin" placeholder="ПИН" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН">
+              <input :value="formatRoom(resumeCode)" class="gate__field gate__field--code" placeholder="ABC DEF" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Код комнаты" @input="typeCode">
+              <input :value="resumePin" class="gate__field gate__field--pin" placeholder="ПИН" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="ПИН" @input="typePin">
               <button class="btn btn--stamp" type="submit" :disabled="!canResume || hostPending">Войти</button>
               <button class="btn btn--ghost" type="button" @click="gateForm = null">Назад</button>
             </div>

@@ -5,7 +5,8 @@ import { roomCode, roomPass, roomPin } from '~/composables/useGame'
 /* сменить ПИН прямо в лобби */
 const pinEdit = ref(false)
 const pinDraft = ref('')
-function savePin() { const p = pinDraft.value.replace(/\D/g, ''); if (p.length === 4) { emit('send', { type: 'setPin', pin: p }); pinEdit.value = false } }
+const typePin = onPinInput(pinDraft)
+function savePin() { if (pinDraft.value.length === 4) { emit('send', { type: 'setPin', pin: pinDraft.value }); pinEdit.value = false } }
 import { formatRoom } from '~/utils/room'
 
 /* phone — экран телефона: лобби с него не ведут, поверх — записка и выход в меню */
@@ -129,8 +130,8 @@ function tryStart() {
             <p v-if="roomPin && !pinEdit" class="lobby__pin">ПИН <b class="tabnum">{{ roomPin }}</b><button type="button" class="lobby__pin-edit" @click="pinDraft = roomPin ?? ''; pinEdit = true">изменить</button><small>нужен телефонам без QR и другому экрану, чтобы войти в комнату</small></p>
             <form v-else-if="roomPin" class="lobby__pin lobby__pin-form" @submit.prevent="savePin">
               <span>ПИН</span>
-              <input v-model="pinDraft" class="lobby__pin-input tabnum" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Новый ПИН">
-              <button class="btn btn--small" type="submit" :disabled="pinDraft.replace(/\D/g, '').length !== 4">Готово</button>
+              <input :value="pinDraft" class="lobby__pin-input tabnum" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Новый ПИН" @input="typePin">
+              <button class="btn btn--small" type="submit" :disabled="pinDraft.length !== 4">Готово</button>
               <button class="btn btn--small btn--ghost" type="button" @click="pinEdit = false">Отмена</button>
             </form>
           </template>
