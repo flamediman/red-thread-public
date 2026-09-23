@@ -18,7 +18,8 @@ const local = reactive<Record<number, 'hit' | 'miss'>>({})
 const result = (p: Prompt) => p.result ?? local[p.id] ?? null
 function onAnswer(id: number, key: SoloQteKey, at: number) {
   const p = props.boss.prompts.find(x => x.id === id)
-  if (p) local[id] = key === p.key && at >= p.from - 130 && at <= p.to + 130 ? 'hit' : 'miss'
+  const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' } as const
+  if (p) local[id] = key === (p.mirror ? OPP[p.key] : p.key) && at >= p.from - 130 && at <= p.to + 130 ? 'hit' : 'miss'
   emit('send', { type: 'qte', id, key, at })
 }
 
@@ -32,6 +33,13 @@ watch(() => props.boss.round, () => {
 })
 const caught = computed(() => props.boss.prompts.filter(p => result(p) === 'hit').length)
 const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - now.value) / 1000)))
+/* что сейчас: он бьёт (уходите от каждой точки) или бьёте вы; «наоборот» и «в темноте» — по точкам серии */
+const mirror = computed(() => props.boss.prompts.some(p => p.mirror))
+const dark = computed(() => props.boss.prompts.some(p => p.blink))
+const shoot = () => emit('send', { type: 'bossShoot' })
+function onKey(e: KeyboardEvent) { if ((e.code === 'KeyF' || e.code === 'Space') && props.boss.ammo > 0) { e.preventDefault(); shoot() } }
+onMounted(() => window.addEventListener('keydown', onKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
@@ -41,6 +49,13 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - 
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
     <div class="solo-boss__arena"><SoloQte :prompts="boss.prompts" :now="now" @answer="onAnswer" /></div>
+    <Transition name="fade" mode="out-in">
+      <div :key="`${boss.round}-${boss.kind}`" class="solo-boss__call" :class="`solo-boss__call--${boss.kind}`">
+        <b>{{ boss.kind === 'defend' ? 'Он бьёт — уходите' : boss.open ? 'Он открылся — бейте!' : 'Бейте' }}</b>
+        <small v-if="mirror">всё наоборот: уходите в противоположную сторону</small>
+        <small v-else-if="dark">темно: стрелку видно мгновение — запоминайте</small>
+      </div>
+    </Transition>
     <div class="solo-enc__panel">
       <div class="solo-enc__head">
         <span class="solo-enc__name">{{ boss.name }}</span>
@@ -52,7 +67,8 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - 
       </Transition>
       <div class="solo-boss__series" :aria-label="`поймано ${caught} из ${boss.prompts.length}, нужно ${boss.need}`">
         <i v-for="p in boss.prompts" :key="p.id" :class="result(p)" />
-        <span>нужно {{ boss.need }} из {{ boss.prompts.length }}</span>
+        <span>{{ boss.kind === 'defend' ? `уйти от всех ${boss.prompts.length}` : `нужно ${boss.need} из ${boss.prompts.length}` }}</span>
+        <button v-if="boss.ammo > 0" type="button" class="solo-btn solo-btn--small solo-boss__shoot" @click="shoot">Выстрелить · {{ boss.ammo }} <kbd>F</kbd></button>
       </div>
       <p class="solo-enc__legend">Точки вспыхивают одна за другой: жмите их стрелку на клавиатуре или проводите пальцем в её сторону, пока кольцо не сомкнулось.</p>
     </div>

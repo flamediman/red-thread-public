@@ -67,7 +67,7 @@ function pick(id: string) {
   if (!o?.enabled) return
   if (dodging.value || grappling.value) return
   if (id === 'light') emit('send', { type: 'light', on: !props.light })
-  else emit('send', { type: 'act', action: id as 'fight' | 'shoot' | 'flee' | 'hide', at: now.value })
+  else emit('send', { type: 'act', action: id as 'fight' | 'shoot' | 'flee' | 'hide' | 'finish', at: now.value })
 }
 function onKey(e: KeyboardEvent) {
   if (grappling.value) { if (!e.repeat) { e.preventDefault(); mash() } return }

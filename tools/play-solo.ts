@@ -57,7 +57,8 @@ function resolveOverlays() {
       const b = (g as any).live.boss
       const now = Date.now()
       for (const p of b.prompts) { p.from = now - 100; p.to = now + 1000 }
-      for (const p of [...b.prompts]) g.handle({ type: 'qte', id: p.id, key: p.key })
+      const OPP = { up: 'down', down: 'up', left: 'right', right: 'left' } as const
+      for (const p of [...b.prompts]) g.handle({ type: 'qte', id: p.id, key: p.mirror ? OPP[p.key as keyof typeof OPP] : p.key })
       continue
     }
     if (v.encounter?.dodge) {

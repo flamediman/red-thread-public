@@ -28,13 +28,14 @@ export const SOLO_TOKEN = /^[a-z0-9]{12,40}$/
 
 interface Encounter { spawn: string; hp: number; round: number; startedAt: number; deadline: number; windowMs: number; text: string; hit: [number, number][]; flee: [number, number] | null; dodge?: Dodge | null; strikeAt: number; stun?: number; dazed?: number; grapple?: Grapple | null; mode?: 'normal' | 'guard' | 'press' | 'circle'; streak?: number; comboed?: boolean }
 interface Chase { id: string; step: number; startedAt: number; deadline: number; text: string; tried?: number[] }
-interface Prompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
+interface Prompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null; mirror?: boolean; blink?: number }
+const OPPOSITE: Record<SoloQteKey, SoloQteKey> = { up: 'down', down: 'up', left: 'right', right: 'left' }
 /** существо бьёт: точки уворота, и что случится, если их не поймать */
 interface Dodge { prompts: Prompt[]; damage: number; text: string; sfx: string[]; deadline: number }
 /** захват: сколько раз уже нажали, сколько нужно, что будет */
 interface Grapple { deadline: number; presses: number; need: number; damage: number; free: string; held: string; sfx: string[] }
 /** бой с боссом: серия точек prompts, итог прошлой серии last, phase — какая фаза уже объявлена */
-interface Boss { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string; prompts: Prompt[]; last: 'hit' | 'miss' | null; phase: number }
+interface Boss { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string; prompts: Prompt[]; last: 'hit' | 'miss' | null; phase: number; kind?: 'strike' | 'defend'; open?: boolean }
 
 /** всё, что переживает перезагрузку страницы и сохранения */
 interface Run {
@@ -173,6 +174,7 @@ export class SoloGame {
       case 'heal': return this.healWith(msg.item)
       case 'equip': return this.equip(msg.item)
       case 'act': return this.act(msg.action, msg.at)
+      case 'bossShoot': return this.bossShoot()
       case 'run': return this.run_(msg.index)
       case 'qte': return this.qte(msg.id, msg.key, msg.at)
       case 'mash': return this.mash()
@@ -644,6 +646,8 @@ export class SoloGame {
       // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт
       ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0,
         hint: r.ammo ? 'Почти на всё здоровье существа; раунд длиннее.' : 'Патроны кончились.' }] : []),
+      // оглушённое и измотанное — добить одним ударом, как в старых хоррорах
+      ...(e && (e.stun ?? 0) > 0 && e.hp <= m.hp * 0.35 ? [{ id: 'finish' as const, label: 'Добить', enabled: true, hint: 'Оно лежит. Один удар — и всё.' }] : []),
       { id: 'flee', label: 'Бежать назад', enabled: !!r.prev && !(e && (e.dazed ?? 0) > 0), hint: e && (e.dazed ?? 0) > 0 ? 'Ноги не слушаются — переждите раунд.' : prev ? `Назад: ${prev}. В синем окне — уйдёте без удара.` : 'Отступать некуда.' },
       { id: 'hide', label: p.hide ? `Спрятаться: ${p.hide}` : 'Спрятаться', enabled: !!p.hide && !m.noHide, hint: hideHint },
       ...(this.has('flashlight') ? [{ id: 'light' as const, label: r.light ? 'Погасить фонарь' : 'Включить фонарь', enabled: r.light || r.battery > 0, hint: lightHint }] : [])
@@ -912,7 +916,7 @@ export class SoloGame {
   }
 
   /** бой на время: удар и побег засчитываются, если нажали, пока бегунок в своём окне (время нажатия — по часам клиента, если они не разошлись) */
-  private act(action: 'fight' | 'shoot' | 'flee' | 'hide', at?: number) {
+  private act(action: 'fight' | 'shoot' | 'flee' | 'hide' | 'finish', at?: number) {
     const e = this.live.encounter
     const r = this.run!
     if (!e) return
@@ -946,6 +950,12 @@ export class SoloGame {
       }
     }
     switch (action) {
+      case 'finish': {
+        if (!((e.stun ?? 0) > 0 && e.hp <= m.hp * 0.35)) return
+        r.killed.push(s.id); r.kills++
+        this.endEncounter(m.text.finish ?? `Вы бьёте, пока оно не перестаёт шевелиться. ${m.text.die}`, ['solo-hit-land', m.sfx.die])
+        break
+      }
       case 'fight': {
         const melee = this.melee()?.weapon ?? HANDS
         hit(melee.damage, false)
@@ -1071,7 +1081,7 @@ export class SoloGame {
     let idx = -1
     ;(spec.phases ?? []).forEach((ph, i) => { if (hp <= ph.below * spec.hp) idx = i })
     const ph = idx >= 0 ? spec.phases![idx]! : null
-    return { idx, series: ph?.series ?? spec.series, need: ph?.need ?? spec.need, promptMs: ph?.promptMs ?? spec.promptMs, text: ph?.text ?? null }
+    return { idx, series: ph?.series ?? spec.series, need: ph?.need ?? spec.need, promptMs: ph?.promptMs ?? spec.promptMs, text: ph?.text ?? null, dark: !!ph?.dark, mirror: !!ph?.mirror }
   }
 
   private startBoss(spawnId: string) {
@@ -1080,7 +1090,8 @@ export class SoloGame {
     this.live.puzzle = null
     this.live.dialogue = null
     this.live.encounter = null
-    this.live.boss = { spawn: s.id, hp: spec.hp, round: 1, startedAt: Date.now(), deadline: 0, text: spec.text.appear, prompts: [], last: null, phase: -1 }
+    // он нападает первым: первая серия — защита
+    this.live.boss = { spawn: s.id, hp: spec.hp, round: 1, startedAt: Date.now(), deadline: 0, text: spec.text.appear, prompts: [], last: null, phase: -1, kind: 'defend', open: false }
     this.bossRound(spec, 2600)
     this.say('', [spec.sfx.near])
     this.arm()
@@ -1100,7 +1111,8 @@ export class SoloGame {
         x = Math.round(12 + this.random() * 76); y = Math.round(14 + this.random() * 72)
         if (Math.hypot(x - px, y - py) >= 30) break
       }
-      prompts.push({ id: b.round * 10 + k, key: QTE_KEYS[Math.min(QTE_KEYS.length - 1, Math.floor(this.random() * QTE_KEYS.length))]!, x, y, from: t, to: t + ph.promptMs, result: null })
+      prompts.push({ id: b.round * 10 + k, key: QTE_KEYS[Math.min(QTE_KEYS.length - 1, Math.floor(this.random() * QTE_KEYS.length))]!, x, y, from: t, to: t + ph.promptMs, result: null,
+        ...(ph.mirror ? { mirror: true } : {}), ...(ph.dark ? { blink: 420 } : {}) })
       t += ph.promptMs + QTE_GAP
       px = x; py = y
     }
@@ -1118,8 +1130,9 @@ export class SoloGame {
     if (!p || p.result) return
     const now = Date.now()
     const t = typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now
-    p.result = key === p.key && t >= p.from - ZONE_TOL && t <= p.to + ZONE_TOL ? 'hit' : 'miss'
-    this.say('', [p.result === 'hit' ? 'solo-swing' : 'solo-wrong'])
+    const want = p.mirror ? OPPOSITE[p.key] : p.key
+    p.result = key === want && t >= p.from - ZONE_TOL && t <= p.to + ZONE_TOL ? 'hit' : 'miss'
+    this.say('', [p.result === 'hit' ? (b.kind === 'defend' ? 'solo-dodge' : 'solo-swing') : 'solo-wrong'])
     if (b.prompts.every(x => x.result)) this.bossResolve()
     this.changed()
   }
@@ -1132,39 +1145,87 @@ export class SoloGame {
     this.changed()
   }
 
-  /** серия сыграна: поймали сколько нужно — босс теряет здоровье, нет — бьёт он; дальше новая серия */
+  /** серия сыграна. Удар (strike): поймали сколько нужно — босс теряет здоровье (оружие в руках решает, насколько; после
+      чистой защиты — вдвое), нет — он отбивается. Защита (defend): каждая пропущенная точка — его удар по вам; ушли от всех —
+      он открылся, следующий удар сильнее. Серии чередуются: он бьёт — вы бьёте */
   private bossResolve() {
     const b = this.live.boss!
     const spec = this.bossSpec(b)!
-    const r = this.run!
     for (const p of b.prompts) p.result ??= 'miss'
-    const need = this.bossPhase(spec, b.hp).need
+    const ph = this.bossPhase(spec, b.hp)
     const hits = b.prompts.filter(p => p.result === 'hit').length
-    if (hits >= need) {
-      b.hp -= spec.hit
-      b.last = 'hit'
-      if (b.hp <= 0) {
-        r.killed.push(b.spawn); r.kills++
-        this.live.boss = null
-        if (this.timer) { clearTimeout(this.timer); this.timer = null }
-        this.say(spec.text.die, [spec.sfx.die])
-        if (spec.success) this.apply(spec.success)
-        return
+    if (b.kind === 'defend') {
+      const misses = b.prompts.length - hits
+      if (misses) {
+        this.hurt(Math.round(spec.damage * 0.4) * misses)
+        if (this.live.dead) { this.say(spec.text.miss, [spec.sfx.attack]); return }
+        b.last = 'miss'; b.open = false
+        b.text = spec.text.miss
+        this.say('', [spec.sfx.attack])
+      } else {
+        b.last = null; b.open = true
+        b.text = spec.text.dodge ?? 'Он бьёт в пустоту и на миг открывается.'
+        this.say('', ['solo-dodge'])
       }
-      const next = this.bossPhase(spec, b.hp)
-      b.text = next.idx !== b.phase && next.text ? next.text : spec.text.hit
-      b.phase = next.idx
-      this.say('', [spec.sfx.hurt])
+      b.kind = 'strike'
     } else {
-      this.hurt(spec.damage)
-      if (this.live.dead) { this.say(spec.text.miss, [spec.sfx.attack]); return }
-      b.last = 'miss'
-      b.text = spec.text.miss
-      this.say('', [spec.sfx.attack])
+      const need = Math.max(1, ph.need - (b.open ? 1 : 0))
+      if (hits >= need) {
+        b.hp -= Math.round(spec.hit * this.bossWeapon() * (b.open ? 1.5 : 1))
+        b.last = 'hit'
+        if (this.bossDown(spec)) return
+        const next = this.bossPhase(spec, b.hp)
+        b.text = next.idx !== b.phase && next.text ? next.text : spec.text.hit
+        b.phase = next.idx
+        this.say('', [spec.sfx.hurt])
+      } else {
+        b.last = null
+        b.text = spec.text.parry ?? 'Удары уходят в пустоту. Он даже не замечает.'
+        this.say('', ['solo-swing'])
+      }
+      b.open = false
+      b.kind = 'defend'
     }
     b.round++
     this.bossRound(spec, 1800)
     this.arm()
+  }
+
+  /** чем бьёте босса: труба — как есть, голыми руками — вполовину, что-то тяжелее трубы — сильнее */
+  private bossWeapon() {
+    const melee = this.melee()?.weapon
+    return melee ? Math.max(0.6, Math.min(1.4, melee.damage / 16)) : 0.5
+  }
+
+  /** босс повержен: концовка боя; true — бой окончен */
+  private bossDown(spec: SoloBoss) {
+    const b = this.live.boss!
+    if (b.hp > 0) return false
+    const r = this.run!
+    r.killed.push(b.spawn); r.kills++
+    this.live.boss = null
+    if (this.timer) { clearTimeout(this.timer); this.timer = null }
+    this.say(spec.text.die, [spec.sfx.die])
+    if (spec.success) this.apply(spec.success)
+    return true
+  }
+
+  /** выстрел из ракетницы по боссу — в любой момент боя: почти половина его здоровья, но патронов мало */
+  private bossShoot() {
+    const b = this.live.boss
+    const r = this.run!
+    const spec = b && this.bossSpec(b)
+    const gun = Object.keys(r.items).map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
+    if (!b || !spec || !gun || r.ammo <= 0 || this.live.scene) return
+    r.ammo--
+    b.hp -= gun.weapon!.damage
+    b.last = 'hit'
+    this.say('', ['solo-shot', spec.sfx.hurt])
+    if (this.bossDown(spec)) return this.changed()
+    const next = this.bossPhase(spec, b.hp)
+    b.text = next.idx !== b.phase && next.text ? next.text : 'Выстрел бьёт ему в грудь огнём. Он шатается — и идёт снова.'
+    b.phase = next.idx
+    this.changed()
   }
 
   /* ── финал ─────────────────────────────────────────────────── */
@@ -1304,7 +1365,9 @@ export class SoloGame {
       puzzle: ph?.puzzle ? { hotspot: ph.id, puzzle: this.publicPuzzle(ph) } : null,
       boss: b && bs ? {
         id: bs.id, name: bs.name, art: bs.art ?? bs.id, hp: Math.max(0, b.hp), maxHp: bs.hp, round: b.round, text: b.text,
-        startedAt: b.startedAt, deadline: b.deadline, serverNow: now, prompts: b.prompts, need: this.bossPhase(bs, b.hp).need, last: b.last
+        startedAt: b.startedAt, deadline: b.deadline, serverNow: now, prompts: b.prompts, last: b.last,
+        kind: b.kind ?? 'strike', open: !!b.open, need: b.kind === 'defend' ? b.prompts.length : Math.max(1, this.bossPhase(bs, b.hp).need - (b.open ? 1 : 0)),
+        ammo: Object.keys(r.items).some(i => this.ITEM.get(i)?.weapon?.usesAmmo && this.has(i)) ? r.ammo : 0
       } : null,
       dialogue: dl && dNode ? {
         id: dl.id, npc: this.DIALOG.get(dl.id)!.npc, name: this.S.npcs.find(n => n.id === this.DIALOG.get(dl.id)!.npc)?.name ?? '',

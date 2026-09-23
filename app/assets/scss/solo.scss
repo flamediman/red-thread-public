@@ -418,6 +418,13 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &__glyph { font-family: var(--font-ui); font-size: 2.1rem; font-weight: 700; line-height: 1; text-shadow: 0 0 10px rgba(255, 255, 255, 0.6); }
   &--hit { background: rgba(28, 74, 46, 0.92); box-shadow: 0 0 0 3px #8ad3a0, 0 0 32px rgba(138, 211, 160, 0.75); .solo-qte__ring { stroke: #8ad3a0; } }
   &--miss { background: rgba(92, 20, 16, 0.92); box-shadow: 0 0 0 3px #d0493a, 0 0 24px rgba(208, 73, 58, 0.6); animation: shake 0.35s ease; .solo-qte__ring { stroke: #d0493a; } } }
+.solo-qte--mirror { box-shadow: 0 0 0 2px rgba(143, 184, 191, 0.7), 0 0 30px rgba(0, 0, 0, 0.7); .solo-qte__glyph { color: #9fd0d8; } }
+/* босс: крупный призыв над ареной — чья сейчас серия */
+.solo-boss__call { position: absolute; z-index: 8; left: 50%; top: 5%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.2rem; pointer-events: none; text-align: center;
+  b { font-family: var(--font-display); font-size: clamp(1.4rem, 3vw, 2.2rem); letter-spacing: 0.04em; text-transform: uppercase; text-shadow: 0 2px 20px rgba(0, 0, 0, 0.9); }
+  small { font-family: var(--font-ui); font-size: 0.8rem; font-weight: 600; color: var(--paper-2); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9); }
+  &--defend b { color: #e07a6b; } &--strike b { color: #f1ede4; } }
+.solo-boss__shoot { margin-left: auto; kbd { margin-left: 0.4rem; font-size: 0.7rem; opacity: 0.7; } }
 .qte-enter-from, .qte-leave-to { opacity: 0; transform: scale(0.5); }
 .qte-enter-active { transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.2, 1.4, 0.4, 1); }
 .qte-leave-active { transition: opacity 0.22s ease, transform 0.22s ease; }

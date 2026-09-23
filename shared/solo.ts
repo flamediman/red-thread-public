@@ -75,7 +75,8 @@ export interface SoloText { when?: SoloCond; text: string; voice?: string }
 
 export type SoloQteKey = 'up' | 'down' | 'left' | 'right'
 /** точка быстрого нажатия: стрелка, место на арене в процентах, окно по часам сервера, итог */
-export interface SoloQtePrompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null }
+/** mirror — «наоборот»: засчитывается противоположная стрелка; blink — стрелку видно столько мс, потом только кольцо (темнота) */
+export interface SoloQtePrompt { id: number; key: SoloQteKey; x: number; y: number; from: number; to: number; result: 'hit' | 'miss' | null; mirror?: boolean; blink?: number }
 
 export interface SoloExit {
   to: string
@@ -249,7 +250,7 @@ export interface SoloMonster {
   /** strike — замах перед ударом (виден, пока идёт уворот); dodge — удар прошёл мимо; stagger — оглушено точным ударом;
       recover — приходит в себя; daze — герой оглушён его ударом; guard/press/circle — как оно ведёт себя в раунде
       (прикрывается после ваших попаданий, торопится, когда вы слабы, кружит и выжидает) */
-  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; combo?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string }
+  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; combo?: string; finish?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string }
 }
 
 /** Босс: серии быстрых нажатий. На экране одна за другой вспыхивают точки со стрелкой: на компьютере — нажать эту
@@ -268,9 +269,11 @@ export interface SoloBoss {
   promptMs: number
   /** урон боссу за удачную серию */
   hit: number
-  phases?: { below: number; text: string; series?: number; need?: number; promptMs?: number }[]
+  /** фазы по здоровью: dark — стрелки видны мгновение (фонарь погас, запоминайте), mirror — всё наоборот (жать противоположную) */
+  phases?: { below: number; text: string; series?: number; need?: number; promptMs?: number; dark?: boolean; mirror?: boolean }[]
   sfx: { near: string; attack: string; hurt: string; die: string }
-  text: { appear: string; hit: string; miss: string; die: string }
+  /** hit — ваша серия удалась, miss — он достал вас в защите, parry — ваша серия сорвалась, dodge — вы ушли от всех ударов (он открылся) */
+  text: { appear: string; hit: string; miss: string; die: string; parry?: string; dodge?: string }
   /** после победы */
   success?: SoloEffect
 }
@@ -414,7 +417,7 @@ export interface SoloView {
     zones: { hit: [number, number][]; flee: [number, number] | null }
     text: string
     /** hint — что делает действие и почему может не сработать; показывается под кнопкой */
-    options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light'; label: string; enabled: boolean; hint?: string }[]
+    options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light' | 'finish'; label: string; enabled: boolean; hint?: string }[]
     /** существо бьёт: точки уворота (как у босса); пока они есть, полоса раунда стоит */
     dodge: { prompts: SoloQtePrompt[]; deadline: number } | null
     /** существо оглушено точным ударом (окна шире, ответа не будет) / герой оглушён (окна уже, бежать нельзя) */
@@ -432,6 +435,10 @@ export interface SoloView {
     /** точки серии по часам сервера: key — стрелка, x/y — место на арене в процентах, result — как сыграна */
     prompts: SoloQtePrompt[]
     need: number
+    /** серия: strike — бьёте вы, defend — бьёт он (уходите от каждой точки); open — прошлую защиту сыграли чисто, удар сильнее */
+    kind: 'strike' | 'defend'; open: boolean
+    /** выстрел из ракетницы между сериями: сколько патронов (0 — ружья нет или пусто) */
+    ammo: number
     /** итог прошлой серии */
     last: 'hit' | 'miss' | null
   } | null
@@ -469,7 +476,8 @@ export type SoloClientMessage =
   | { type: 'equip'; item: string }
   | { type: 'heal'; item: string }
   /** at — время нажатия по часам сервера (клиент знает сдвиг): так пинг не съедает окно */
-  | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide'; at?: number }
+  | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide' | 'finish'; at?: number }
+  | { type: 'bossShoot' }
   | { type: 'run'; index: number }
   /** босс: нажата стрелка (или точка) с номером id */
   | { type: 'qte'; id: number; key: SoloQteKey; at?: number }

@@ -8,6 +8,9 @@ const props = withDefaults(defineProps<{ prompts: SoloQtePrompt[]; now: number; 
 const emit = defineEmits<{ answer: [id: number, key: SoloQteKey, at: number] }>()
 
 const GLYPH: Record<SoloQteKey, string> = { up: '↑', down: '↓', left: '←', right: '→' }
+const OPP: Record<SoloQteKey, SoloQteKey> = { up: 'down', down: 'up', left: 'right', right: 'left' }
+/* темнота: стрелку видно blink мс с появления точки, дальше — только кольцо */
+const glyphShown = (p: SoloQtePrompt) => !p.blink || result(p) || props.now <= p.from - props.lead + p.blink
 const KEYS: Record<string, SoloQteKey> = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   w: 'up', s: 'down', a: 'left', d: 'right', ц: 'up', ы: 'down', ф: 'left', в: 'right'
@@ -21,7 +24,7 @@ const active = computed(() => props.prompts.find(p => !result(p) && props.now >=
 function answer(p: SoloQtePrompt, key: SoloQteKey) {
   if (result(p)) return
   const inWindow = props.now >= p.from - 130 && props.now <= p.to + 130
-  local[p.id] = key === p.key && inWindow ? 'hit' : 'miss'
+  local[p.id] = key === (p.mirror ? OPP[p.key] : p.key) && inWindow ? 'hit' : 'miss'
   emit('answer', p.id, key, props.now)
 }
 /* палец или мышь: провести в сторону стрелки от любого места арены; порог 36 px, направление — по большей оси */
@@ -58,11 +61,11 @@ defineExpose({ result })
     <TransitionGroup name="qte">
       <span
         v-for="p in visible" :key="p.id" class="solo-qte"
-        :class="[`solo-qte--${p.key}`, result(p) && `solo-qte--${result(p)}`]" :style="{ left: `${p.x}%`, top: `${p.y}%` }"
+        :class="[`solo-qte--${p.key}`, result(p) && `solo-qte--${result(p)}`, p.mirror && 'solo-qte--mirror']" :style="{ left: `${p.x}%`, top: `${p.y}%` }"
         :aria-label="`стрелка ${GLYPH[p.key]}`"
       >
         <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="solo-qte__ring" cx="50" cy="50" r="46" :style="{ strokeDashoffset: (1 - ring(p)) * 289 }" /></svg>
-        <span class="solo-qte__glyph">{{ GLYPH[p.key] }}</span>
+        <span class="solo-qte__glyph">{{ glyphShown(p) ? GLYPH[p.key] : '' }}</span>
       </span>
     </TransitionGroup>
   </div>

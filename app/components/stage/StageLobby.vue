@@ -107,6 +107,7 @@ function tryStart() {
         </span>
         <span class="stamp">{{ state.setting.title }} · {{ state.caseInfo.stamp }}</span>
       </div>
+      <ModeChip class="lobby__mode" :mode="realtime ? 'realtime' : 'rounds'" explain />
       <h1 class="display lobby__title">{{ state.caseInfo.title }}</h1>
       <p class="lobby__lede">{{ state.caseInfo.lede }}</p>
       <p class="lobby__history">
