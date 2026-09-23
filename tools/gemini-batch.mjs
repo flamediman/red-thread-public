@@ -3,6 +3,7 @@
 //   CASE=<дело> node tools/gemini-batch.mjs poll <имя>                  — узнать состояние; готово — разложить картинки
 // План — список { id, mode, refs?, text? }:
 //   mode 'new'  — нарисовать заново по промпту из prompts/art.mjs; refs — образцы стиля (кадры дела, пути или id)
+//   mode 'place' — нарисовать заново, но места и люди как на образцах (погони, крупные планы, сцены)
 //   mode 'edit' — переделать первый образец: та же композиция (изнанка из кадра места, повтор в 2K); text — что изменить
 // Готовые картинки — в art/.variants/<id>.nb.jpg (кадры в игре не трогаются), ход дел — в .cache/gemini-batch/<имя>.json.
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
@@ -29,6 +30,7 @@ const refPath = r => (r.includes('/') ? resolve(root, r) : resolve(ART, `${r}.jp
 const jpeg = f => ({ inlineData: { mimeType: 'image/jpeg', data: readFileSync(f).toString('base64') } })
 
 const STYLE = 'The attached images are finished frames from the same game. Match only their photographic look: film stock, grain, colour grading and level of realism. Do not copy their lighting, composition or content: depict only what is described, lit as described. '
+const PLACE = 'The attached frames show the places and characters of this game that appear in the new picture. Keep their architecture, materials, colours, landmarks, faces and clothes consistent with the attached frames, and match their photographic look, but show exactly the view, lighting and moment described. '
 const EDIT = 'Re-render the first attached frame keeping exactly the same composition, camera angle, framing and the positions of all objects. '
 const TAIL = '. No text, no letters, no captions, no watermark, no people unless described.'
 
@@ -37,7 +39,7 @@ function request(item) {
   if (!img) throw new Error(`нет промпта ${item.id}`)
   const parts = []
   for (const r of item.refs ?? []) { const f = refPath(r); if (!existsSync(f)) throw new Error(`нет образца ${f}`); parts.push(jpeg(f)) }
-  const lead = item.mode === 'edit' ? EDIT : parts.length ? STYLE : ''
+  const lead = item.mode === 'edit' ? EDIT : item.mode === 'place' && parts.length ? PLACE : parts.length ? STYLE : ''
   const body = item.mode === 'edit' ? `${item.text ?? 'Increase resolution and fine detail only.'} The frame shows: ${img.prompt}` : `${item.text ? `${item.text} ` : ''}${img.prompt}`
   parts.push({ text: `${lead}${body}${TAIL}` })
   return { key: item.id, request: { contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: nearest(img.w, img.h), imageSize: '2K' } } } }
