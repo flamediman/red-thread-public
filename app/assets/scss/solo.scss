@@ -547,26 +547,25 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-hatch { stroke: #3d4046; stroke-width: 0.18; stroke-opacity: 0.35; }
     .m-water { fill: #676a70; }
     .m-shore { fill: none; stroke: #4e5157; stroke-width: 0.4; }
-    .m-forest { fill: #a3ab97; }
-    .m-tree { fill: #7d8873; opacity: 0.55; }
-    .m-grass { fill: #bdbfa6; }
-    .m-grass-tick { fill: none; stroke: #8f9a78; stroke-width: 0.18; opacity: 0.7; }
-    .m-road-casing { fill: none; stroke: #b5ac9b; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-    .m-road { fill: none; stroke: #ebe5d7; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .m-forest { fill: #a2a896; }
+    .m-stipple { fill: #6f7a66; opacity: 0.55; }
+    .m-grass { fill: #c2c3ad; }
+    .m-solid-hatch { stroke: #5a534b; stroke-width: 0.16; stroke-opacity: 0.45; }
+    .m-road-casing { fill: none; stroke: #8f8676; stroke-width: 2.9; stroke-linecap: square; stroke-linejoin: miter; }
+    .m-road { fill: none; stroke: #e9e3d4; stroke-width: 2.5; stroke-linecap: square; stroke-linejoin: miter; }
     .m-path { fill: none; stroke: #6d655a; stroke-width: 0.4; stroke-dasharray: 1.2 0.9; stroke-linecap: round; }
     .m-block rect { fill: #a89b95; stroke: #766b67; stroke-width: 0.3; }
-    .m-open rect { fill: rgba(236, 230, 216, 0.5); stroke: none; }
-    .m-open--seen rect { fill: rgba(242, 237, 225, 0.75); }
-    .m-building__body { fill: #d9d1c1; stroke: #45403a; stroke-width: 0.55; }
-    .m-room rect { fill: #b9ae9f; stroke: #45403a; stroke-width: 0.3; }
+    .m-open rect { fill: rgba(226, 219, 203, 0.35); stroke: #6d655a; stroke-width: 0.28; stroke-dasharray: 1.4 0.8; }
+    .m-open--seen rect { fill: rgba(236, 230, 216, 0.6); }
+    .m-building__body { fill: #bfb5a6; stroke: #2f2a25; stroke-width: 0.75; }
+    .m-room rect { fill: #b9ae9f; stroke: #2f2a25; stroke-width: 0.38; }
     .m-room--known rect { fill: #c9bfb0; }
     .m-room--seen rect { fill: #ebe5d7; }
     .m-room--here rect { fill: #e4ad60; }
     .m-floor-label { fill: #5f584f; font-size: 1.7px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
-    .m-door__gap { fill: #d9d1c1; }
+    .m-door__gap { fill: #ebe5d7; }
     .m-door__leaf { fill: none; stroke: #45403a; stroke-width: 0.2; }
     .m-door--locked .m-door__gap { fill: #d9c1b8; }
-    .m-prop path { fill: none; stroke: #5b544b; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; }
     .m-label { font-family: var(--font-ui); font-weight: 600; paint-order: stroke; stroke: rgba(205, 198, 182, 0.7); stroke-width: 0.5px; }
     .m-label--water { fill: #dcd8cc; font-size: 2.3px; font-weight: 500; stroke: none; }
     .m-label--street { fill: #4d463f; font-size: 1.75px; letter-spacing: 0.03em; }
@@ -582,10 +581,8 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-hand__q { fill: #b5322a; font-family: 'Caveat', var(--font-story); font-size: 4px; font-weight: 500; }
     .m-hand__word { fill: #b5322a; font-family: 'Caveat', var(--font-story); font-size: 2.9px; font-weight: 500; }
     .m-paper-scan { mix-blend-mode: multiply; opacity: 0.55; pointer-events: none; }
-    .m-compass__star { fill: #3f3a34; }
-    .m-compass__north { fill: #b5322a; }
-    .m-compass__hub { fill: #cdc6b6; stroke: #3f3a34; stroke-width: 0.3; }
-    .m-compass__n { fill: #3f3a34; font-size: 2.6px; font-weight: 700; }
+    .m-compass__arrow { fill: #2f2a25; }
+    .m-compass__n { fill: #2f2a25; font-size: 2.4px; font-weight: 700; }
     .m-fold { fill: none; stroke: #2e2820; stroke-width: 0.35; opacity: 0.12; }
     .m-sheet { fill: #5f584f; font-size: 1.8px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; paint-order: stroke; stroke: rgba(205, 198, 182, 0.9); stroke-width: 0.7px; } }
   &__key { display: inline-block; width: 0.62rem; height: 0.62rem; margin-right: 0.35rem; border-radius: 50%; vertical-align: -0.05rem;

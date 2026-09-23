@@ -128,23 +128,6 @@ const marker = (p: Place) => {
 
 /* значки-пометки: телефон (сохранение), крест (заперто) — в сетке 24×24 */
 const PHONE = 'M6.5 3.5h3l1.8 4.6-2.1 1.3a11 11 0 005.4 5.4l1.3-2.1 4.6 1.8v3a2 2 0 01-2 2A15.5 15.5 0 014.5 5.5a2 2 0 012-2z'
-/* мелочи местности тушью: сетка 24×24 */
-const PROP: Record<string, string> = {
-  tree: 'M12 3l5 8h-3l4 6h-4l3 5H7l3-5H6l4-6H7zM12 22v-3',
-  bush: 'M5 17a3.5 3.5 0 015-3 4 4 0 018 0 3.5 3.5 0 015 3v2H5z',
-  lamp: 'M12 22V8M9 8h6l-1-3h-4zM10 22h4',
-  bench: 'M4 11h16M6 11v7M18 11v7M5 8h14v3H5z',
-  statue: 'M8 22h8v-4H8zM12 5a2 2 0 110 4 2 2 0 010-4zM10 9h4l1 8H9zM15 4l2 14',
-  busstop: 'M3 8h18v2H3zM6 10v11M18 10v11M6 16h12',
-  barrier: 'M3 12h18M5 12v8M3 20h4',
-  boat: 'M3 13h18l-3 6H6zM12 13V6l5 7',
-  pier: 'M2 9h20v6H2zM6 9v6M10 9v6M14 9v6M18 9v6',
-  flagpole: 'M8 22V2M8 3h9l-2 3 2 3H8z',
-  sign: 'M12 22V9M12 9a4 4 0 110-8 4 4 0 010 8M9 5h6',
-  mast: 'M12 22V2M7 7l5-3 5 3M8 13l4-2 4 2M9 19l3-2 3 2',
-  truck: 'M2 16h13V8H2zM15 11h4l3 3v2h-7zM6 19a1.7 1.7 0 110-3.4M18 19a1.7 1.7 0 110-3.4'
-}
-
 function onKey(e: KeyboardEvent) { if (e.code === 'Escape' || e.code === 'KeyM') { e.preventDefault(); emit('close') } }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -168,12 +151,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <pattern :id="`${uid}-hatch`" width="2.2" height="2.2" patternUnits="userSpaceOnUse" patternTransform="rotate(-25)">
               <path d="M0,1.1 H2.2" class="m-hatch" />
             </pattern>
-            <pattern :id="`${uid}-trees`" width="6" height="6" patternUnits="userSpaceOnUse">
-              <path class="m-tree" d="M1.6,0.5 l1.1,1.9 h-0.6 l1,1.7 H0.1 l1,-1.7 h-0.6 z" />
-              <path class="m-tree" d="M4.5,3.1 l1.1,1.9 h-0.6 l1,1.7 H3 l1,-1.7 h-0.6 z" />
+            <pattern :id="`${uid}-stipple`" width="3.2" height="3.2" patternUnits="userSpaceOnUse">
+              <circle class="m-stipple" cx="0.6" cy="0.8" r="0.2" /><circle class="m-stipple" cx="2.2" cy="0.4" r="0.16" />
+              <circle class="m-stipple" cx="1.5" cy="2.1" r="0.22" /><circle class="m-stipple" cx="2.9" cy="2.8" r="0.15" />
             </pattern>
-            <pattern :id="`${uid}-grass`" width="3" height="3" patternUnits="userSpaceOnUse">
-              <path class="m-grass-tick" d="M0.6,2.2 l0.5,-0.9 M2,1.4 l0.5,-0.9" />
+            <pattern :id="`${uid}-solid`" width="1.3" height="1.3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <path d="M0,0.65 H1.3" class="m-solid-hatch" />
             </pattern>
             <radialGradient :id="`${uid}-age`" cx="50%" cy="50%" r="75%">
               <stop offset="55%" stop-color="#3a3126" stop-opacity="0" /><stop offset="100%" stop-color="#3a3126" stop-opacity="0.34" />
@@ -183,13 +166,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <!-- бумага -->
           <rect class="m-paper" :width="W" height="100" />
           <rect :width="W" height="100" :filter="`url(#${uid}-paper)`" />
-          <!-- местность: вода штрихом, лес ёлочками, газоны редкой травой -->
+          <!-- местность: вода штрихом, лес заливкой с крапом, газоны ровным тоном -->
           <g :transform="`scale(${A},1)`">
-            <template v-for="(d, i) in geo.grass" :key="`g${i}`">
-              <path class="m-grass" :d="d" /><path :d="d" :fill="`url(#${uid}-grass)`" />
-            </template>
+            <path v-for="(d, i) in geo.grass" :key="`g${i}`" class="m-grass" :d="d" />
             <template v-for="(d, i) in geo.forest" :key="`f${i}`">
-              <path class="m-forest" :d="d" /><path :d="d" :fill="`url(#${uid}-trees)`" />
+              <path class="m-forest" :d="d" /><path :d="d" :fill="`url(#${uid}-stipple)`" />
             </template>
             <template v-for="(d, i) in geo.water" :key="`w${i}`">
               <path class="m-water" :d="d" /><path :d="d" :fill="`url(#${uid}-hatch)`" /><path class="m-shore" :d="d" />
@@ -209,14 +190,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <rect :x="b[0] * A" :y="b[1]" :width="b[2] * A" :height="b[3]" :fill="`url(#${uid}-hatch)`" opacity="0.35" />
           </g>
 
-          <!-- площадки под открытым небом: светлые зоны, как расширения улиц -->
+          <!-- площадки под открытым небом: участок с пунктирной границей, как двор или площадь на городском плане -->
           <g v-for="p in places.filter(x => x.outdoor)" :key="`o-${p.id}`" class="m-open" :class="{ 'm-open--seen': p.visited, 'm-open--here': p.here }">
-            <rect :x="box(p).x" :y="box(p).y" :width="box(p).w" :height="box(p).h" rx="2" />
+            <rect :x="box(p).x" :y="box(p).y" :width="box(p).w" :height="box(p).h" />
           </g>
 
           <!-- здания: контур, комнаты, подпись этажа -->
           <g v-for="g in buildings" :key="g.id" class="m-building">
             <rect class="m-building__body" :x="g.x" :y="g.y" :width="g.w" :height="g.h" />
+            <rect :x="g.x" :y="g.y" :width="g.w" :height="g.h" :fill="`url(#${uid}-solid)`" />
             <g v-for="r in g.rooms" :key="r.id" class="m-room" :class="{ 'm-room--seen': r.visited, 'm-room--known': r.known, 'm-room--here': r.here }">
               <rect :x="box(r).x" :y="box(r).y" :width="box(r).w" :height="box(r).h" />
             </g>
@@ -227,11 +209,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <g v-for="d in allDoors" :key="d.key" class="m-door" :class="{ 'm-door--locked': d.locked }" :transform="`translate(${d.x},${d.y}) rotate(${d.vertical ? 90 : 0})`">
             <rect class="m-door__gap" x="-1.3" y="-0.55" width="2.6" height="1.1" />
             <path class="m-door__leaf" d="M-1.1,0 A2.2,2.2 0 0 1 1.1,0" />
-          </g>
-
-          <!-- мелочи местности -->
-          <g v-for="(pr, i) in geo.props" :key="`pr${i}`" class="m-prop" :transform="`translate(${pr.x * A},${pr.y}) rotate(${pr.rotate ?? 0}) scale(${(pr.size ?? 5) / 24})`">
-            <path :d="PROP[pr.kind] ?? PROP.bush" transform="translate(-12,-12)" />
           </g>
 
           <!-- подписи местности -->
@@ -261,12 +238,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <path d="M-1.4,-1.4 L1.4,1.4 M1.4,-1.4 L-1.4,1.4" />
           </g>
 
-          <!-- роза ветров -->
-          <g class="m-compass" :transform="`translate(${W - 7 * K},${8 * K}) scale(${K})`">
-            <path class="m-compass__star" d="M0,-4.2 L1,-1 L4.2,0 L1,1 L0,4.2 L-1,1 L-4.2,0 L-1,-1 Z" />
-            <path class="m-compass__north" d="M0,-4.2 L1,-1 L-1,-1 Z" />
-            <circle r="1.1" class="m-compass__hub" />
-            <text class="m-compass__n" text-anchor="middle" y="-5.2">N</text>
+          <!-- север: тонкая стрелка, как на отпечатанном плане -->
+          <g class="m-compass" :transform="`translate(${W - 5 * K},${9 * K}) scale(${K})`">
+            <path class="m-compass__arrow" d="M0,-4.4 L1.3,1.6 L0,0.7 L-1.3,1.6 Z" />
+            <text class="m-compass__n" text-anchor="middle" y="-5.4">С</text>
           </g>
           <!-- пометки героя маркером, как на карте в кармане: «?» — загадка не решена, «заперто» — у запертого -->
           <g v-for="p in places.filter(x => x.puzzle)" :key="`q-${p.id}`" class="m-hand" :transform="`translate(${box(p).x + box(p).w - 3},${box(p).y + 3.6}) scale(${K}) rotate(-6)`">
