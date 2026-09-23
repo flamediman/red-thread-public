@@ -4,7 +4,7 @@
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
 const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean }>()
-const emit = defineEmits<{ fail: [] }>()
+const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
 const ready = ref(false)
@@ -214,7 +214,7 @@ function frame(ms: number) {
   gl.uniform1f(u.fogAmt!, props.fog ?? 0.6)
   gl.uniform1f(u.other!, props.other ? 1 : 0)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-  if (!ready.value) ready.value = true
+  if (!ready.value) { ready.value = true; emit('ready') }
   raf = requestAnimationFrame(frame)
 }
 

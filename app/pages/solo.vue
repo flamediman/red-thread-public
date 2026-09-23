@@ -218,6 +218,35 @@ watch([() => place.value?.surface, () => place.value?.outdoor, () => audio.unloc
   audio.setRoom(outdoor ? 0.07 : surface === 'water' ? 0.5 : surface === 'tile' ? 0.36 : 0.16)
 }, { immediate: true })
 
+/* Смена кадра без провала в темноту. Новый кадр проявляется сам: объёмный — после первой отрисовки (у телефона на это
+   может уйти секунда), обычный — после загрузки. Уходящий кадр держится, пока новый не нарисован (не дольше 4 с),
+   и только потом растворяется — картинка сменяет картинку */
+const frameReady = ref(0)
+function onCutEnter(el: Element, done: () => void) {
+  const e = el as HTMLElement
+  // у объёмного кадра своё проявление по готовности (класс --ready)
+  if (e.tagName === 'CANVAS') return done()
+  e.style.opacity = '0'
+  requestAnimationFrame(() => requestAnimationFrame(() => { e.style.transition = 'opacity 1.4s ease'; e.style.opacity = '1' }))
+  setTimeout(() => { e.style.transition = ''; e.style.opacity = ''; done() }, 1500)
+}
+function onCutLeave(el: Element, done: () => void) {
+  const e = el as HTMLElement
+  const start = frameReady.value
+  let finished = false
+  let stop: (() => void) | null = null
+  const fade = () => {
+    if (finished) return
+    finished = true
+    stop?.(); clearTimeout(cap)
+    e.style.transition = 'opacity 1.1s ease'
+    e.style.opacity = '0'
+    setTimeout(done, 1150)
+  }
+  stop = watch(frameReady, v => { if (v !== start) fade() })
+  const cap = setTimeout(fade, 4000)
+}
+
 /** музыка молчит (пауза темы района, см. ниже) */
 const musicRest = ref(false)
 /* музыка: тема по району и состоянию, под исследованием — тише ленты атмосферы, в погоне и на заставке — в полную.
@@ -399,11 +428,11 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
           @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
         >
-          <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
-          <Transition name="solo-cut" :duration="{ enter: 1400, leave: 1400 }">
+          <!-- смена кадра — на JS: уходящий кадр гаснет, только когда новый уже нарисован (см. onCutLeave) -->
+          <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="place?.weather === 'rain' ? 1 : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" />
-            <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
+            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="place?.weather === 'rain' ? 1 : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @load="frameReady++" @error="artOk = false">
           </Transition>
           <Transition name="fade">
             <button v-if="closeup && artOk" type="button" class="solo-view__back" @click.stop="backToPlace">← {{ place?.name }}</button>
