@@ -3,7 +3,7 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[] }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -21,6 +21,7 @@ uniform sampler2D img; uniform sampler2D dep;
 uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
+uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN;
 float depthAt(vec2 q) { return texture(dep, q).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -109,6 +110,23 @@ void main() {
     float beam = (1.0 - smoothstep(radius * 0.2, radius * 1.3, r)) * (mode > 1.5 ? 0.0 : 1.0);
     col += warm * beam * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - d * 0.6) * flicker;
   }
+  // лампы, нарисованные в кадре: в темноте светятся сами; пятно света ложится только на то, что рядом с лампой по глубине
+  // (стол под лампой — да, стена в пяти метрах перед ней — нет); вокруг — свечение в тумане
+  if (mode > 0.5) for (int k = 0; k < 4; k++) {
+    if (k >= lampN) break;
+    vec2 lp = lamp[k].xy;
+    float ld = depthAt(lp);
+    vec2 dv = vec2(o.x - lp.x, (o.y - lp.y) * texel.x / texel.y);
+    float dist = length(dv);
+    float r = lamp[k].z;
+    float fl = lamp[k].w > 0.5 ? 0.82 + 0.18 * sin(t * 13.0 + float(k) * 2.1) * sin(t * 5.3 + 1.1) : 1.0;
+    float pool = exp(-pow(dist / r, 2.0)) * exp(-abs(d - ld) * 6.0);
+    float core = exp(-pow(dist / (r * 0.12), 2.0));
+    float glow = exp(-pow(dist / (r * 0.5), 2.0));
+    col += albedo * lampCol[k] * pool * 1.6 * fl;
+    col = mix(col, albedo * 1.15 + lampCol[k] * 0.12, clamp(core * fl, 0.0, 1.0));
+    col += lampCol[k] * glow * (0.07 + 0.12 * fogAmt) * fl;
+  }
   // пылинки на трёх глубинах: плывут, мерцают; видны, только если перед поверхностью, и только в луче фонаря
   // (без фонаря мелкие точки на экране читаются как битые пиксели)
   float motes = 0.0;
@@ -158,6 +176,9 @@ void main() {
   color = vec4(col, 1.0);
 }`
 
+/** цвет ламп в кадре */
+const LAMP: Record<string, number[]> = { warm: [1.0, 0.76, 0.46], red: [1.0, 0.26, 0.18], cold: [0.7, 0.8, 1.0] }
+
 let gl: WebGL2RenderingContext | null = null
 let raf = 0
 let dead = false
@@ -206,7 +227,7 @@ async function init() {
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
     texture(0, img); texture(1, dep)
-    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1)
     gl.uniform2f(u.texel!, 3 / img.naturalWidth, 3 / img.naturalHeight)
     raf = requestAnimationFrame(frame)
@@ -237,6 +258,13 @@ function frame(ms: number) {
   gl.uniform1f(u.fogAmt!, props.fog ?? 0.6)
   gl.uniform1f(u.other!, props.other ? 1 : 0)
   gl.uniform1f(u.flash!, props.flash ?? 0)
+  const L = (props.lights ?? []).slice(0, 4)
+  const pos = new Float32Array(16), rgb = new Float32Array(12)
+  L.forEach((l, i) => {
+    pos.set([l.x / 100, l.y / 100, (l.r ?? 8) / 100, l.flicker ? 1 : 0], i * 4)
+    rgb.set(LAMP[l.color ?? 'warm'] ?? LAMP.warm!, i * 3)
+  })
+  gl.uniform4fv(u.lamp!, pos); gl.uniform3fv(u.lampCol!, rgb); gl.uniform1i(u.lampN!, L.length)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   if (!ready.value) { ready.value = true; emit('ready') }
   raf = requestAnimationFrame(frame)

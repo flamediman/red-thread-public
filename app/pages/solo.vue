@@ -455,7 +455,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <!-- смена кадра — на JS: уходящий кадр гаснет, только когда новый уже нарисован (см. onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
             <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @load="frameReady++" @error="artOk = false">
           </Transition>
           <Transition name="fade">

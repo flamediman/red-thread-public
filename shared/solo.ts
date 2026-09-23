@@ -21,6 +21,10 @@ export interface SoloCond {
   weather?: SoloWeather[]
 }
 
+/** лампа в кадре: x, y — в процентах картинки; r — радиус пятна света в процентах ширины (по умолчанию 8);
+    цвет: warm — лампа накаливания, red — изнанка, cold — луна или люминесцентная; flicker — свет дрожит */
+export interface SoloLight { x: number; y: number; r?: number; color?: 'warm' | 'red' | 'cold'; flicker?: boolean }
+
 /** погода истории: развивается с сюжетом (правила SoloStory.weather), а не приклеена к месту */
 export type SoloWeather = 'fog' | 'drizzle' | 'rain' | 'storm'
 export interface SoloWeatherRule {
@@ -372,6 +376,9 @@ export interface SoloStory {
   endingRules: { ending: string; when?: SoloCond; score?: Record<string, number> }[]
   /** что в кадре главное, если кадр режется под узкий экран: имя картинки → object-position («86% 40%») */
   artFocus?: Record<string, string>
+  /** источники света, нарисованные в кадре (лампа, фонарь): в темноте светятся сами и освещают пятно вокруг; фонарь
+      героя высвечивает остальное. Имя картинки → лампы в процентах кадра */
+  lights?: Record<string, SoloLight[]>
   /** погода по ходу сюжета: действует последнее подходящее правило; без правил — туман */
   weather?: SoloWeatherRule[]
   /** кадры, у которых есть карта глубины z_<кадр>.jpg: рисуются объёмом (2,5D) */
@@ -405,6 +412,7 @@ export interface SoloView {
   speakers: Record<string, string>
   /** главная точка кадра для узких экранов: имя картинки → object-position */
   artFocus: Record<string, string>
+  lights: Record<string, SoloLight[]>
   /** кадры с картой глубины */
   depth: string[]
   /** нет партии — только меню */
