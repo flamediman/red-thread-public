@@ -35,12 +35,13 @@ void main() {
   vec3 L = vec3(torch * vec2(1.6, 1.0), 1.25);
   vec3 toL = L - P; float dist = length(toL); vec3 l = toL / dist;
   float diffuse = max(dot(n, l), 0.0) * 0.7 + 0.3;
-  float radius = weak > 0.5 ? 0.16 : 0.32;
-  float cone = smoothstep(radius, radius * 0.25, distance(s * vec2(1.6, 1.0), torch * vec2(1.6, 1.0)) * (1.25 - d * 0.5));
-  float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 5.0 : 2.2));
+  float radius = weak > 0.5 ? 0.24 : 0.46;
+  float r = distance(s * vec2(1.6, 1.0), torch * vec2(1.6, 1.0));
+  float cone = 1.0 - smoothstep(radius * 0.3, radius, r);
+  float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 2.0 : 0.8));
   float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
-  float lit = mode > 1.5 ? 0.0 : cone * diffuse * fall * 2.4 * flicker;
-  float ambient = 0.035 + 0.05 * d;
+  float lit = mode > 1.5 ? 0.0 : cone * diffuse * fall * 2.2 * flicker;
+  float ambient = 0.04 + 0.06 * d;
   vec3 warm = vec3(1.0, 0.9, 0.72);
   color = vec4(albedo * (ambient + warm * lit), 1.0);
 }`
