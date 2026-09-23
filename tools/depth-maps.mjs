@@ -14,8 +14,8 @@ const dir = process.argv[2]
 if (!dir) { console.error('укажите папку art истории'); process.exit(1) }
 const onlyArg = process.argv.indexOf('--only')
 const only = onlyArg > 0 ? new Set(process.argv[onlyArg + 1].split(',')) : null
-const DILATE = 4
-const BLUR = 2.2
+const DILATE = 2
+const BLUR = 1.2
 
 /** Билинейно растянуть поле w×h до W×H */
 function resize(src, w, h, W, H) {

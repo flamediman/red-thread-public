@@ -45,6 +45,18 @@ void main() {
   float dx = depthAt(o + vec2(texel.x, 0.0)) - depthAt(o - vec2(texel.x, 0.0));
   float dy = depthAt(o + vec2(0.0, texel.y)) - depthAt(o - vec2(0.0, texel.y));
   vec3 n = normalize(vec3(-dx * 9.0, dy * 9.0, 1.0));
+  // край предмета: глубина здесь круто падает, и при сдвиге камеры шейдер растянул бы пиксели края резиной.
+  // На таком склоне берём цвет и глубину (для тумана) с фона за краем: ищем вниз по склону точку заметно дальше
+  float slope = length(vec2(dx, dy));
+  float edge = smoothstep(0.035, 0.1, slope);
+  if (edge > 0.0) {
+    vec2 down = -normalize(vec2(dx, dy) + 1e-6) * texel;
+    for (int k = 1; k <= 6; k++) {
+      vec2 bp = o + down * float(k) * 1.5;
+      float bd = depthAt(bp);
+      if (bd < d - 0.07) { albedo = mix(albedo, texture(img, bp + down).rgb, edge); d = mix(d, bd, edge); break; }
+    }
+  }
   // затенение в углах и щелях: соседи ближе — сюда меньше попадает рассеянного света
   float occ = 0.0;
   for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; occ += max(0.0, depthAt(o + off) - d - 0.01); }
@@ -226,7 +238,7 @@ function frame(ms: number) {
 
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
-watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.018; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.01 })
+watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.028; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.015 })
 onMounted(init)
 onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension('WEBGL_lose_context')?.loseContext() })
 </script>
