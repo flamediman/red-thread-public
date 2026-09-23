@@ -7,7 +7,7 @@ import { DATA_DIR } from '../utils/data-dir'
 import { assignVoiceIds } from './solo-lines'
 import type {
   SoloBoss, SoloChase, SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
-  SoloPlace, SoloQteKey, SoloSpawn, SoloStory, SoloView
+  SoloPlace, SoloQteKey, SoloSpawn, SoloStory, SoloView, SoloWeather, SoloWeatherRule
 } from '../../shared/types'
 
 const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSync('/app/build-id', 'utf8').trim() : 'dev')
@@ -46,6 +46,8 @@ interface Run {
   flags: string[]
   items: Record<string, number>
   notes: string[]
+  /** правило погоды, о котором игрок уже знает (номер в SoloStory.weather): о смене говорим один раз */
+  weatherSeen?: number
   /** прочитанные записки (открывали в журнале) */
   read?: string[]
   /** где нашли записку: id записки → id места */
@@ -234,7 +236,30 @@ export class SoloGame {
     if (c.otherworld !== undefined && c.otherworld !== r.otherworld) return false
     if (c.score && !Object.entries(c.score).every(([k, v]) => (r.score[k] ?? 0) >= v)) return false
     if (c.scoreBelow && !Object.entries(c.scoreBelow).every(([k, v]) => (r.score[k] ?? 0) < v)) return false
+    if (c.notes && !c.notes.every(n => r.notes.includes(n))) return false
+    if (c.weather && !c.weather.includes(this.weather())) return false
     return true
+  }
+
+  /** погода сейчас: последнее подходящее правило истории (условия правил о погоде не спрашивают — иначе круг) */
+  private weatherRule(): { rule: SoloWeatherRule | null; index: number } {
+    let rule: SoloWeatherRule | null = null, index = -1
+    ;(this.S.weather ?? []).forEach((w, i) => { if (this.ok({ ...w.when, weather: undefined })) { rule = w; index = i } })
+    return { rule, index }
+  }
+  private weather(): SoloWeather { return this.weatherRule().rule?.level ?? 'fog' }
+
+  /** погода сменилась с прошлого раза — одна строка рассказчика, чтобы игрок заметил перемену */
+  private noticeWeather() {
+    const r = this.run!
+    const { rule, index } = this.weatherRule()
+    if ((r.weatherSeen ?? -1) === index) return
+    r.weatherSeen = index
+    const p = this.PLACE.get(r.place)
+    // в подвале перемену не заметить: скажем, когда герой выйдет под небо или под крышу
+    if (p?.deep) { r.weatherSeen = -2; return }
+    const line = p?.outdoor ? rule?.text : rule?.indoor ?? rule?.text
+    if (line) this.say(line, rule?.level === 'storm' ? ['thunder-far'] : undefined)
   }
 
   private say(text?: string, sfx?: string[], voice?: string, extra: { art?: string; found?: SoloView['feed'][number]['found']; note?: SoloView['feed'][number]['note']; melody?: SoloView['feed'][number]['melody'] } = {}) {
@@ -354,6 +379,7 @@ export class SoloGame {
     if (first) r.visited.push(to)
     const p = this.PLACE.get(to)!
     if (first && p.enter) this.apply(p.enter)
+    this.noticeWeather()
     this.clearLinger()
     if (this.live.dead || this.live.encounter || this.live.chase || this.live.boss) return
     // кто ждёт у входа — выходит сразу; кто караулит внутри — через время, если игрок задержится
@@ -1302,7 +1328,8 @@ export class SoloGame {
     if (!r) return empty
     const p = this.place()
     const lit = !p.dark || r.light
-    const art = `${r.otherworld && p.other ? 'o' : 'l'}_${p.art ?? p.id}`
+    // кадр: изнанка, иначе версия под нынешнюю погоду (место меняется, когда в него возвращаешься), иначе обычный
+    const art = r.otherworld && p.other ? `o_${p.art ?? p.id}` : p.weatherArt?.[this.weather()] ?? `l_${p.art ?? p.id}`
     const texts = p.text.filter(t => this.ok(t.when)).map(t => t.text)
     if (p.dark && !r.light) texts.push('Темно. Без света здесь ничего не разглядеть.')
     const now = Date.now()
@@ -1319,7 +1346,7 @@ export class SoloGame {
     return {
       ...empty,
       started: true,
-      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt', weather: p.weather ?? null },
+      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt', weather: this.weather(), deep: !!p.deep },
       exits: p.exits.filter(x => this.ok(x.when)).map(x => ({
         to: x.to, label: x.label,
         locked: x.lock && !this.exitOpen(p.id, x) && !(x.lock.item && this.has(x.lock.item)) && !(x.lock.flag && this.flag(x.lock.flag)) ? x.lock.text : null,

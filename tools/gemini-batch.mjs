@@ -1,6 +1,7 @@
 // Пакетная перерисовка через Gemini Batch API (Nano Banana Pro): вдвое дешевле обычных запросов ($0,067 за 2K), ответ — за часы.
 //   CASE=<дело> node tools/gemini-batch.mjs submit <план.json> <имя>   — собрать запросы, загрузить, поставить в очередь
-//   CASE=<дело> node tools/gemini-batch.mjs poll <имя>                  — узнать состояние; готово — разложить картинки
+//   CASE=<дело> node tools/gemini-batch.mjs poll <имя>                  — узнать состояние; готово — скачать и разложить картинки
+//   CASE=<дело> node tools/gemini-batch.mjs unpack <имя> <файл.jsonl>   — разложить уже скачанный ответ
 // План — список { id, mode, refs?, text? }:
 //   mode 'new'  — нарисовать заново по промпту из prompts/art.mjs; refs — образцы стиля (кадры дела, пути или id)
 //   mode 'place' — нарисовать заново, но места и люди как на образцах (погони, крупные планы, сцены)
@@ -89,10 +90,24 @@ if (cmd === 'submit') {
   console.log('состояние:', state, stats ? JSON.stringify(stats) : '')
   const out = j.response?.responsesFile ?? j.metadata?.output?.responsesFile ?? j.output?.responsesFile
   if (!/SUCCEEDED/.test(state ?? '') || !out) process.exit(0)
-  const res = await fetch(`${API}/download/v1beta/${out}:download?alt=media`, { headers: { 'x-goog-api-key': KEY } })
-  const text = await res.text()
+  // ответ большой (сотни мегабайт картинок в base64): качаем curl на диск, разбираем построчно
+  const file = resolve(STATE_DIR, `${a1}.jsonl`)
+  if (!existsSync(file)) execFileSync('curl', ['-sS', '-L', '-o', file, '-H', `x-goog-api-key: ${KEY}`, `${API}/download/v1beta/${out}:download?alt=media`], { stdio: 'inherit' })
+  await unpack(st, file)
+} else if (cmd === 'unpack') {
+  // разобрать уже скачанный ответ: unpack <имя> <файл.jsonl>
+  const st = JSON.parse(readFileSync(resolve(STATE_DIR, `${a1}.json`), 'utf8'))
+  await unpack(st, resolve(a2))
+} else {
+  console.log('команды: submit <план.json> <имя> | poll <имя> | unpack <имя> <файл.jsonl>')
+}
+
+async function unpack(st, file) {
+  const { createReadStream } = await import('node:fs')
+  const { createInterface } = await import('node:readline')
   let ok = 0, bad = 0, outTok = 0, inTok = 0
-  for (const line of text.split('\n').filter(Boolean)) {
+  for await (const line of createInterface({ input: createReadStream(file), crlfDelay: Infinity })) {
+    if (!line.trim()) continue
     const row = JSON.parse(line)
     const id = row.key
     const resp = row.response
@@ -112,6 +127,4 @@ if (cmd === 'submit') {
   console.log(`картинок: ${ok}, без картинки: ${bad}; токенов: вход ${inTok}, выход ${outTok} ≈ $${(inTok / 1e6 * 1 + outTok / 1e6 * 60).toFixed(2)} по пакетной цене`)
   st.done = new Date().toISOString(); st.ok = ok; st.bad = bad
   writeFileSync(resolve(STATE_DIR, `${a1}.json`), JSON.stringify(st, null, 2))
-} else {
-  console.log('команды: submit <план.json> <имя> | poll <имя>')
 }

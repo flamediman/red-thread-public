@@ -3,7 +3,7 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -20,7 +20,7 @@ in vec2 uv; out vec4 color;
 uniform sampler2D img; uniform sampler2D dep;
 uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
-uniform float rain; uniform float fogAmt; uniform float other;
+uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 float depthAt(vec2 q) { return texture(dep, q).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -53,13 +53,15 @@ void main() {
   albedo *= mix(1.0, 0.86, rain);
   vec2 sc = uv * vec2(1.6, 1.0);
   // туман по глубине: дальнее тонет, туман медленно плывёт; на изнанке — ржавый
-  vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other);
+  // гроза: тяжёлое небо — кадр и туман темнеют, чтобы вспышке было куда светлеть
+  float storm = smoothstep(0.75, 1.0, rain);
+  vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
   float drift = fbm(vec2(sc.x * 2.2 + t * 0.035 + (1.0 - d) * 1.5, sc.y * 1.6 - t * 0.012));
   float fogF = fogAmt * pow(1.0 - d, 1.25) * (0.55 + 0.8 * drift);
   vec3 col;
   float lit = 0.0, cone = 0.0;
   if (mode < 0.5) {
-    col = albedo * (0.78 + 0.22 * ao);
+    col = albedo * (0.78 + 0.22 * ao) * mix(1.0, 0.62, storm);
     col = mix(col, fogCol, clamp(fogF, 0.0, 0.82));
   } else {
     // фонарь у камеры: пятно по экрану, свет по нормали и расстоянию, тень от ближнего по лучу к фонарю
@@ -89,10 +91,10 @@ void main() {
     float beam = (1.0 - smoothstep(radius * 0.2, radius * 1.3, r)) * (mode > 1.5 ? 0.0 : 1.0);
     col += warm * beam * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - d * 0.6) * flicker;
   }
-  // пылинки на трёх глубинах: плывут, мерцают; видны, только если перед поверхностью. Под открытым небом в дождь их нет,
-  // без фонаря — еле заметны
+  // пылинки на трёх глубинах: плывут, мерцают; видны, только если перед поверхностью, и только в луче фонаря
+  // (без фонаря мелкие точки на экране читаются как битые пиксели)
   float motes = 0.0;
-  float moteAmt = mode < 0.5 ? (rain > 0.01 ? 0.0 : 0.35) : 1.0;
+  float moteAmt = mode < 0.5 ? 0.0 : 1.0;
   if (moteAmt > 0.0) for (int k = 0; k < 3; k++) {
     float z = 0.92 - float(k) * 0.2;
     vec2 g = (uv - cam * (z - 0.35) * 2.0) * vec2(1.6, 1.0) * (26.0 + float(k) * 14.0) + vec2(t * 0.25 + sin(t * 0.3 + float(k)) * 0.6, -t * 0.12 * (1.0 + float(k)));
@@ -119,18 +121,21 @@ void main() {
       float yy = rp.y * (1.4 + fk * 0.6) - t * (2.4 - fk * 0.4) * (0.75 + 0.5 * hx) - hx * 9.0;
       float cy = floor(yy); float fy = fract(yy);
       float h = hash(vec2(cx, cy + fk * 13.0));
-      if (h > 0.7 && z > d + 0.02) {
+      // сила дождя — густота и длина струй: морось редкая и короткая, ливень густой
+      if (h > 1.0 - 0.3 * rain && z > d + 0.02) {
         float fx = fract(gx) - 0.5 - (hash(vec2(cx, cy + 3.0)) - 0.5) * 0.5;
-        float len = 0.28 + 0.2 * h;
+        float len = (0.12 + 0.2 * rain) + 0.2 * h;
         float along = smoothstep(0.0, 0.04, fy) * smoothstep(len, len * 0.2, fy);
         drops += smoothstep(0.14, 0.0, abs(fx)) * along * (1.0 - fk * 0.22);
       }
     }
-    col += (mode < 0.5 ? vec3(0.78, 0.8, 0.82) * 0.2 : vec3(1.0, 0.92, 0.8) * cone * 0.55) * drops * rain;
-    // всплески на мокрой земле: короткие тусклые искры
-    vec2 sp = floor(o * vec2(260.0, 150.0));
-    float sh = hash(sp + floor(t * 9.0));
-    if (dy > 0.004 && sh > 0.997) col += vec3(mode < 0.5 ? 0.09 : 0.35 * cone) * rain;
+    col += (mode < 0.5 ? vec3(0.78, 0.8, 0.82) * (0.1 + 0.12 * rain) : vec3(1.0, 0.92, 0.8) * cone * 0.55) * drops * min(1.0, rain * 1.4);
+  }
+  // молния: холодный свет с неба — дальнее и небо вспыхивают, ближнее остаётся силуэтом; струи дождя загораются
+  if (flash > 0.001) {
+    vec3 sky = vec3(0.82, 0.87, 1.0);
+    float reach = mix(1.0, 0.25, smoothstep(0.35, 0.9, d)) * (0.75 + 0.25 * (1.0 - uv.y));
+    col = col * (1.0 + 0.9 * flash * reach) + sky * 0.2 * flash * reach;
   }
   color = vec4(col, 1.0);
 }`
@@ -183,7 +188,7 @@ async function init() {
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
     texture(0, img); texture(1, dep)
-    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1)
     gl.uniform2f(u.texel!, 3 / img.naturalWidth, 3 / img.naturalHeight)
     raf = requestAnimationFrame(frame)
@@ -213,6 +218,7 @@ function frame(ms: number) {
   gl.uniform1f(u.rain!, props.rain ?? 0)
   gl.uniform1f(u.fogAmt!, props.fog ?? 0.6)
   gl.uniform1f(u.other!, props.other ? 1 : 0)
+  gl.uniform1f(u.flash!, props.flash ?? 0)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   if (!ready.value) { ready.value = true; emit('ready') }
   raf = requestAnimationFrame(frame)

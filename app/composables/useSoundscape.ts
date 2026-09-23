@@ -4,7 +4,8 @@
    — рядом: скрип, капля, стекло — по покрытию места;
    — сверху: шаги и возня этажом выше (только в зданиях);
    — за спиной: шаги, дыхание, шёпот — только в темноте и редко, чтобы каждый раз был как в первый;
-   — небо: гром там, где идёт дождь.
+   — небо: гром, когда идёт дождь (редко и далеко), в грозу — чаще и ближе, с молнией перед ним: вспышка, потом
+     через 1–4 с раскат (чем дальше, тем позже и глуше).
    Паузы случайны, слой иногда пропускает свою очередь, у каждого звука своя минимальная пауза до повтора (редкие — минуты),
    один и тот же звук не идёт дважды подряд, высота тона и сторона всякий раз новые. Некоторым звукам иногда «отвечают»:
    собака воет — через пару секунд с другой стороны отзывается вторая. */
@@ -16,7 +17,10 @@ export interface SoundPlace {
   dark: boolean
   lit: boolean
   other: boolean
-  rain: boolean
+  /** погода по ходу сюжета */
+  weather: 'fog' | 'drizzle' | 'rain' | 'storm'
+  /** подвал, тоннель: неба не слышно */
+  deep: boolean
   ambience: string[]
 }
 
@@ -34,8 +38,8 @@ interface Cue {
 
 interface Layer {
   id: string
-  /** пауза между попытками, секунд: от и до */
-  every: [number, number]
+  /** пауза между попытками, секунд: от и до (может зависеть от места и погоды) */
+  every: [number, number] | ((p: SoundPlace | null) => [number, number])
   /** доля попыток, когда слой молчит */
   skip: number
   when?: (p: SoundPlace) => boolean
@@ -76,7 +80,7 @@ const NEAR: Record<string, Cue[]> = {
 }
 const ABOVE: Cue[] = [c('footsteps-above', 150, { w: 2 }), c('furniture-drag', 200), c('knock-three', 300), c('door-slam-far', 90)]
 const BEHIND: Cue[] = [c('footsteps-behind', 180, { w: 2 }), c('breath-behind-2', 300), c('whisper-near', 200), c('wall-scratch', 240), c('knock-three', 300)]
-const SKY: Cue[] = [c('thunder-far', 40)]
+const SKY: Cue[] = [c('thunder-far', 15)]
 
 function nearKind(p: SoundPlace) {
   if (p.other || p.ambience.includes('other-hum')) return 'other'
@@ -92,12 +96,12 @@ const LAYERS: Layer[] = [
   { id: 'above', every: [45, 140], skip: 0.3, when: p => !p.outdoor && p.area !== 'road', pool: () => ABOVE, dist: [5, 9], volume: 0.45, from: 'above' },
   // за спиной — только в темноте; с включённым фонарём реже (свет чуть успокаивает), без света — чаще
   { id: 'behind', every: [90, 240], skip: 0.35, when: p => p.dark && !p.outdoor, pool: () => BEHIND, dist: [1.2, 3], volume: 0.32, from: 'behind' },
-  { id: 'sky', every: [40, 120], skip: 0.1, when: p => p.rain, pool: () => SKY, dist: [40, 80], volume: 0.85 }
+  { id: 'sky', every: p => (p?.weather === 'storm' ? [22, 60] : [90, 200]), skip: 0.1, when: p => (p.weather === 'rain' || p.weather === 'storm') && !p.deep, pool: () => SKY, dist: [40, 80], volume: 0.85 }
 ]
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a)
 
-export function useSoundscape(opts: { place: () => SoundPlace | null; active: () => boolean }) {
+export function useSoundscape(opts: { place: () => SoundPlace | null; active: () => boolean; lightning?: (strength: number) => void }) {
   const audio = useAudio()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   const lastAt = new Map<string, number>()
@@ -106,7 +110,10 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
 
   function pick(layer: Layer, p: SoundPlace): Cue | null {
     const now = Date.now() / 1000
-    const pool = layer.pool(p).filter(q => now - (lastAt.get(q.name) ?? -1e9) >= (q.gap ?? 30) && q.name !== lastInLayer.get(layer.id))
+    const rested = layer.pool(p).filter(q => now - (lastAt.get(q.name) ?? -1e9) >= (q.gap ?? 30))
+    // подряд один и тот же — только если больше нечего (у неба один звук, записи грома чередует useAudio)
+    const fresh = rested.filter(q => q.name !== lastInLayer.get(layer.id))
+    const pool = fresh.length ? fresh : rested
     if (!pool.length) return null
     let r = Math.random() * pool.reduce((s, q) => s + (q.w ?? 1), 0)
     for (const q of pool) { r -= q.w ?? 1; if (r <= 0) return q }
@@ -129,7 +136,13 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
         lastInLayer.set(layer.id, q.name)
         const az = layer.from === 'behind' ? Math.PI + rnd(-0.6, 0.6) : layer.from === 'above' ? rnd(-1.2, 1.2) : rnd(-Math.PI, Math.PI)
         const dist = rnd(...layer.dist)
-        play(layer, q, az, dist)
+        if (layer.id === 'sky' && p.weather === 'storm') {
+          // гроза: сначала молния, раскат — следом, тем позже, чем дальше; близкий удар громче и звонче
+          const near = Math.random() < 0.3
+          const d = near ? rnd(8, 20) : rnd(25, 70)
+          opts.lightning?.(near ? 1 : rnd(0.35, 0.7))
+          setTimeout(() => { if (alive) void audio.spatial(q.name, { az, dist: d, volume: layer.volume * (near ? 1.25 : 0.9) }) }, (d / 20) * 1000 + rnd(200, 600))
+        } else play(layer, q, az, dist)
         if (q.answer && Math.random() < q.answer) {
           const az2 = az + Math.PI * rnd(0.6, 1.4)
           setTimeout(() => { if (alive && opts.active()) play(layer, q, az2, dist * rnd(0.6, 1.1)) }, rnd(2000, 6000))
@@ -141,7 +154,7 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
 
   function schedule(layer: Layer, first = false) {
     if (!alive) return
-    const [a, b] = layer.every
+    const [a, b] = typeof layer.every === 'function' ? layer.every(opts.place()) : layer.every
     // первый раз — где-то внутри интервала, чтобы слои не стартовали хором
     const sec = first ? rnd(a * 0.3, b) : rnd(a, b)
     timers.set(layer.id, setTimeout(() => tick(layer), sec * 1000))

@@ -15,6 +15,20 @@ export interface SoloCond {
   score?: Record<string, number>
   /** метрики концовок: строго меньше указанного */
   scoreBelow?: Record<string, number>
+  /** найдены все эти записки */
+  notes?: string[]
+  /** погода сейчас — одна из перечисленных (строки описаний «под дождём») */
+  weather?: SoloWeather[]
+}
+
+/** погода истории: развивается с сюжетом (правила SoloStory.weather), а не приклеена к месту */
+export type SoloWeather = 'fog' | 'drizzle' | 'rain' | 'storm'
+export interface SoloWeatherRule {
+  when: SoloCond
+  level: SoloWeather
+  /** строка рассказчика, когда погода впервые становится такой: под открытым небом и под крышей */
+  text?: string
+  indoor?: string
 }
 
 /** реплика сцены или разговора; speaker — 'narrator', 'hero' или id персонажа */
@@ -131,8 +145,10 @@ export interface SoloPlace {
   ambience?: string[]
   /** звуки места на изнанке; без них — обычные */
   otherAmbience?: string[]
-  /** погода: дождь (объёмные струи в кадре, лента дождя в звуке) */
-  weather?: 'rain'
+  /** глубоко под крышей (подвал, тоннель, колодец): дождя отсюда не слышно */
+  deep?: boolean
+  /** кадр места в другую погоду (тот же ракурс): вернулся — а тут уже льёт */
+  weatherArt?: Partial<Record<SoloWeather, string>>
   /** здесь можно сохраниться: что это за место */
   save?: string
   /** здесь можно спрятаться: где */
@@ -356,6 +372,8 @@ export interface SoloStory {
   endingRules: { ending: string; when?: SoloCond; score?: Record<string, number> }[]
   /** что в кадре главное, если кадр режется под узкий экран: имя картинки → object-position («86% 40%») */
   artFocus?: Record<string, string>
+  /** погода по ходу сюжета: действует последнее подходящее правило; без правил — туман */
+  weather?: SoloWeatherRule[]
   /** кадры, у которых есть карта глубины z_<кадр>.jpg: рисуются объёмом (2,5D) */
   depth?: string[]
   voices: { narrator: string; hero: string }
@@ -393,7 +411,7 @@ export interface SoloView {
   started: boolean
   place: {
     id: string; area: string; name: string; art: string; text: string[]
-    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string; weather: string | null
+    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string; weather: SoloWeather; deep: boolean
   } | null
   exits: { to: string; label: string; locked: string | null; known: boolean }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]

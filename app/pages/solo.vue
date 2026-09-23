@@ -65,7 +65,12 @@ const depthFail = ref(false)
 const depthSrc = computed(() => artSrc.value && v.value?.depth.includes(shownArt.value) && !depthFail.value ? `/art/${story.value}/z_${shownArt.value}.jpg` : '')
 watch(artSrc, () => { depthFail.value = false })
 /* туман в объёмном кадре: на улице гуще, в гудящих помещениях реже, в сырых подвалах и на изнанке — между */
-const fogAmount = computed(() => { const p = place.value; if (!p) return 0.6; if (p.outdoor) return 0.85; if (v.value?.otherworld || p.surface === 'water') return 0.55; return p.ambience.includes('room-hum') ? 0.3 : 0.45 })
+/* погода по ходу сюжета: сила дождя в кадре и туман (дождь прибивает туман) */
+const RAIN: Record<string, number> = { fog: 0, drizzle: 0.35, rain: 0.7, storm: 1 }
+const rainAmount = computed(() => (place.value?.outdoor ? RAIN[place.value.weather] ?? 0 : 0))
+const FOG_BY_WEATHER: Record<string, number> = { fog: 1, drizzle: 0.9, rain: 0.78, storm: 0.65 }
+const fogBase = computed(() => { const p = place.value; if (!p) return 0.6; if (p.outdoor) return 0.85; if (v.value?.otherworld || p.surface === 'water') return 0.55; return p.ambience.includes('room-hum') ? 0.3 : 0.45 })
+const fogAmount = computed(() => fogBase.value * (FOG_BY_WEATHER[place.value?.weather ?? 'fog'] ?? 1))
 
 /* фонарь следует за курсором или пальцем */
 const torch = reactive({ x: 62, y: 42 })
@@ -198,14 +203,22 @@ const relay = (m: SoloClientMessage) => send(m)
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
 /** петли, которые в ленте места должны быть тише остальных (часы в кабинете — не громче гула) */
 const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8, 'other-pulse': 0.7, 'rain-light': 0.75, 'rain-heavy': 0.85, 'rain-roof': 0.55 }
-watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
-  ([, radio, enc, low, inGame, ok, ended]) => {
+watch([() => place.value?.ambience.join(','), () => place.value?.weather, () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
+  ([, , radio, enc, low, inGame, ok, ended]) => {
     if (!ok) return
     if (!inGame || !v.value?.started || ended) { audio.ambience(['fog-wind'], { 'fog-wind': 0.5 }); return }
     const names = [...(place.value?.ambience ?? [])]
     const levels: Record<string, number> = { ...AMB_LEVEL }
     // в помещении за стеной еле слышно идёт ветер (лента помещения и так глушит верх — выходит «за стеклом»)
     if (place.value && !place.value.outdoor && !names.includes('fog-wind')) { names.push('fog-wind'); levels['fog-wind'] = 0.22 }
+    // дождь по ходу сюжета: на улице — в полную, под крышей — по крыше и стёклам, в подвале не слышно; морось в доме не слышна
+    const w = place.value?.weather ?? 'fog'
+    if (place.value && w !== 'fog' && !place.value.deep) {
+      if (place.value.outdoor) {
+        if (w === 'storm') { names.push('rain-heavy', 'rain-light'); levels['rain-heavy'] = 0.9; levels['rain-light'] = 0.35 }
+        else { names.push('rain-light'); levels['rain-light'] = w === 'rain' ? 0.8 : 0.45 }
+      } else if (w !== 'drizzle') { names.push('rain-roof'); levels['rain-roof'] = w === 'storm' ? 0.75 : 0.5 }
+    }
     if (radio) { names.push('radio-static'); levels['radio-static'] = radio === 2 ? 0.95 : 0.35 }
     if (enc) { names.push('dread-drone'); levels['dread-drone'] = 0.8 }
     if (low) { names.push('heartbeat'); levels.heartbeat = 0.7 }
@@ -245,6 +258,16 @@ function onCutLeave(el: Element, done: () => void) {
   }
   stop = watch(frameReady, v => { if (v !== start) fade() })
   const cap = setTimeout(fade, 4000)
+}
+
+/* молния: двойная вспышка (как настоящая — ярко, провал, ещё раз слабее), под крышей — вполсилы через окна */
+const flash = ref(0)
+function strike(strength: number) {
+  const p = place.value
+  if (!p || p.deep) return
+  const k = strength * (p.outdoor ? 1 : 0.4)
+  const steps: [number, number][] = [[0, k], [70, k * 0.25], [140, k * 0.85], [230, k * 0.35], [420, 0]]
+  for (const [at, val] of steps) setTimeout(() => { flash.value = val }, at)
 }
 
 /** музыка молчит (пауза темы района, см. ниже) */
@@ -308,8 +331,9 @@ useSoundscape({
   place: () => {
     const p = place.value
     if (!p) return null
-    return { area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, rain: p.weather === 'rain', ambience: p.ambience }
+    return { area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, weather: p.weather, deep: p.deep, ambience: p.ambience }
   },
+  lightning: strength => strike(strength),
   active: () => {
     const s = v.value
     return !!(entered.value && s?.started && !overlay.value && !menuOpen.value && !saveOpen.value && !s.ending && audio.unlocked.value)
@@ -431,7 +455,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <!-- смена кадра — на JS: уходящий кадр гаснет, только когда новый уже нарисован (см. onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="place?.weather === 'rain' ? 1 : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
             <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @load="frameReady++" @error="artOk = false">
           </Transition>
           <Transition name="fade">
@@ -440,6 +464,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <i class="solo-tint" aria-hidden="true" />
           <SoloFog :density="place?.ambience.includes('room-hum') ? 0.45 : 1" :other="v.otherworld" />
           <i class="solo-view__dark" aria-hidden="true" />
+          <i v-if="!depthSrc" class="solo-view__flash" :style="{ opacity: flash * 0.55 }" aria-hidden="true" />
           <i :key="hurtFlash" class="solo-view__hurt" :class="{ on: hurtFlash > 0 }" aria-hidden="true" />
           <i v-if="v.health <= 30" class="solo-view__pulse" aria-hidden="true" />
         </div>
