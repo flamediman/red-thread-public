@@ -131,6 +131,8 @@ export interface SoloPlace {
   ambience?: string[]
   /** звуки места на изнанке; без них — обычные */
   otherAmbience?: string[]
+  /** погода: дождь (объёмные струи в кадре, лента дождя в звуке) */
+  weather?: 'rain'
   /** здесь можно сохраниться: что это за место */
   save?: string
   /** здесь можно спрятаться: где */
@@ -391,7 +393,7 @@ export interface SoloView {
   started: boolean
   place: {
     id: string; area: string; name: string; art: string; text: string[]
-    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string
+    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string; weather: string | null
   } | null
   exits: { to: string; label: string; locked: string | null; known: boolean }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]

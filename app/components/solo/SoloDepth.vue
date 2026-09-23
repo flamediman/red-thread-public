@@ -3,9 +3,13 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean }>()
 const emit = defineEmits<{ fail: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
+/* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
+const ready = ref(false)
+/* телефон и планшет — меньше пикселей: шейдер тяжёлый */
+const dprCap = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 1.25 : 2
 
 const VS = `#version 300 es
 in vec2 p; out vec2 uv;
@@ -16,49 +20,119 @@ in vec2 uv; out vec4 color;
 uniform sampler2D img; uniform sampler2D dep;
 uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
+uniform float rain; uniform float fogAmt; uniform float other;
 float depthAt(vec2 q) { return texture(dep, q).r; }
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }
+float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
 void main() {
-  vec2 q = shift + (uv - 0.5) * cover + 0.5;
-  // параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35). Идём от ближнего к дальнему и берём первую
-  // поверхность, которая дотягивается до луча, — ближнее честно закрывает дальнее, края не двоятся. Потом уточняем
-  // точку попадания половинным делением между последним промахом и попаданием
+  vec2 q = toTex(uv);
+  // параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35); от ближнего к дальнему — ближнее закрывает дальнее
   const int N = 28;
-  float tHit = 0.0, tMiss = 1.0;
-  bool hit = false;
+  float tHit = 0.0, tMiss = 1.0; bool hit = false;
   for (int i = 0; i <= N; i++) {
-    float t = 1.0 - float(i) / float(N);
-    if (depthAt(q - cam * (t - 0.35)) >= t) { tHit = t; hit = true; break; }
-    tMiss = t;
+    float tt = 1.0 - float(i) / float(N);
+    if (depthAt(q - cam * (tt - 0.35)) >= tt) { tHit = tt; hit = true; break; }
+    tMiss = tt;
   }
-  if (hit && tMiss > tHit) {
-    for (int k = 0; k < 5; k++) {
-      float tm = 0.5 * (tHit + tMiss);
-      if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm;
-    }
-  }
+  if (hit && tMiss > tHit) for (int k = 0; k < 5; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
   vec2 o = q - cam * (tHit - 0.35);
   vec3 albedo = texture(img, o).rgb;
-  if (mode < 0.5) { color = vec4(albedo, 1.0); return; }
   float d = depthAt(o);
-  // нормаль по наклону глубины
+  // нормаль по наклону глубины; dy > 0 — поверхность смотрит вверх (пол, земля)
   float dx = depthAt(o + vec2(texel.x, 0.0)) - depthAt(o - vec2(texel.x, 0.0));
   float dy = depthAt(o + vec2(0.0, texel.y)) - depthAt(o - vec2(0.0, texel.y));
-  vec3 n = normalize(vec3(-dx * 18.0, dy * 18.0, 1.0));
-  // экранные координаты пикселя и фонаря; фонарь — у самой камеры
-  vec2 s = uv;
-  vec3 P = vec3(s * vec2(1.6, 1.0), d * 0.9);
-  vec3 L = vec3(torch * vec2(1.6, 1.0), 1.25);
-  vec3 toL = L - P; float dist = length(toL); vec3 l = toL / dist;
-  float diffuse = max(dot(n, l), 0.0) * 0.7 + 0.3;
-  float radius = weak > 0.5 ? 0.24 : 0.46;
-  float r = distance(s * vec2(1.6, 1.0), torch * vec2(1.6, 1.0));
-  float cone = 1.0 - smoothstep(radius * 0.3, radius, r);
-  float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 2.0 : 0.8));
-  float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
-  float lit = mode > 1.5 ? 0.0 : cone * diffuse * fall * 2.2 * flicker;
-  float ambient = 0.04 + 0.06 * d;
-  vec3 warm = vec3(1.0, 0.9, 0.72);
-  color = vec4(albedo * (ambient + warm * lit), 1.0);
+  vec3 n = normalize(vec3(-dx * 9.0, dy * 9.0, 1.0));
+  // затенение в углах и щелях: соседи ближе — сюда меньше попадает рассеянного света
+  float occ = 0.0;
+  for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; occ += max(0.0, depthAt(o + off) - d - 0.01); }
+  float ao = clamp(1.0 - occ * 2.2, 0.45, 1.0);
+  // мокро: дождь темнит поверхности
+  albedo *= mix(1.0, 0.86, rain);
+  vec2 sc = uv * vec2(1.6, 1.0);
+  // туман по глубине: дальнее тонет, туман медленно плывёт; на изнанке — ржавый
+  vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other);
+  float drift = fbm(vec2(sc.x * 2.2 + t * 0.035 + (1.0 - d) * 1.5, sc.y * 1.6 - t * 0.012));
+  float fogF = fogAmt * pow(1.0 - d, 1.25) * (0.55 + 0.8 * drift);
+  vec3 col;
+  float lit = 0.0, cone = 0.0;
+  if (mode < 0.5) {
+    col = albedo * (0.78 + 0.22 * ao);
+    col = mix(col, fogCol, clamp(fogF, 0.0, 0.82));
+  } else {
+    // фонарь у камеры: пятно по экрану, свет по нормали и расстоянию, тень от ближнего по лучу к фонарю
+    vec3 P = vec3(sc, d * 0.9);
+    vec3 L = vec3(torch * vec2(1.6, 1.0), 1.25);
+    vec3 toL = L - P; float dist = length(toL); vec3 l = toL / dist;
+    float diffuse = max(dot(n, l), 0.0) * 0.7 + 0.3;
+    float radius = weak > 0.5 ? 0.24 : 0.46;
+    float r = distance(sc, torch * vec2(1.6, 1.0));
+    cone = mode > 1.5 ? 0.0 : 1.0 - smoothstep(radius * 0.3, radius, r);
+    float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 2.0 : 0.8));
+    float shadow = 1.0;
+    if (cone > 0.01) for (int k = 1; k <= 10; k++) {
+      float f = float(k) / 12.0;
+      vec2 sp = mix(uv, torch, f);
+      float zr = mix(d, 1.15, f);
+      if (depthAt(toTex(sp)) > zr + 0.04) { shadow *= 0.55; }
+    }
+    float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
+    lit = cone * diffuse * fall * 2.2 * flicker * mix(0.35, 1.0, clamp(shadow, 0.0, 1.0));
+    // мокрый пол блестит в луче
+    float spec = rain * cone * pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 18.0) * step(0.002, dy) * 0.8;
+    float ambient = (0.04 + 0.06 * d) * ao;
+    vec3 warm = vec3(1.0, 0.9, 0.72);
+    col = albedo * (ambient + warm * lit) + warm * spec;
+    // туман и пыль видны только в луче: объёмный конус
+    float beam = (1.0 - smoothstep(radius * 0.2, radius * 1.3, r)) * (mode > 1.5 ? 0.0 : 1.0);
+    col += warm * beam * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - d * 0.6) * flicker;
+  }
+  // пылинки на трёх глубинах: плывут, мерцают; видны, только если перед поверхностью. Под открытым небом в дождь их нет,
+  // без фонаря — еле заметны
+  float motes = 0.0;
+  float moteAmt = mode < 0.5 ? (rain > 0.01 ? 0.0 : 0.35) : 1.0;
+  if (moteAmt > 0.0) for (int k = 0; k < 3; k++) {
+    float z = 0.92 - float(k) * 0.2;
+    vec2 g = (uv - cam * (z - 0.35) * 2.0) * vec2(1.6, 1.0) * (26.0 + float(k) * 14.0) + vec2(t * 0.25 + sin(t * 0.3 + float(k)) * 0.6, -t * 0.12 * (1.0 + float(k)));
+    vec2 cell = floor(g); vec2 f = fract(g) - 0.5;
+    float h = hash(cell + float(k) * 17.0);
+    if (h > 0.965 && z > d + 0.03) {
+      vec2 off = vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5;
+      motes += smoothstep(0.08, 0.0, length(f - off * 0.6)) * (0.5 + 0.5 * sin(t * 1.3 + h * 50.0)) * (1.0 - float(k) * 0.25);
+    }
+  }
+  col += (mode < 0.5 ? vec3(0.06) : vec3(1.0, 0.9, 0.72) * cone * 0.9) * motes * moteAmt;
+  // дождь: четыре слоя тонких струй на разной глубине, со сдвигом параллакса; у каждой струи своя скорость;
+  // дальние слои гуще и бледнее; ближний предмет закрывает дальние струи
+  if (rain > 0.01) {
+    float drops = 0.0;
+    for (int k = 0; k < 4; k++) {
+      float fk = float(k);
+      float z = 0.95 - fk * 0.22;
+      vec2 rp = uv - cam * (z - 0.35) * 2.0;
+      rp.x += rp.y * 0.07;
+      float gx = rp.x * (90.0 + fk * 70.0);
+      float cx = floor(gx);
+      float hx = hash(vec2(cx, fk * 7.0));
+      float yy = rp.y * (1.4 + fk * 0.6) - t * (2.4 - fk * 0.4) * (0.75 + 0.5 * hx) - hx * 9.0;
+      float cy = floor(yy); float fy = fract(yy);
+      float h = hash(vec2(cx, cy + fk * 13.0));
+      if (h > 0.7 && z > d + 0.02) {
+        float fx = fract(gx) - 0.5 - (hash(vec2(cx, cy + 3.0)) - 0.5) * 0.5;
+        float len = 0.28 + 0.2 * h;
+        float along = smoothstep(0.0, 0.04, fy) * smoothstep(len, len * 0.2, fy);
+        drops += smoothstep(0.14, 0.0, abs(fx)) * along * (1.0 - fk * 0.22);
+      }
+    }
+    col += (mode < 0.5 ? vec3(0.78, 0.8, 0.82) * 0.2 : vec3(1.0, 0.92, 0.8) * cone * 0.55) * drops * rain;
+    // всплески на мокрой земле: короткие тусклые искры
+    vec2 sp = floor(o * vec2(260.0, 150.0));
+    float sh = hash(sp + floor(t * 9.0));
+    if (dy > 0.004 && sh > 0.997) col += vec3(mode < 0.5 ? 0.09 : 0.35 * cone) * rain;
+  }
+  color = vec4(col, 1.0);
 }`
 
 let gl: WebGL2RenderingContext | null = null
@@ -109,9 +183,9 @@ async function init() {
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
     texture(0, img); texture(1, dep)
-    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1)
-    gl.uniform2f(u.texel!, 1.5 / img.naturalWidth, 1.5 / img.naturalHeight)
+    gl.uniform2f(u.texel!, 3 / img.naturalWidth, 3 / img.naturalHeight)
     raf = requestAnimationFrame(frame)
   } catch { emit('fail') }
 }
@@ -119,7 +193,7 @@ async function init() {
 function frame(ms: number) {
   if (dead || !gl || !prog) return
   const c = canvas.value!
-  const w = Math.round(c.clientWidth * Math.min(2, devicePixelRatio)), h = Math.round(c.clientHeight * Math.min(2, devicePixelRatio))
+  const w = Math.round(c.clientWidth * Math.min(dprCap, devicePixelRatio)), h = Math.round(c.clientHeight * Math.min(dprCap, devicePixelRatio))
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; gl.viewport(0, 0, w, h) }
   // «object-fit: cover» с запасом на параллакс: кадр чуть больше окна
   const ca = w / h, ia = texSize.w / texSize.h
@@ -136,7 +210,11 @@ function frame(ms: number) {
   gl.uniform1f(u.mode!, props.mode === 'none' ? 0 : props.mode === 'torch' ? 1 : 2)
   gl.uniform1f(u.t!, t)
   gl.uniform1f(u.weak!, props.weak ? 1 : 0)
+  gl.uniform1f(u.rain!, props.rain ?? 0)
+  gl.uniform1f(u.fogAmt!, props.fog ?? 0.6)
+  gl.uniform1f(u.other!, props.other ? 1 : 0)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  if (!ready.value) ready.value = true
   raf = requestAnimationFrame(frame)
 }
 
@@ -148,5 +226,5 @@ onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension
 </script>
 
 <template>
-  <canvas ref="canvas" class="solo-view__art solo-view__depth" aria-hidden="true" />
+  <canvas ref="canvas" class="solo-view__art solo-view__depth" :class="{ 'solo-view__depth--ready': ready }" aria-hidden="true" />
 </template>

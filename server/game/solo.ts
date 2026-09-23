@@ -1319,7 +1319,7 @@ export class SoloGame {
     return {
       ...empty,
       started: true,
-      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt' },
+      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt', weather: p.weather ?? null },
       exits: p.exits.filter(x => this.ok(x.when)).map(x => ({
         to: x.to, label: x.label,
         locked: x.lock && !this.exitOpen(p.id, x) && !(x.lock.item && this.has(x.lock.item)) && !(x.lock.flag && this.flag(x.lock.flag)) ? x.lock.text : null,

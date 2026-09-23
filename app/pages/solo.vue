@@ -64,6 +64,8 @@ const darkness = computed(() => !place.value ? 'none' : !place.value.dark ? 'non
 const depthFail = ref(false)
 const depthSrc = computed(() => artSrc.value && v.value?.depth.includes(shownArt.value) && !depthFail.value ? `/art/${story.value}/z_${shownArt.value}.jpg` : '')
 watch(artSrc, () => { depthFail.value = false })
+/* туман в объёмном кадре: на улице гуще, в гудящих помещениях реже, в сырых подвалах и на изнанке — между */
+const fogAmount = computed(() => { const p = place.value; if (!p) return 0.6; if (p.outdoor) return 0.85; if (v.value?.otherworld || p.surface === 'water') return 0.55; return p.ambience.includes('room-hum') ? 0.3 : 0.45 })
 
 /* фонарь следует за курсором или пальцем */
 const torch = reactive({ x: 62, y: 42 })
@@ -195,7 +197,7 @@ const relay = (m: SoloClientMessage) => send(m)
 
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
 /** петли, которые в ленте места должны быть тише остальных (часы в кабинете — не громче гула) */
-const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8, 'other-pulse': 0.7 }
+const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8, 'other-pulse': 0.7, 'rain-light': 0.75, 'rain-heavy': 0.85, 'rain-roof': 0.55 }
 watch([() => place.value?.ambience.join(','), () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
   ([, radio, enc, low, inGame, ok, ended]) => {
     if (!ok) return
@@ -216,6 +218,8 @@ watch([() => place.value?.surface, () => place.value?.outdoor, () => audio.unloc
   audio.setRoom(outdoor ? 0.07 : surface === 'water' ? 0.5 : surface === 'tile' ? 0.36 : 0.16)
 }, { immediate: true })
 
+/** музыка молчит (пауза темы района, см. ниже) */
+const musicRest = ref(false)
 /* музыка: тема по району и состоянию, под исследованием — тише ленты атмосферы, в погоне и на заставке — в полную.
    Темы лежат в папке истории; которой нет — заменяется темой мира из меню */
 const themeName = computed<string | null>(() => {
@@ -254,6 +258,7 @@ const themeLevel = computed(() => {
   if (s.scene?.music || s.dialogue?.music) return 0.8
   if (s.encounter) return 0.3
   if (s.scene || s.dialogue) return 0.45
+  if (musicRest.value) return 0
   // в тёмных местах музыка почти уходит: остаётся дыхание, шаги и то, что в темноте; со светом — чуть громче
   if (s.place?.dark) return s.place.lit ? 0.4 : 0.25
   return 0.6
@@ -261,61 +266,38 @@ const themeLevel = computed(() => {
 // пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
 // бой и погоня начинаются резко — музыка входит за полторы секунды, а не за четыре
 const FAST = new Set(['boss', 'fight', 'chase'])
-watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok]) => { if (ok && v.value) void audio.theme(t, lvl, t && FAST.has(t) ? 1.5 : undefined) }, { immediate: true })
+watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok], old) => {
+  if (!ok || !v.value) return
+  // уход в тишину и возвращение — медленно, за 8–10 с, чтобы не заметить, когда именно музыка исчезла
+  const resting = t === old?.[0] && (lvl === 0 || old?.[1] === 0)
+  void audio.theme(t, lvl, t && FAST.has(t) ? 1.5 : resting ? (lvl === 0 ? 10 : 8) : undefined)
+}, { immediate: true })
 
-/* далёкие звуки: раз в минуту-полторы где-то в тумане что-то есть — горн, шёпот, ветка, громкоговоритель. Только когда герой
-   просто идёт; всё играет через цепочку «далеко» (глухо, с эхом, тише ветра) */
-const FAR: Record<string, string[]> = {
-  road: ['whisper-far', 'branch-far', 'bugle-far-cut', 'branch-far'],
-  town: ['bugle-far-cut', 'whisper-far', 'oarlocks', 'announce-far'],
-  sana: ['lantern-chain', 'whisper-far', 'water-lap', 'door-locked'],
-  camp: ['bugle-far-cut', 'announce-far', 'whisper-far', 'branch-far', 'lantern-chain']
-}
-let farTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleFar() {
-  if (farTimer) clearTimeout(farTimer)
-  farTimer = setTimeout(() => {
+/* звуки вокруг героя: даль, рядом, этаж сверху, за спиной в темноте, гром в дождь — у каждого слоя свой случайный ритм
+   (useSoundscape). Звучат, пока герой просто идёт; записки и карта их не глушат — читать под шаги сверху страшнее */
+useSoundscape({
+  place: () => {
+    const p = place.value
+    if (!p) return null
+    return { area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, rain: p.weather === 'rain', ambience: p.ambience }
+  },
+  active: () => {
     const s = v.value
-    if (entered.value && s?.started && !overlay.value && !anyPanel.value && !s.ending && audio.unlocked.value && !audio.speaking.value) {
-      const pool = FAR[place.value?.area ?? ''] ?? FAR.town!
-      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.6, { far: true, pan: (Math.random() * 2 - 1) * 0.8 })
-    }
-    scheduleFar()
-  }, 40_000 + Math.random() * 50_000)
-}
-onMounted(scheduleFar)
-onBeforeUnmount(() => { if (farTimer) clearTimeout(farTimer) })
-
-/* ближний слой: раз в 10–25 с рядом что-то есть — по типу места; звук приходит чуть слева или справа */
-const NEAR: Record<string, string[]> = {
-  wood: ['creak-floor', 'wind-window', 'drip-one', 'creak-floor'],
-  tile: ['drip-one', 'glass-tinkle', 'pipe-knock', 'wind-window'],
-  open: ['gust', 'leaf-scrape', 'gust'],
-  water: ['water-surge', 'drip-one', 'creak-floor', 'water-surge'],
-  other: ['metal-groan', 'drip-one', 'pipe-knock', 'metal-groan']
-}
-const nearKind = computed(() => {
-  const p = place.value
-  if (!p) return 'open'
-  if (p.ambience.includes('other-hum')) return 'other'
-  if (p.ambience.includes('water-lap')) return 'water'
-  if (p.outdoor) return 'open'
-  return p.surface === 'tile' ? 'tile' : 'wood'
+    return !!(entered.value && s?.started && !overlay.value && !menuOpen.value && !saveOpen.value && !s.ending && audio.unlocked.value)
+  }
 })
-let nearTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleNear() {
-  if (nearTimer) clearTimeout(nearTimer)
-  nearTimer = setTimeout(() => {
-    const s = v.value
-    if (entered.value && s?.started && !overlay.value && !anyPanel.value && !s.ending && audio.unlocked.value && !audio.speaking.value) {
-      const pool = NEAR[nearKind.value]!
-      void audio.sfx(pool[Math.floor(Math.random() * pool.length)]!, 0.5, { pan: (Math.random() * 2 - 1) * 0.6 })
-    }
-    scheduleNear()
-  }, 10_000 + Math.random() * 15_000)
+
+/* музыка иногда замолкает: раз в две-четыре минуты тема района уходит на 35–90 с, остаётся только атмосфера.
+   Тишина пугает сильнее любой темы — и когда музыка возвращается, её снова слышно, а не привыкаешь */
+let restTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleRest() {
+  restTimer = setTimeout(() => {
+    musicRest.value = true
+    restTimer = setTimeout(() => { musicRest.value = false; scheduleRest() }, 35_000 + Math.random() * 55_000)
+  }, 120_000 + Math.random() * 120_000)
 }
-onMounted(scheduleNear)
-onBeforeUnmount(() => { if (nearTimer) clearTimeout(nearTimer) })
+onMounted(scheduleRest)
+onBeforeUnmount(() => { if (restTimer) clearTimeout(restTimer) })
 
 /* ── клавиатура ── */
 const anyPanel = computed(() => menuOpen.value || saveOpen.value || mapOpen.value || notesOpen.value)
@@ -420,7 +402,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
           <Transition name="solo-cut" :duration="{ enter: 1400, leave: 900 }">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" @fail="depthFail = true" />
+            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="place?.weather === 'rain' ? 1 : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" />
             <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
           </Transition>
           <Transition name="fade">

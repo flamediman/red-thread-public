@@ -9,7 +9,7 @@ export const cleanCode = (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, ''
 export const cleanPin = (v: string) => v.replace(/\D/g, '').slice(0, 4)
 export function masked(target: Ref<string>, clean: (v: string) => string, show: (v: string) => string = v => v) {
   return (e: Event) => {
-    const el = e.target as HTMLInputElement
+    const el = e.target as unknown as { value: string }
     target.value = clean(el.value)
     const shown = show(target.value)
     if (el.value !== shown) el.value = shown

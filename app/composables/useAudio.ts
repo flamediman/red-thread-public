@@ -126,7 +126,18 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
   const c = ensure()!
   const gain = c.createGain()
   gain.gain.value = 0
-  gain.connect(dest)
+  /* атмосфера медленно плывёт по стерео: у каждой петли своя скорость (40–110 с на качание) и размах —
+     ветер уходит влево, пока капель тянется вправо, и ухо не привыкает к неподвижной картине */
+  let drift: { osc: OscillatorNode; pan: StereoPannerNode } | null = null
+  if (breathing && c.createStereoPanner) {
+    const pan = c.createStereoPanner()
+    const osc = c.createOscillator(); osc.frequency.value = 1 / (40 + Math.random() * 70)
+    const depth = c.createGain(); depth.gain.value = 0.15 + Math.random() * 0.25
+    osc.connect(depth).connect(pan.pan)
+    osc.start(c.currentTime + Math.random() * 3)
+    gain.connect(pan).connect(dest)
+    drift = { osc, pan }
+  } else gain.connect(dest)
   let alive = true
   let level = target
   let breathTimer: ReturnType<typeof setTimeout> | null = null
@@ -188,7 +199,11 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
       gain.gain.cancelScheduledValues(t)
       gain.gain.setValueAtTime(gain.gain.value, t)
       gain.gain.linearRampToValueAtTime(0, t + fade)
-      setTimeout(() => { for (const s of sources) { try { s.stop() } catch { /* уже остановлен */ } } gain.disconnect() }, fade * 1000 + 200)
+      setTimeout(() => {
+        for (const s of sources) { try { s.stop() } catch { /* уже остановлен */ } }
+        gain.disconnect()
+        if (drift) { try { drift.osc.stop() } catch { /* уже */ } drift.pan.disconnect() }
+      }, fade * 1000 + 200)
     }
   }
 }
@@ -197,7 +212,8 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
 /** у частых звуков боя несколько записей (name-2, name-3, …): подряд одна и та же не идёт */
 const VARIANTS: Record<string, number> = {
   'solo-hit-land': 3, 'solo-swing': 3, 'solo-hurt': 3, 'solo-dodge': 2, 'solo-shot': 2,
-  'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2
+  'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2,
+  'thunder-far': 3, 'footsteps-behind': 2, 'whisper-near': 2, 'door-slam-far': 2, 'industrial-clank': 2
 }
 const lastVariant = new Map<string, number>()
 function variant(name: string) {
@@ -212,6 +228,14 @@ function variant(name: string) {
 async function loadSfx(name: string): Promise<AudioBuffer | null> {
   if (name.includes('.')) return load(`/sfx/${name}`)
   return (await load(`/sfx/${currentSetting.value}/${name}.m4a`)) ?? load(`/sfx/${name}.m4a`)
+}
+
+function rampTo(p: AudioParam, value: number, seconds: number) {
+  const c = ctx
+  if (!c) return
+  p.cancelScheduledValues(c.currentTime)
+  p.setValueAtTime(p.value, c.currentTime)
+  p.linearRampToValueAtTime(value, c.currentTime + seconds)
 }
 
 function rampLayer(layer: Layer, value: number, seconds: number) {
@@ -287,7 +311,7 @@ export function useAudio() {
     // у нового дела музыки может не быть совсем — тогда тема мира из меню, лишь бы не тишина
     const chain = name.startsWith('/') ? [wanted] : [...[name, ...(THEME_FALLBACK[name] ?? [])].map(n => `/music/${currentCase.value}/${n}.mp3`), `/music/settings/${currentSetting.value}.mp3`]
     for (const key of chain) {
-      if (music?.name === key) { music.gain.gain.linearRampToValueAtTime(level, c.currentTime + 2); return }
+      if (music?.name === key) { rampTo(music.gain.gain, level, Math.max(2, fade)); return }
       const buf = await load(key)
       if (musicWanted !== wanted) return
       if (!buf) continue
@@ -362,6 +386,37 @@ export function useAudio() {
     src.connect(g); tail.connect(dest)
     src.start()
     return buf.duration
+  }
+
+  /** Звук в пространстве вокруг героя. az — откуда: 0 — впереди, ±π/2 — справа/слева, π — за спиной; up — выше (этаж над головой).
+      dist — насколько далеко, в шагах: дальнее глуше (срез верха) и идёт через «далеко» с долгим эхом, ближнее — через «комнату».
+      Направление даёт HRTF: в наушниках звук за спиной слышен за спиной, а не просто «посередине».
+      Высота тона каждый раз чуть другая (±7 %) — один и тот же скрип не звучит одинаково дважды */
+  async function spatial(name: string, o: { az: number; dist?: number; up?: number; volume?: number; rate?: number }): Promise<number> {
+    const c = ensure(); if (!c) return 0
+    const buf = await loadSfx(variant(name))
+    if (!buf) return 0
+    const dist = o.dist ?? 3
+    const src = c.createBufferSource()
+    src.buffer = buf
+    src.playbackRate.value = o.rate ?? 0.93 + Math.random() * 0.14
+    const g = c.createGain(); g.gain.value = o.volume ?? 0.6
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5
+    lp.frequency.value = Math.max(700, 17000 / (1 + dist * 0.3))
+    let tail: AudioNode = lp
+    if (c.createPanner) {
+      const p = c.createPanner()
+      p.panningModel = 'HRTF'
+      // громкость по расстоянию считаем сами (volume), панорама только задаёт направление
+      p.rolloffFactor = 0
+      const x = Math.sin(o.az), z = -Math.cos(o.az), y = o.up ?? 0
+      if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z } else p.setPosition(x, y, z)
+      tail = lp.connect(p)
+    }
+    src.connect(g).connect(lp)
+    tail.connect(dist >= 15 || FAR_NAMES.has(name) ? farChain(c) : roomChain(c))
+    src.start()
+    return buf.duration / src.playbackRate.value
   }
 
   function roomChain(c: AudioContext) {
@@ -455,5 +510,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, stinger, tone, melody, sfx, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, stinger, tone, melody, sfx, spatial, voice, stopVoice, stopAll, preload: load }
 }
