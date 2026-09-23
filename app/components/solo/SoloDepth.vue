@@ -19,9 +19,24 @@ uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 float depthAt(vec2 q) { return texture(dep, q).r; }
 void main() {
   vec2 q = shift + (uv - 0.5) * cover + 0.5;
-  // параллакс: сдвиг по глубине, ближнее уходит сильнее; три шага уточнения — без «резины» на краях
-  vec2 o = q;
-  for (int i = 0; i < 3; i++) { float d = depthAt(o); o = q + cam * (d - 0.35); }
+  // параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35). Идём от ближнего к дальнему и берём первую
+  // поверхность, которая дотягивается до луча, — ближнее честно закрывает дальнее, края не двоятся. Потом уточняем
+  // точку попадания половинным делением между последним промахом и попаданием
+  const int N = 28;
+  float tHit = 0.0, tMiss = 1.0;
+  bool hit = false;
+  for (int i = 0; i <= N; i++) {
+    float t = 1.0 - float(i) / float(N);
+    if (depthAt(q - cam * (t - 0.35)) >= t) { tHit = t; hit = true; break; }
+    tMiss = t;
+  }
+  if (hit && tMiss > tHit) {
+    for (int k = 0; k < 5; k++) {
+      float tm = 0.5 * (tHit + tMiss);
+      if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm;
+    }
+  }
+  vec2 o = q - cam * (tHit - 0.35);
   vec3 albedo = texture(img, o).rgb;
   if (mode < 0.5) { color = vec4(albedo, 1.0); return; }
   float d = depthAt(o);
@@ -116,7 +131,7 @@ function frame(ms: number) {
   cam.x += (cam.tx - cam.x) * 0.05; cam.y += (cam.ty - cam.y) * 0.05
   gl.uniform2f(u.cover!, cover[0]!, cover[1]!)
   gl.uniform2f(u.shift!, shift[0]!, shift[1]!)
-  gl.uniform2f(u.cam!, still ? 0 : cam.x + Math.sin(t * 0.37) * 0.006, still ? 0 : cam.y + Math.sin(t * 0.23) * 0.004)
+  gl.uniform2f(u.cam!, still ? 0 : cam.x + Math.sin(t * 0.37) * 0.004, still ? 0 : cam.y + Math.sin(t * 0.23) * 0.0025)
   gl.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
   gl.uniform1f(u.mode!, props.mode === 'none' ? 0 : props.mode === 'torch' ? 1 : 2)
   gl.uniform1f(u.t!, t)
@@ -127,7 +142,7 @@ function frame(ms: number) {
 
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
-watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.035; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.02 })
+watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.018; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.01 })
 onMounted(init)
 onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension('WEBGL_lose_context')?.loseContext() })
 </script>
