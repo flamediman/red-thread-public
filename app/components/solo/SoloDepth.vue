@@ -3,7 +3,7 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath' }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -40,7 +40,7 @@ uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
-uniform sampler2D prev; uniform float fade; uniform vec2 view;
+uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -49,16 +49,12 @@ float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a
 vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
 void main() {
   vec2 q = toTex(uv);
-  // параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35); от ближнего к дальнему — ближнее закрывает дальнее
-  int N = quality > 0.5 ? 28 : 16;
-  float tHit = 0.0, tMiss = 1.0; bool hit = false;
-  for (int i = 0; i <= N; i++) {
-    float tt = 1.0 - float(i) / float(N);
-    if (depthAt(q - cam * (tt - 0.35)) >= tt) { tHit = tt; hit = true; break; }
-    tMiss = tt;
-  }
-  if (hit && tMiss > tHit) for (int k = 0; k < 5; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
-  vec2 o = q - cam * (tHit - 0.35);
+  // Параллакс по плавной глубине: точка кадра сдвигается на cam·(глубина − 0,35), глубина — размытая (мип-уровень),
+  // несколько приближений подряд. Без поиска лучом по резкой глубине: он оставлял у крутых краёв тонкие полоски —
+  // повтор контура. Здесь край предмета и фон рядом с ним сдвигаются плавно: ни полосок, ни двойных линий
+  float lod = quality > 0.5 ? 1.8 : 2.4;
+  vec2 o = q;
+  for (int k = 0; k < 3; k++) o = q - cam * (textureLod(dep, o, lod).r - 0.35);
   vec3 albedo = textureLod(img, o, 0.0).rgb;
   // резкая глубина — только для параллакса и для того, что прячется за предметами (дождь, пыль)
   float d = depthAt(o);
@@ -69,23 +65,12 @@ void main() {
   float dx = textureLod(dep, o + vec2(st.x, 0.0), 2.0).r - textureLod(dep, o - vec2(st.x, 0.0), 2.0).r;
   float dy = textureLod(dep, o + vec2(0.0, st.y), 2.0).r - textureLod(dep, o - vec2(0.0, st.y), 2.0).r;
   vec3 n = normalize(vec3(-dx * 2.5, dy * 2.5, 1.0));
-  // Растяжение: при сдвиге камеры край предмета тянется резиной — там точка картинки меняется медленнее, чем экран.
-  // Только в таких местах берём цвет с фона за краем; когда картинка не тянется, ничего не подменяем
-  float qd = length(abs(dFdx(q)) + abs(dFdy(q))), od = length(abs(dFdx(o)) + abs(dFdy(o)));
-  float edge = smoothstep(0.3, 0.65, 1.0 - clamp(od / max(qd, 1e-6), 0.0, 1.0));
-  if (edge > 0.0) {
-    float sx = depthAt(o + vec2(texel.x, 0.0)) - depthAt(o - vec2(texel.x, 0.0));
-    float sy = depthAt(o + vec2(0.0, texel.y)) - depthAt(o - vec2(0.0, texel.y));
-    vec2 down = -normalize(vec2(sx, sy) + 1e-6) * texel;
-    for (int k = 1; k <= 6; k++) {
-      vec2 bp = o + down * float(k) * 1.5;
-      if (depthAt(bp) < d - 0.07) { albedo = mix(albedo, textureLod(img, bp + down, 0.0).rgb, edge); break; }
-    }
-  }
   // затенение в углах и щелях — по сглаженной глубине и только для небольших перепадов (настоящие углы)
+  // Плавно, без порогов: жёсткий порог перепада давал линию на одном и том же расстоянии от каждого края (контуры).
+  // На светлых кадрах тени уже нарисованы в картинке — там затенения нет, только в темноте под фонарём
   float occ = 0.0;
-  if (quality > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 5.0; float df = textureLod(dep, o + off, 2.0).r - ds - 0.005; occ += df > 0.0 && df < 0.1 ? df : 0.0; }
-  float ao = clamp(1.0 - occ * 2.5, 0.5, 1.0);
+  if (quality > 0.5 && mode > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 5.0; float df = textureLod(dep, o + off, 2.0).r - ds; occ += df * smoothstep(0.0, 0.03, df) * (1.0 - smoothstep(0.05, 0.14, df)); }
+  float ao = clamp(1.0 - occ * 2.5, 0.6, 1.0);
   // мокро: дождь темнит поверхности
   albedo *= mix(1.0, 0.86, rain);
   vec2 sc = uv * vec2(1.6, 1.0);
@@ -100,13 +85,16 @@ void main() {
   // Размытая — чтобы блестели поверхности, а не контуры. Яркость самой точки усиливает нарисованные отражения
   vec3 ab = textureLod(img, o, 3.0).rgb;
   float gloss = smoothstep(0.3, 0.7, dot(ab, vec3(0.299, 0.587, 0.114))) * (1.0 - smoothstep(0.06, 0.2, max(ab.r, max(ab.g, ab.b)) - min(ab.r, min(ab.g, ab.b))));
-  gloss = max(gloss, rain * 0.6);
+  // покрытие места: кафель и вода гладкие, лакированное дерево умеренно, асфальт и трава матовые (белая штукатурка
+  // не должна блестеть, как кафель)
+  gloss *= glossy;
+  gloss = max(gloss, wet * 0.6);
   float lum = dot(albedo, vec3(0.299, 0.587, 0.114));
   float floorness = smoothstep(0.015, 0.06, dy);
   vec3 col;
   float lit = 0.0, cone = 0.0;
   if (mode < 0.5) {
-    col = albedo * (0.78 + 0.22 * ao) * mix(1.0, 0.62, storm);
+    col = albedo * mix(1.0, 0.62, storm);
     col = mix(col, fogCol, clamp(fogF, 0.0, 0.6));
   } else {
     // фонарь в руке у героя: источник у камеры, чуть ниже и правее глаз; курсор задаёт, куда смотрит луч (пятно на экране).
@@ -122,11 +110,16 @@ void main() {
     cone = mode > 1.5 ? 0.0 : 1.0 - smoothstep(radius * 0.3, radius, r);
     float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 1.6 : 0.6));
     float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
-    lit = cone * diffuse * fall * 2.2 * flicker;
+    // самое дальнее (туман, небо) луч почти не достаёт — иначе светлый туман в центре луча засвечивается в белое
+    lit = cone * diffuse * fall * 2.2 * flicker * mix(0.45, 1.0, smoothstep(0.03, 0.25, ds));
     // отражение фонаря на гладком: фонарь почти у глаз, поэтому блестит то, что смотрит на нас, — в центре луча;
     // нарисованные отражения стекла и металла вспыхивают сильнее, блик едет за лучом
     float core = 1.0 - smoothstep(0.0, radius * 0.75, r);
     float glint = cone * pow(max(n.z, 0.0), 6.0) * gloss * pow(lum, 2.0) * core * core * fall * 3.0 * flicker;
+    // вода и мокрый пол отражают фонарь даже тёмными: узкое световое пятно на полу в центре луча, едет за ним;
+    // на тёмной воде заметнее, на светлом полу (и так освещён) слабее — без слепящего пересвета
+    float lying = max(floorness, smoothstep(0.004, 0.02, dy) * 0.6);
+    glint += cone * lying * wet * pow(core, 4.0) * fall * 0.32 * (1.0 - 0.7 * lum) * flicker;
     // мокрый пол блестит в луче
     float spec = rain * cone * pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 18.0) * step(0.002, dy) * 0.8;
     float ambient = (0.04 + 0.06 * ds) * ao;
@@ -208,6 +201,8 @@ void main() {
   color = vec4(col, 1.0);
 }`
 
+/** гладкость по покрытию места */
+const GLOSS: Record<string, number> = { tile: 1, water: 1, wood: 0.45, asphalt: 0.25, grass: 0.1 }
 /** цвет ламп в кадре */
 const LAMP: Record<string, number[]> = { warm: [1.0, 0.76, 0.46], red: [1.0, 0.26, 0.18], cold: [0.7, 0.8, 1.0] }
 
@@ -222,12 +217,13 @@ let texImg: WebGLTexture | null = null, texDep: WebGLTexture | null = null, texP
 /* Холст один на всю игру: при смене места новые картинки грузятся в фоне, а старый кадр рисуется как был — со своей
    темнотой, погодой и лампами (applied). Готово — последний кадр запоминается в текстуру, и шейдер за FADE мс
    перетекает из него в новый. Холст и шейдер не пересоздаются, два тяжёлых холста разом не рисуются */
-type Scene = Pick<typeof props, 'mode' | 'weak' | 'focus' | 'rain' | 'fog' | 'other' | 'lights' | 'motion'>
-const snapshot = (): Scene => ({ mode: props.mode, weak: props.weak, focus: props.focus, rain: props.rain, fog: props.fog, other: props.other, lights: props.lights, motion: props.motion })
+type Scene = Pick<typeof props, 'mode' | 'weak' | 'focus' | 'rain' | 'fog' | 'other' | 'lights' | 'motion' | 'surface'>
+const snapshot = (): Scene => ({ mode: props.mode, weak: props.weak, focus: props.focus, rain: props.rain, fog: props.fog, other: props.other, lights: props.lights, motion: props.motion, surface: props.surface })
 let applied: Scene = snapshot()
 let pending: { img: ImageBitmap | HTMLImageElement; dep: ImageBitmap | HTMLImageElement; key: string } | null = null
 let loadingKey = ''
 let fadeStart = -1
+let shownKey = ''
 const FADE = 900
 
 async function decode(url: string): Promise<ImageBitmap | HTMLImageElement> {
@@ -284,6 +280,7 @@ function swap(ms: number) {
   texDep = upload(1, p.dep, true, texDep)
   g.uniform2f(u.texel!, 3 / p.img.width, 3 / p.img.height)
   applied = snapshot()
+  shownKey = p.key
   born = ms
   if (!ready.value) { ready.value = true }
   emit('ready')
@@ -305,7 +302,7 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2)
     void request(props.src, props.depth)
     raf = requestAnimationFrame(frame)
@@ -314,6 +311,9 @@ async function init() {
 
 function draw(ms: number) {
   const g = gl!, c = canvas.value!
+  // настройки кадра живые (фонарь, батарейка, погода, изнанка); замораживаются только пока грузится новое место —
+  // тогда старый кадр дорисовывается таким, каким был
+  if (`${props.src}|${props.depth}` === shownKey) applied = snapshot()
   const sc = applied
   const px = Math.min(dprCap, devicePixelRatio) * SCALE[level]!
   const w = Math.round(c.clientWidth * px), h = Math.round(c.clientHeight * px)
@@ -344,6 +344,8 @@ function draw(ms: number) {
   g.uniform1f(u.rain!, sc.rain ?? 0)
   g.uniform1f(u.fogAmt!, sc.fog ?? 0.6)
   g.uniform1f(u.other!, sc.other ? 1 : 0)
+  g.uniform1f(u.glossy!, GLOSS[sc.surface ?? ''] ?? 0.4)
+  g.uniform1f(u.wet!, Math.max(sc.surface === 'water' ? 1 : 0, sc.rain ?? 0))
   g.uniform1f(u.flash!, props.flash ?? 0)
   g.uniform2f(u.view!, w, h)
   g.uniform1f(u.fade!, fadeStart < 0 ? 1 : Math.min(1, (ms - fadeStart) / FADE))
