@@ -212,7 +212,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
   <BrandBackdrop v-if="brand && !checking" />
 
   <TheLoader v-if="checking" />
-  <div v-else-if="hostAuthorized !== true || !started" class="gate gate--cover">
+  <main v-else-if="hostAuthorized !== true || !started" class="gate gate--cover">
     <div class="gate__inner">
       <span class="eyebrow">Кооперативный детектив</span>
       <h1 class="display gate__title">Красная нить</h1>
@@ -251,7 +251,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
         <span v-else key="wait" class="gate__wait" aria-hidden="true" />
       </div>
     </div>
-  </div>
+  </main>
 
   <div v-else class="stage" :class="{ 'stage--menu': shownScreen === 'menu' }">
     <TheLoader v-if="!ready" />

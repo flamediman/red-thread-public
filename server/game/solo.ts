@@ -1339,7 +1339,8 @@ export class SoloGame {
     const lit = !p.dark || r.light
     // кадр: изнанка, иначе версия под нынешнюю погоду (место меняется, когда в него возвращаешься), иначе обычный
     const wart = p.weatherArt?.[this.weather()]
-    const art = r.otherworld && p.other ? `o_${p.art ?? p.id}` : wart && artExists(this.info.id, wart) ? wart : `l_${p.art ?? p.id}`
+    const oart = `o_${p.art ?? p.id}`
+    const art = r.otherworld && p.other && artExists(this.info.id, oart) ? oart : wart && artExists(this.info.id, wart) ? wart : `l_${p.art ?? p.id}`
     const texts = p.text.filter(t => this.ok(t.when)).map(t => t.text)
     if (p.dark && !r.light) texts.push('Темно. Без света здесь ничего не разглядеть.')
     const now = Date.now()

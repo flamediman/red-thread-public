@@ -463,7 +463,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           </Transition>
           <i class="solo-tint" aria-hidden="true" />
           <SoloFog :density="place?.ambience.includes('room-hum') ? 0.45 : 1" :other="v.otherworld" />
-          <i class="solo-view__dark" aria-hidden="true" />
+          <Transition name="solo-over"><i :key="`${darkness}-${!!depthSrc}-${v.battery < 15}`" class="solo-view__dark" aria-hidden="true" /></Transition>
           <i v-if="!depthSrc" class="solo-view__flash" :style="{ opacity: flash * 0.55 }" aria-hidden="true" />
           <i :key="hurtFlash" class="solo-view__hurt" :class="{ on: hurtFlash > 0 }" aria-hidden="true" />
           <i v-if="v.health <= 30" class="solo-view__pulse" aria-hidden="true" />

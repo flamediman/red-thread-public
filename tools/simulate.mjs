@@ -32,7 +32,7 @@ const TOKENS = []   // боты переподключаются под теми
 
 function runGame() {
   return new Promise(resolve => {
-    let host = null, hostState = null, started = false, finished = false, lastScreen = '', room = null, spawned = false
+    let host = null, hostState = null, started = false, finished = false, lastScreen = '', room = null, roomPin = null, roomPass = null, spawned = false
     const kicked = new Set()
     const bots = []
     const stats = { rounds: 0, wrongAccusations: 0 }
@@ -40,7 +40,7 @@ function runGame() {
     host = connect(
       ws => ws.send(JSON.stringify(process.env.ONLINE ? { type: 'hello', role: 'host', create: true } : { type: 'hello', role: 'host' })),
       (m, ws) => {
-        if (m.type === 'room') { room = m.code; if (process.env.PRINT_ROOM) console.log('ROOM', m.code, m.key); return }
+        if (m.type === 'room') { room = m.code; roomPin = m.pin ?? null; roomPass = m.pass ?? null; if (process.env.PRINT_ROOM) console.log('ROOM', m.code, m.key); return }
         if (m.type === 'hostAuth') {
           if (!m.ok) { console.error(`экран не пустили: ${m.reason ?? ''}`); process.exit(1) }
           if (!spawned) { spawned = true; spawnBots() }
@@ -94,15 +94,15 @@ function runGame() {
       let planKey = null, votedKey = null, picked = false, pickedAt = 0, lastHello = 0, last = null
       lastOf[i] = () => last
       const ws = connect(
-        ws => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] })),
+        ws => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, pin: roomPin ?? undefined, pass: roomPass ?? undefined, name, ink: i, token: TOKENS[i] })),
         async (m, ws) => {
           if (m.type === 'welcome') { TOKENS[i] = m.token; return }
           // лобби занято игроками прошлого прогона — экран их уберёт, пробуем войти ещё раз
-          if (m.type === 'kicked') { setTimeout(() => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] })), 1500); return }
+          if (m.type === 'kicked') { setTimeout(() => ws.send(JSON.stringify({ type: 'hello', role: 'player', room, pin: roomPin ?? undefined, pass: roomPass ?? undefined, name, ink: i, token: TOKENS[i] })), 1500); return }
           // сервер сменил дело и сбросил состав — зайти в лобби заново
           if (m.type === 'state' && !m.you && TOKENS[i] && m.state.screen === 'lobby' && Date.now() - lastHello > 1500) {
             lastHello = Date.now(); picked = false
-            ws.send(JSON.stringify({ type: 'hello', role: 'player', room, name, ink: i, token: TOKENS[i] }))
+            ws.send(JSON.stringify({ type: 'hello', role: 'player', room, pin: roomPin ?? undefined, pass: roomPass ?? undefined, name, ink: i, token: TOKENS[i] }))
             return
           }
           if (m.type !== 'state' || !m.you) return

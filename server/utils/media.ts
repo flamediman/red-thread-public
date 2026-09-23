@@ -33,6 +33,12 @@ function locate(kind: MediaKind, folder: string, file: string): string | null {
   return statFile(fromMedia) ? fromMedia : null
 }
 
+/** ответ на HEAD: заголовки с размером и статусом как у GET, без тела. Вернуть null нельзя — h3 превратит его в 204 */
+function headOnly(event: H3Event) {
+  event.node.res.end()
+  return undefined
+}
+
 export function serveMedia(event: H3Event, kind: MediaKind) {
   const parts = (getRouterParam(event, 'path') || '').split('/')
   const [folder, file] = parts
@@ -69,11 +75,11 @@ export function serveMedia(event: H3Event, kind: MediaKind) {
     }
     setResponseStatus(event, 206)
     setResponseHeaders(event, { 'content-range': `bytes ${start}-${end}/${size}`, 'content-length': end - start + 1 })
-    if (event.method === 'HEAD') return null
+    if (event.method === 'HEAD') return headOnly(event)
     return sendStream(event, createReadStream(path, { start, end }))
   }
 
   setResponseHeader(event, 'content-length', stat.size)
-  if (event.method === 'HEAD') return null
+  if (event.method === 'HEAD') return headOnly(event)
   return sendStream(event, createReadStream(path))
 }

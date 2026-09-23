@@ -272,7 +272,7 @@ function frame(ms: number) {
 
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
-watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.028; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.015 })
+watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.022; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.012 })
 onMounted(init)
 onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension('WEBGL_lose_context')?.loseContext() })
 </script>

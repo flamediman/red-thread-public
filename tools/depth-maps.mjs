@@ -31,6 +31,43 @@ function resize(src, w, h, W, H) {
   }
   return out
 }
+/** Среднее по квадрату (2r+1)² через интегральную сумму */
+function box(src, W, H, r) {
+  const S = new Float64Array((W + 1) * (H + 1))
+  for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += src[y * W + x]; S[(y + 1) * (W + 1) + x + 1] = S[y * (W + 1) + x + 1] + row } }
+  const out = new Float32Array(W * H)
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1)
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1)
+      out[y * W + x] = (S[y1 * (W + 1) + x1] - S[y0 * (W + 1) + x1] - S[y1 * (W + 1) + x0] + S[y0 * (W + 1) + x0]) / ((y1 - y0) * (x1 - x0))
+    }
+  }
+  return out
+}
+/** Тонкое и сетчатое — проволока, прутья ворот, перила: сеть даёт им глубину «наполовину», и при сдвиге камеры они рвутся
+    и рябят. Такое место узнаём по числу перепадов: у края предмета на отрезке один перепад, у решётки — много.
+    Там глубина сглаживается в ровную плоскость: решётка движется целиком, проволока — вместе с фоном */
+function calmThin(src, W, H) {
+  const R = 10
+  const g = new Float32Array(W * H)
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    const i = y * W + x
+    g[i] = Math.abs(src[i + 1] - src[i - 1]) + Math.abs(src[i + W] - src[i - W])
+  }
+  const tv = box(g, W, H, R)
+  const hi = dilate(src, W, H, R), lo = dilate(src.map(v => -v), W, H, R)
+  const mean = box(src, W, H, R)
+  const out = new Float32Array(W * H)
+  for (let i = 0; i < W * H; i++) {
+    const range = hi[i] + lo[i]
+    // перепадов на строку/столбец окна: сумма модулей градиента по окну, делённая на размах (≈1 у края, 2+ у решётки)
+    const cross = range > 0.02 ? (tv[i] * (2 * R + 1)) / (2 * range) : 0
+    const w = Math.min(1, Math.max(0, (cross - 1.5) / 1.2)) * Math.min(1, Math.max(0, (range - 0.03) / 0.05))
+    out[i] = src[i] * (1 - w) + mean[i] * w
+  }
+  return out
+}
 /** Максимум по квадрату (2r+1)²: по строкам, потом по столбцам */
 function dilate(src, W, H, r) {
   const tmp = new Float32Array(W * H), out = new Float32Array(W * H)
@@ -82,7 +119,7 @@ for (const f of list) {
   const meta = await sharp(`${dir}/${f}`).metadata()
   const W = meta.width, H = meta.height
   // светлое — ближе; расширить ближнее, сгладить, в восемь бит — с шумом, чтобы не было ступенек
-  const field = blur(dilate(resize(raw, w, h, W, H), W, H, DILATE), W, H, BLUR)
+  const field = blur(dilate(calmThin(resize(raw, w, h, W, H), W, H), W, H, DILATE), W, H, BLUR)
   const px = Buffer.alloc(W * H)
   for (let i = 0; i < px.length; i++) px[i] = Math.max(0, Math.min(255, Math.round(field[i] * 255 + Math.random() - 0.5)))
   await sharp(px, { raw: { width: W, height: H, channels: 1 } }).jpeg({ quality: 92 }).toFile(out)
