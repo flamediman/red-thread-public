@@ -1284,7 +1284,9 @@ export class SoloGame {
         places: this.S.places.filter(x => !x.hidden || visited.has(x.id)).map(x => ({
           id: x.id, area: x.area, name: x.name, x: x.x, y: x.y, w: x.w, h: x.h, outdoor: !!x.outdoor, surface: x.surface ?? 'asphalt', poi: x.poi ?? (x.outdoor ? 'road' : 'door'), building: x.building,
           visited: visited.has(x.id), known: visited.has(x.id) || p.exits.some(ex => ex.to === x.id && this.ok(ex.when)), here: x.id === p.id, save: !!x.save,
-          locked: r.tried.some(t => t.endsWith(`>${x.id}`)) && !r.opened.some(o => o.split('|').includes(x.id))
+          locked: r.tried.some(t => t.endsWith(`>${x.id}`)) && !r.opened.some(o => o.split('|').includes(x.id)),
+          // пометка героя «?»: он здесь был, а загадка так и осталась нерешённой
+          puzzle: visited.has(x.id) && this.S.hotspots.some(h => h.place === x.id && h.puzzle && !this.flag(`solved:${h.id}`) && this.ok(h.when) && !(h.hideWhen && this.ok(h.hideWhen)))
         }))
       },
       feed: this.feed,

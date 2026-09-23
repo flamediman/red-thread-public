@@ -519,7 +519,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       </aside>
 
       <!-- ── панели ── -->
-      <SoloMap v-if="mapOpen" :map="v.map" :area="place?.area ?? ''" @close="mapOpen = false" />
+      <SoloMap v-if="mapOpen" :map="v.map" :area="place?.area ?? ''" :story="story" @close="mapOpen = false" />
       <SoloNotes v-if="notesOpen" :notes="v.notes" :focus="notesFocus" @close="notesOpen = false" @read="readNote" />
 
       <div v-if="saveOpen" class="solo-veil" @click.self="saveOpen = false">

@@ -402,7 +402,7 @@ export interface SoloView {
   otherworld: boolean
   weapon: string | null
   /** карта — вся схема района, как на бумажной туристической карте; visited — где были, known — что видно с соседних мест */
-  map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; building?: string; visited: boolean; known: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
+  map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; building?: string; visited: boolean; known: boolean; here: boolean; save: boolean; locked: boolean; puzzle: boolean }[]; links: [string, string][] }
   /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
   feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string }; note?: { id: string; title: string; text: string }; melody?: SoloEffect['melody'] }[]
   scene: { seq: number; lines: SoloLine[]; music?: string } | null

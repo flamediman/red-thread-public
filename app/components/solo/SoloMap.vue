@@ -7,9 +7,10 @@ import type { SoloAreaMap, SoloView } from '#shared/types'
 
 type Place = SoloView['map']['places'][number]
 
-const props = defineProps<{ map: SoloView['map']; area: string }>()
+const props = defineProps<{ map: SoloView['map']; area: string; story?: string }>()
 const emit = defineEmits<{ close: [] }>()
 const uid = useId()
+const paperOk = ref(true)
 const tab = ref(props.area)
 /* листы — только тех районов, где герой уже был: карту лагеря не получить, не дойдя до лагеря */
 const areas = computed(() => props.map.areas.filter(a => props.map.places.some(p => p.area === a.id && p.visited)))
@@ -267,9 +268,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <circle r="1.1" class="m-compass__hub" />
             <text class="m-compass__n" text-anchor="middle" y="-5.2">N</text>
           </g>
+          <!-- пометки героя маркером, как на карте в кармане: «?» — загадка не решена, «заперто» — у запертого -->
+          <g v-for="p in places.filter(x => x.puzzle)" :key="`q-${p.id}`" class="m-hand" :transform="`translate(${box(p).x + box(p).w - 3},${box(p).y + 3.6}) scale(${K}) rotate(-6)`">
+            <path class="m-hand__ring" d="M-2.6,0.2 C-2.7,-1.9 -0.9,-2.9 0.4,-2.7 C2.3,-2.5 2.9,-0.9 2.7,0.6 C2.4,2.3 0.6,2.9 -0.8,2.6 C-2.2,2.2 -2.9,1 -2.5,-0.6" />
+            <text class="m-hand__q" text-anchor="middle" y="1.2">?</text>
+          </g>
+          <g v-for="p in lockMarks" :key="`lw-${p.id}`" class="m-hand" :transform="`translate(${box(p).x + 4.6},${box(p).y + 3.3}) scale(${K}) rotate(-4)`">
+            <text class="m-hand__word">заперто</text>
+          </g>
+          <!-- бумага: скан старого листа поверх всей схемы — пятна, волокна, сгибы -->
+          <image v-if="story && paperOk" :href="`/art/${story}/map_paper.jpg`" x="0" y="0" :width="W" height="100" preserveAspectRatio="none" class="m-paper-scan" @error="paperOk = false" />
           <!-- старение по краям и сгибы -->
           <rect :width="W" height="100" :fill="`url(#${uid}-age)`" pointer-events="none" />
-          <path class="m-fold" :d="`M${W / 2},0 V100`" /><path class="m-fold" :d="`M0,50 H${W}`" />
+          <template v-if="!story || !paperOk"><path class="m-fold" :d="`M${W / 2},0 V100`" /><path class="m-fold" :d="`M0,50 H${W}`" /></template>
           <text class="m-sheet" text-anchor="end" :transform="`translate(${W - 2.4},${100 - 2.6 * K}) scale(${K})`">лист {{ sheetNo }} · {{ areaNow?.name }}</text>
         </svg>
       </div>

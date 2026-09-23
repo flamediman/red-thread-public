@@ -563,6 +563,10 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-save path { fill: none; stroke: #221e1a; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
     .m-here { fill: none; stroke: #b5322a; stroke-width: 0.8; stroke-linecap: round; opacity: 0.9; }
     .m-cross path { fill: none; stroke: #b5322a; stroke-width: 0.6; stroke-linecap: round; }
+    .m-hand__ring { fill: none; stroke: #b5322a; stroke-width: 0.45; stroke-linecap: round; }
+    .m-hand__q { fill: #b5322a; font-family: 'Caveat', var(--font-story); font-size: 4px; font-weight: 500; }
+    .m-hand__word { fill: #b5322a; font-family: 'Caveat', var(--font-story); font-size: 2.9px; font-weight: 500; }
+    .m-paper-scan { mix-blend-mode: multiply; opacity: 0.55; pointer-events: none; }
     .m-compass__star { fill: #3f3a34; }
     .m-compass__north { fill: #b5322a; }
     .m-compass__hub { fill: #cdc6b6; stroke: #3f3a34; stroke-width: 0.3; }
