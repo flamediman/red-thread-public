@@ -4,11 +4,20 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DATA_DIR } from '../utils/data-dir'
+import { CASES_DIR } from '../utils/media'
 import { assignVoiceIds } from './solo-lines'
 import type {
   SoloBoss, SoloChase, SoloClientMessage, SoloCond, SoloDialogue, SoloEffect, SoloExit, SoloHotspot, SoloInfo, SoloItem, SoloLine, SoloMonster,
   SoloPlace, SoloQteKey, SoloSpawn, SoloStory, SoloView, SoloWeather, SoloWeatherRule
 } from '../../shared/types'
+
+/** есть ли у дела такая картинка: погодные версии кадров дорисовываются позже — без файла остаётся обычный кадр */
+const artSeen = new Map<string, boolean>()
+function artExists(story: string, art: string) {
+  const key = `${story}/${art}`
+  if (!artSeen.has(key)) artSeen.set(key, existsSync(resolve(CASES_DIR, story, 'art', `${art}.jpg`)))
+  return artSeen.get(key)!
+}
 
 const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSync('/app/build-id', 'utf8').trim() : 'dev')
 const FEED = 14
@@ -1329,7 +1338,8 @@ export class SoloGame {
     const p = this.place()
     const lit = !p.dark || r.light
     // кадр: изнанка, иначе версия под нынешнюю погоду (место меняется, когда в него возвращаешься), иначе обычный
-    const art = r.otherworld && p.other ? `o_${p.art ?? p.id}` : p.weatherArt?.[this.weather()] ?? `l_${p.art ?? p.id}`
+    const wart = p.weatherArt?.[this.weather()]
+    const art = r.otherworld && p.other ? `o_${p.art ?? p.id}` : wart && artExists(this.info.id, wart) ? wart : `l_${p.art ?? p.id}`
     const texts = p.text.filter(t => this.ok(t.when)).map(t => t.text)
     if (p.dark && !r.light) texts.push('Темно. Без света здесь ничего не разглядеть.')
     const now = Date.now()
