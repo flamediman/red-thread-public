@@ -1,6 +1,6 @@
 // Маски растительности для ветра в объёмных кадрах: SegFormer (ADE20K, ONNX) локально, без ключей и кредитов.
 //   Один раз: npm i --no-save @huggingface/transformers sharp   (модель ~15 МБ скачается в .cache при первом запуске)
-//   node tools/wind-masks.mjs ../red-thread-secret/<история>/art [--force] [--only l_kpp,l_turn] [--water l_yard,l_sana_bath]
+//   node tools/wind-masks.mjs ../red-thread-secret/<история>/art [--force] [--only l_kpp,l_turn] [--water l_yard,l_sana_bath] [--still l_quay]
 //   → w_<кадр>.jpg (красное — ветки и кроны, зелёное — трава, синее — вода) для кадров, где растительности больше 0,2 % (клумба на площади — тоже); имена — в SoloStory.wind
 // Шейдер по маске качает ветки и траву: верхушки сильнее, порывами, в грозу сильнее.
 // Гладкое внутри «дерева» (знак на фоне ельника, стена) не качается: из маски убирается всё без мелкой фактуры.
@@ -15,15 +15,16 @@ const onlyArg = process.argv.indexOf('--only')
 // ищется по кадру: горизонтальное (по карте глубины z_, как пол) и заметно темнее вокруг
 const waterArg = process.argv.indexOf('--water')
 const wetFrames = new Set(waterArg > 0 ? process.argv[waterArg + 1].split(',') : [])
+// кадры, где маска ошибается и что-то твёрдое колыхалось бы (бетон набережной принят за траву): без ветра и ряби
+const stillArg = process.argv.indexOf('--still')
+const stillFrames = new Set(stillArg > 0 ? process.argv[stillArg + 1].split(',') : [])
 const only = onlyArg > 0 ? new Set(process.argv[onlyArg + 1].split(',')) : null
 /** что качается ветром (классы ADE20K): ветки и кроны — плавно и широко, трава — мелко и часто */
 const BRANCH = new Set(['tree', 'plant', 'palm'])
 const GRASS = new Set(['grass', 'flower', 'field'])
 const FOLIAGE = new Set([...BRANCH, ...GRASS])
-/** вода: рябь (синий канал маски) */
-const WATER = new Set(['water', 'sea', 'river', 'lake', 'swimming pool'])
 const GROUND = new Set(['road', 'earth', 'grass', 'sidewalk', 'path', 'dirt track', 'field', 'sand', 'floor'])
-const SOLID = new Set(['signboard', 'pole', 'streetlight', 'traffic light', 'building', 'house', 'fence', 'railing', 'car', 'truck', 'bus', 'booth', 'door', 'column', 'sculpture', 'statue', 'fountain', 'bench', 'hovel', 'tower', 'boat'])
+const SOLID = new Set(['signboard', 'pole', 'streetlight', 'traffic light', 'fence', 'railing', 'car', 'truck', 'bus', 'booth', 'door', 'column', 'sculpture', 'statue', 'fountain', 'bench', 'hovel', 'tower', 'boat'])
 /** Вода по кадру: горизонтальная поверхность (глубина растёт книзу — пол, дно, гладь) заметно темнее своего окружения
     (лужа, затопленный пол, бассейн, вода между мостками); светлый кафель и доски не проходят. 0…255 в размере w×h */
 async function puddles(img, depth, w, h) {
@@ -51,6 +52,48 @@ async function puddles(img, depth, w, h) {
   const open = await sharp(m, { raw: { width: S, height: SH, channels: 1 } }).blur(2).threshold(160).extractChannel(0).raw().toBuffer()
   return sharp(open, { raw: { width: S, height: SH, channels: 1 } }).resize(w, h, { fit: 'fill' }).extractChannel(0).raw().toBuffer()
 }
+/** Листва и хвоя по картинке: мелкая фактура во все стороны (структурный тензор: края без общего направления), не светлое
+    (штукатурка, небо, туман); только крупными пятнами. 0/1 в размере w×h */
+async function leafiness(img, w, h, { light = false, grass = false, big = false } = {}) {
+  const S = 640, SH = Math.round(S * h / w)
+  const lum = await sharp(img).resize(S, SH, { fit: 'fill' }).greyscale().raw().toBuffer()
+  const L = Float32Array.from(lum, v => Math.sqrt(v / 255))
+  const jxx = new Float32Array(S * SH), jyy = new Float32Array(S * SH), jxy = new Float32Array(S * SH)
+  for (let y = 1; y < SH - 1; y++) for (let x = 1; x < S - 1; x++) {
+    const i = y * S + x, gx = (L[i + 1] - L[i - 1]) / 2, gy = (L[i + S] - L[i - S]) / 2
+    jxx[i] = gx * gx; jyy[i] = gy * gy; jxy[i] = gx * gy
+  }
+  const box = (a, r) => { const o = new Float32Array(S * SH), t = new Float32Array(S * SH), n = 2 * r + 1
+    for (let y = 0; y < SH; y++) for (let x = 0; x < S; x++) { let v = 0; for (let k = -r; k <= r; k++) v += a[y * S + Math.min(S - 1, Math.max(0, x + k))]; t[y * S + x] = v / n }
+    for (let y = 0; y < SH; y++) for (let x = 0; x < S; x++) { let v = 0; for (let k = -r; k <= r; k++) v += t[Math.min(SH - 1, Math.max(0, y + k)) * S + x]; o[y * S + x] = v / n }
+    return o }
+  const a = box(jxx, 4), b = box(jyy, 4), c = box(jxy, 4)
+  // и в крупном окне: у досок, брёвен, кровли и стен есть общее направление на десятки точек, у хвои — нет
+  const A2 = box(jxx, 12), B2 = box(jyy, 12), C2 = box(jxy, 12)
+  const k = new Float32Array(S * SH)
+  for (let i = 0; i < k.length; i++) {
+    const tr = a[i] + b[i], e = Math.sqrt(tr)
+    const coh = tr > 1e-7 ? Math.sqrt((a[i] - b[i]) ** 2 + 4 * c[i] * c[i]) / tr : 1
+    const t2 = A2[i] + B2[i], coh2 = t2 > 1e-7 ? Math.sqrt((A2[i] - B2[i]) ** 2 + 4 * C2[i] * C2[i]) / t2 : 1
+    const sm = (v, lo, hi) => { const t = Math.min(1, Math.max(0, (v - lo) / (hi - lo))); return t * t * (3 - 2 * t) }
+    k[i] = sm(e, 0.008, 0.022) * (1 - sm(coh, 0.3, 0.55)) * (1 - sm(coh2, 0.12, 0.28)) * (light ? 1 : 1 - sm(lum[i], 140, 175))
+  }
+  const soft = box(k, 6)
+  const m = Buffer.alloc(S * SH)
+  for (let i = 0; i < m.length; i++) m[i] = soft[i] > 0.4 ? 255 : 0
+  // одиночные пятна (облупленная краска, трещины) — не лес: только куски от 0,4 % кадра
+  const seen = new Uint8Array(S * SH), q = new Int32Array(S * SH), keep = Buffer.alloc(S * SH)
+  for (let s0 = 0; s0 < m.length; s0++) {
+    if (seen[s0] || !m[s0]) continue
+    let hd = 0, tl = 0
+    q[tl++] = s0; seen[s0] = 1
+    while (hd < tl) { const i = q[hd++], x = i % S; for (const j of [x > 0 ? i - 1 : -1, x < S - 1 ? i + 1 : -1, i - S, i + S]) { if (j < 0 || j >= m.length || seen[j] || !m[j]) continue; seen[j] = 1; q[tl++] = j } }
+    if (tl >= S * SH * (grass ? 0.0008 : big ? 0.015 : 0.004)) for (let t = 0; t < tl; t++) keep[q[t]] = 255
+  }
+  return sharp(keep, { raw: { width: S, height: SH, channels: 1 } }).resize(w, h, { fit: 'fill' }).extractChannel(0).raw().toBuffer()
+}
+/** серое (асфальт, бетон, штукатурка, туман): каналы почти равны */
+const gray = (rgb, i) => { const r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2]; return Math.max(r, g, b) - Math.min(r, g, b) < 12 }
 /** Расширить двоичную маску на r точек (квадрат): по строкам, потом по столбцам — расстояние до ближней единицы слева и справа */
 function grow(m, W, H, r) {
   const pass = (n, len, at) => {
@@ -91,7 +134,7 @@ const W = 640
 /** 1 — хвоя, листва, трава (мелкая фактура), 0 — гладкое: лицо знака, стена, туман. Яркость берётся под корнем, чтобы
     тёмный ельник считался фактурным наравне со светлым. Сглажено широко: маска плавная, без дыр — иначе у каждой дырки
     картинка рвалась бы, а стволы гнулись змейкой (крона качается целиком, ствол — вместе с ней) */
-const E0 = Number(process.env.WIND_E0 ?? 0.006), E1 = Number(process.env.WIND_E1 ?? 0.03)
+const E0 = Number(process.env.WIND_E0 ?? 0.003), E1 = Number(process.env.WIND_E1 ?? 0.016)
 function textured(lum, W, H) {
   const L = Float32Array.from(lum, v => Math.sqrt(v / 255))
   const e = new Float32Array(W * H)
@@ -116,55 +159,81 @@ const kept = []
 for (const f of list) {
   const out = `${dir}/w_${f}`
   if (existsSync(out) && !process.argv.includes('--force') && !only) { kept.push(f.slice(0, -4)); continue }
+  if (stillFrames.has(f.slice(0, -4))) { if (existsSync(out)) unlinkSync(out); continue }
   const parts = await seg(`${dir}/${f}`)
   const share = (label) => { const p = parts.find(q => q.label === label); if (!p) return 0; let n = 0; for (const v of p.mask.data) if (v > 127) n++; return n / p.mask.data.length }
   // в помещении ветра нет (цветок в горшке не качается): потолок или много пола и нет неба — помещение
   // (асфальт площади сеть тоже зовёт «полом», но над площадью небо)
   const indoor = (share('ceiling') > 0.02 || share('floor') > 0.08) && share('sky') < 0.03
-  // вода (озеро, река, лужи, затопленный пол) рябит и в помещении — синий канал маски
-  const water = parts.filter(p => WATER.has(p.label))
+  // вода (лужи, затопленный пол, бассейн) рябит и в помещении — синий канал маски
   const hits = indoor ? [] : parts.filter(p => FOLIAGE.has(p.label))
-  // трава на земле: «земля», поле; на улице (есть небо) — и то, что сеть назвала полом или тротуаром (клумба на площади);
-  // что из этого трава, решает цвет и фактура ниже
-  const outdoorFloor = share('sky') >= 0.03 ? ['floor', 'sidewalk', 'path'] : []
-  const soil = indoor ? [] : parts.filter(p => p.label === 'earth' || p.label === 'field' || outdoorFloor.includes(p.label))
-  if (!hits.length && !soil.length && !water.length && !wetFrames.has(f.slice(0, -4))) { if (existsSync(out)) unlinkSync(out); continue }
-  // тёмный ельник в тумане сеть нередко принимает за «стену»: в кадре, где лес уже есть, такая «стена» — тоже ветки,
-  // если она фактурная и зелёно-серая (кирпич и доски рыжие, штукатурка гладкая — не проходят)
-  const walls = parts.filter(p => p.label === 'wall')
+  // трава на земле: «земля», поле (пол и тротуар — асфальт, их не берём); что из этого трава, решает цвет и фактура ниже
+  const soil = indoor ? [] : parts.filter(p => p.label === 'earth' || p.label === 'field')
+  if (!hits.length && !soil.length && !wetFrames.has(f.slice(0, -4))) { if (existsSync(out)) unlinkSync(out); continue }
+  const walls = parts.filter(p => p.label === 'wall' || p.label === 'building' || p.label === 'house')
   const { width, height } = parts[0].mask
   const br = new Uint8Array(width * height), gr = new Uint8Array(width * height)
-  // «растение» сеть часто находит на стенах и крышах: его берём, только если оно зеленоватое (дерево — любое)
+  // «растение» сеть часто находит на стенах и крышах: берём, если оно не серое (дерево и трава — любые)
   const rgbAll = await sharp(`${dir}/${f}`).resize(width, height, { fit: 'fill' }).removeAlpha().raw().toBuffer()
   for (const h of hits) {
     const m = h.mask.data, to = BRANCH.has(h.label) ? br : gr, picky = h.label !== 'tree' && h.label !== 'grass'
     for (let i = 0; i < to.length; i++) {
       if (m[i] <= to[i]) continue
-      if (picky && !(rgbAll[i * 3 + 1] >= rgbAll[i * 3] && rgbAll[i * 3 + 1] > rgbAll[i * 3 + 2] + 10)) continue
+      // «растение» на стене сеть находит серым — его не берём; осенняя трава и бурьян жёлто-бурые, зелёные — берём
+      if (picky && gray(rgbAll, i)) continue
       to[i] = m[i]
     }
   }
   const H = Math.round(W * height / width)
+  // линия земли: первая строка, где дорога, земля, трава, тротуар занимают больше пятой части ширины
+  const ground = parts.filter(p => GROUND.has(p.label))
+  let horizon = height
+  for (let y = 0; y < height && horizon === height; y++) {
+    let n = 0
+    for (const g of ground) for (let x = 0; x < width; x++) if (g.mask.data[y * width + x] > 127) n++
+    if (n > width * 0.2) horizon = y
+  }
+  // «растение» сеть находит и во мху на крышах и стенах будок, на вышках: такое берём только у земли (бурьян, кусты)
+  for (const h of hits) if (h.label !== 'tree' && h.label !== 'grass') {
+    const m = h.mask.data, to = BRANCH.has(h.label) ? br : gr
+    const top = Math.max(0, horizon - Math.round(height * 0.06))
+    for (let i = 0; i < top * width; i++) if (m[i] > 127) to[i] = 0
+  }
+  // «дерево» и «трава» от сети проверяются по самой картинке: сеть ставит «дерево» и на мох на стене, на прутья
+  // турникета; хвоя и листва — фактура во все стороны (светлая хвоя в тумане тоже), стволы и прутья — прямые линии
+  const leafyAny = await leafiness(`${dir}/${f}`, width, height, { light: true })
+  for (let i = 0; i < br.length; i++) if (!leafyAny[i]) { br[i] = 0 }
+  const grassy = await leafiness(`${dir}/${f}`, width, height, { light: true, grass: true })
   // столб, ствол, прут — прямые вытянутые края — не качаются ни с ветками, ни с травой (у травы порог мягче: стебли тоже
   // прямые, но идут вразнобой)
   const straight = straightEdges(await sharp(`${dir}/${f}`).resize(width, height, { fit: 'fill' }).greyscale().raw().toBuffer(), width, height)
-  if (walls.length && hits.some(h => BRANCH.has(h.label))) {
-    const rgb = await sharp(`${dir}/${f}`).resize(width, height, { fit: 'fill' }).removeAlpha().raw().toBuffer()
-    // только выше земли: линия, где начинаются дорога, земля, трава (дорогу сеть тоже зовёт «стеной»)
-    const ground = parts.filter(p => GROUND.has(p.label))
-    let horizon = height
-    for (let y = 0; y < height && horizon === height; y++) {
-      let n = 0
-      for (const g of ground) for (let x = 0; x < width; x++) if (g.mask.data[y * width + x] > 127) n++
-      if (n > width * 0.2) horizon = y
-    }
+  // лес в тумане SegFormer b0 часто зовёт «стеной» и даже «зданием» (ельник за КПП, деревья на берегу): там, где сеть
+  // видит стену или дом, ветки ищутся по самой картинке — мелкая фактура во все стороны (хвоя, листва), не светлое;
+  // стены, доски, окна — прямые параллельные края или гладко, штукатурка светлая. Только выше земли
+  if (walls.length && (hits.length || soil.length)) {
+    // лес — большими пятнами (от 1,5 % кадра): потёки и мох на стене будки, прутья турникета — мелкие
+    const leafy = await leafiness(`${dir}/${f}`, width, height, { big: true })
+    const cand = new Uint8Array(width * height)
     for (const wpart of walls) {
       const m = wpart.mask.data
-      for (let i = 0; i < br.length; i++) {
-        if (m[i] < 128 || Math.floor(i / width) > horizon - height * 0.03) continue
-        const r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2]
-        if (g >= r - 4 && Math.max(r, g, b) - Math.min(r, g, b) < 60) br[i] = Math.max(br[i], m[i])
+      for (let i = 0; i < cand.length; i++) if (m[i] > 127 && leafy[i] && Math.floor(i / width) <= horizon - height * 0.02) cand[i] = 1
+    }
+    // и только то, что уходит к небу (кроны на фоне неба, край кадра сверху): потёк на стене будки окружён стеной
+    const sky = new Uint8Array(width * height)
+    for (const q of parts.filter(p => p.label === 'sky')) { const m = q.mask.data; for (let i = 0; i < m.length; i++) if (m[i] > 127) sky[i] = 1 }
+    for (let x = 0; x < width; x++) sky[x] = 1
+    grow(sky, width, height, Math.round(width * 0.02))
+    const seen = new Uint8Array(width * height), q = new Int32Array(width * height)
+    for (let s0 = 0; s0 < cand.length; s0++) {
+      if (!cand[s0] || seen[s0]) continue
+      let hd = 0, tl = 0, up = false
+      q[tl++] = s0; seen[s0] = 1
+      while (hd < tl) {
+        const i = q[hd++], x = i % width
+        if (sky[i]) up = true
+        for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, i - width, i + width]) { if (j < 0 || j >= cand.length || seen[j] || !cand[j]) continue; seen[j] = 1; q[tl++] = j }
       }
+      if (up) for (let t = 0; t < tl; t++) br[q[t]] = 255
     }
   }
   // обочины и клумбы сеть часто зовёт «землёй»: фактурная (проверка ниже, textured) зеленовато-жёлтая «земля» — трава;
@@ -175,17 +244,17 @@ for (const f of list) {
       const m = q.mask.data
       for (let i = 0; i < gr.length; i++) {
         if (m[i] < 128) continue
+        // трава: зелёная, жёлтая, соломенная (зелёный канал почти догоняет красный); грязь и глина — заметно рыжее;
+        // асфальт и бетон — серые
         const r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2]
-        if (g >= r - 10 && g > b + 10) gr[i] = Math.max(gr[i], m[i])
+        if (grassy[i] && Math.max(r, g, b) - Math.min(r, g, b) >= 14 && g >= r * 0.82 && g > b + 6) gr[i] = Math.max(gr[i], m[i])
       }
     }
   }
   // и не рядом со знаками, столбами, домами: их край не должен качаться
   const solid = new Uint8Array(width * height)
-  const R = Math.round(width * 0.03)
-  // среди домов «стена» — это дом (в лесу сеть зовёт стеной ельник — там её не трогаем)
-  const town = share('building') + share('house') > 0.02
-  for (const q of parts.filter(p => SOLID.has(p.label) || (town && p.label === 'wall'))) { const m = q.mask.data; for (let i = 0; i < m.length; i++) if (m[i] > 127) solid[i] = 1 }
+  const R = Math.round(width * Number(process.env.SOLID_PAD ?? 0.012))
+  for (const q of parts.filter(p => SOLID.has(p.label))) { const m = q.mask.data; for (let i = 0; i < m.length; i++) if (m[i] > 127) solid[i] = 1 }
   grow(solid, width, height, R)
   for (let i = 0; i < br.length; i++) if (solid[i]) { br[i] = 0; gr[i] = 0 }
   // знак стоит на столбе: под знаком до низа кадра (с запасом вбок — столб бывает наклонён) ничего не качается
@@ -198,11 +267,14 @@ for (const f of list) {
     for (let y = Math.max(0, y0 - Math.round(height * 0.02)); y < height; y++) for (let x = Math.max(0, x0 - pad); x <= Math.min(width - 1, x1 + pad); x++) { br[y * width + x] = 0; gr[y * width + x] = 0 }
   }
   const wa = new Uint8Array(width * height)
-  for (const q of water) { const m = q.mask.data; for (let i = 0; i < wa.length; i++) if (m[i] > wa[i]) wa[i] = m[i] }
+  // метке «вода» сети не верим: мокрый асфальт, тропинку и туман над озером она тоже зовёт водой — рябь только там,
+  // где вода есть по игре (--water), и только по кадру: горизонтальное, тёмное и гладкое
   if (wetFrames.has(f.slice(0, -4)) && existsSync(`${dir}/z_${f}`)) {
     const found = await puddles(`${dir}/${f}`, `${dir}/z_${f}`, width, height)
     for (let i = 0; i < wa.length; i++) if (found[i] > wa[i]) wa[i] = found[i]
   }
+  // трава — только с фактурой травы: брёвна скамеек, доски, трещины асфальта (линии) не колышутся
+  for (let i = 0; i < gr.length; i++) if (!grassy[i]) gr[i] = 0
   let on = 0, wet = 0
   for (let i = 0; i < br.length; i++) { if (br[i] > 127 || gr[i] > 127) on++; if (wa[i] > 127) wet++ }
   const min = Number(process.env.WIND_MIN ?? 0.002)
