@@ -354,6 +354,8 @@ export interface SoloStory {
   endingRules: { ending: string; when?: SoloCond; score?: Record<string, number> }[]
   /** что в кадре главное, если кадр режется под узкий экран: имя картинки → object-position («86% 40%») */
   artFocus?: Record<string, string>
+  /** кадры, у которых есть карта глубины z_<кадр>.jpg: рисуются объёмом (2,5D) */
+  depth?: string[]
   voices: { narrator: string; hero: string }
 }
 
@@ -383,6 +385,8 @@ export interface SoloView {
   speakers: Record<string, string>
   /** главная точка кадра для узких экранов: имя картинки → object-position */
   artFocus: Record<string, string>
+  /** кадры с картой глубины */
+  depth: string[]
   /** нет партии — только меню */
   started: boolean
   place: {

@@ -60,6 +60,10 @@ const artSrc = computed(() => place.value && story.value && shownArt.value ? `/a
 watch(artSrc, () => { artOk.value = true })
 const backToPlace = () => { if (closeup.value) closeDismissed.value = closeup.value.seq }
 const darkness = computed(() => !place.value ? 'none' : !place.value.dark ? 'none' : place.value.lit ? 'torch' : 'black')
+/* объём (2,5D): у кадра есть карта глубины — рисуем WebGL-рельефом; не вышло — обычная картинка */
+const depthFail = ref(false)
+const depthSrc = computed(() => artSrc.value && v.value?.depth.includes(shownArt.value) && !depthFail.value ? `/art/${story.value}/z_${shownArt.value}.jpg` : '')
+watch(artSrc, () => { depthFail.value = false })
 
 /* фонарь следует за курсором или пальцем */
 const torch = reactive({ x: 62, y: 42 })
@@ -409,14 +413,15 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
     <template v-else>
       <main class="solo-main">
         <div
-          class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk, 'solo-view--weak': v.battery < 15 }]"
+          class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk, 'solo-view--weak': v.battery < 15, 'solo-view--depth': !!depthSrc }]"
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
           @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
         >
           <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
           <Transition name="solo-cut" :duration="{ enter: 1400, leave: 900 }">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <img v-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
+            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" @fail="depthFail = true" />
+            <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
           </Transition>
           <Transition name="fade">
             <button v-if="closeup && artOk" type="button" class="solo-view__back" @click.stop="backToPlace">← {{ place?.name }}</button>
