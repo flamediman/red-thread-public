@@ -313,6 +313,38 @@ export function useAudio() {
     return true
   }
 
+  /** Нота синтезатором: для загадок на слух (шкатулка, пианино, горн). note — «C5», «F#4»; возвращает длительность */
+  function tone(note: string, timbre: 'box' | 'piano' | 'bugle' = 'piano', at = 0, volume = 0.5): number {
+    const c = ensure(); if (!c) return 0
+    const m = /^([A-G])(#?)(\d)$/.exec(note)
+    if (!m) return 0
+    const semi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1] as 'C'] + (m[2] ? 1 : 0) + (Number(m[3]) - 4) * 12 - 9
+    const freq = 440 * Math.pow(2, semi / 12)
+    const t0 = c.currentTime + at
+    const dur = timbre === 'box' ? 1.1 : timbre === 'bugle' ? 0.55 : 1.6
+    const out = c.createGain()
+    out.gain.setValueAtTime(0.0001, t0)
+    out.gain.exponentialRampToValueAtTime(volume, t0 + (timbre === 'bugle' ? 0.05 : 0.008))
+    out.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    // тембр: шкатулка — чистый тон с высоким призвуком, пианино — треугольник с октавой, горн — пила через фильтр
+    const parts: [OscillatorType, number, number][] = timbre === 'box' ? [['sine', 1, 1], ['sine', 4.2, 0.18]]
+      : timbre === 'bugle' ? [['sawtooth', 1, 0.5], ['square', 2, 0.08]] : [['triangle', 1, 1], ['sine', 2, 0.3], ['sine', 3, 0.08]]
+    let tail: AudioNode = out
+    if (timbre === 'bugle') { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800; out.connect(f); tail = f }
+    for (const [type, k, g] of parts) {
+      const o = c.createOscillator(); o.type = type; o.frequency.value = freq * k
+      const og = c.createGain(); og.gain.value = g
+      o.connect(og).connect(out); o.start(t0); o.stop(t0 + dur + 0.05)
+    }
+    tail.connect(roomChain(c))
+    return dur
+  }
+  /** мелодия нотами одна за другой; возвращает общую длительность */
+  function melody(notes: string[], timbre: 'box' | 'piano' | 'bugle' = 'box', gap = 0.42): number {
+    notes.forEach((n, i) => tone(n, timbre, i * gap, timbre === 'box' ? 0.35 : 0.45))
+    return notes.length * gap + 1
+  }
+
   /** Одиночный эффект. Возвращает длительность, чтобы экран мог подождать. */
   /** Одиночный звук. far — сыграть «издалека»: глухо, с долгим эхом и тише (звуки из FAR_NAMES — всегда так);
       pan — откуда, −1 слева … 1 справа. Остальное идёт через «комнату» — короткое эхо по покрытию места */
@@ -423,5 +455,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, stinger, sfx, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, stinger, tone, melody, sfx, voice, stopVoice, stopAll, preload: load }
 }

@@ -92,6 +92,7 @@ watch(view, (nv, ov) => {
     for (const s of f.sfx ?? []) void audio.sfx(s, 0.9)
     if (f.found) found.value = [...found.value, { item: f.found }]
     if (f.note) found.value = [...found.value, { note: f.note }]
+    if (f.melody) audio.melody(f.melody.notes, f.melody.timbre)
   }
   lastPlayed = maxSeq
   if (nv.health < lastHealth) { hurtFlash.value++; void audio.sfx('solo-hurt', 0.9) }
@@ -143,6 +144,12 @@ function useSelf() {
   send({ type: 'use', item: it.id })
   if (it.kind !== 'weapon') picked.value = null
 }
+/* карманы по разделам, как в старых хоррорах: оружие, лечение и свет, ключи, вещи, бумаги */
+const BAG: { label: string; kinds: string[] }[] = [
+  { label: 'Оружие', kinds: ['weapon', 'ammo'] }, { label: 'Лечение и свет', kinds: ['heal', 'battery'] },
+  { label: 'Ключи', kinds: ['key'] }, { label: 'Вещи', kinds: ['tool', 'luck'] }, { label: 'Бумаги', kinds: ['story'] }
+]
+const bagGroups = computed(() => BAG.map(g => ({ label: g.label, items: (v.value?.inventory ?? []).filter(i => g.kinds.includes(i.kind)) })).filter(g => g.items.length))
 const itemVerb = (kind: string) => kind === 'heal' ? 'Перевязаться' : kind === 'battery' ? 'Вставить в фонарь' : kind === 'weapon' ? 'Взять в руки' : 'Рассмотреть'
 
 /* ── оверлеи ── */
@@ -376,7 +383,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <button type="button" class="solo-btn" :class="{ 'solo-btn--ghost': canContinue }" @click="askNew">{{ confirmNew ? 'Точно начать заново?' : 'Новая игра' }}</button>
           <button v-for="s in v.saves" :key="s.slot" type="button" class="solo-btn solo-btn--ghost" @click="enter({ load: s.slot })">Загрузить: {{ s.place }} · {{ when(s.at) }}</button>
         </div>
-        <p class="solo-title__hint">{{ v?.info.minutes }} минут · лучше в наушниках и в темноте · сохраняться можно только у телефонов</p>
+        <p class="solo-title__hint">{{ v?.info.minutes }} минут<template v-if="v?.info.hard"> · сложная: загадки без подсказок, ответы — в записках и вокруг</template> · лучше в наушниках и в темноте · сохраняться можно только у телефонов</p>
         <div v-if="v" class="solo-move">
           <template v-if="moveOpen === 'give'">
             <p v-if="transferCode" class="solo-move__code">Код на другом устройстве: <b class="tabnum">{{ transferCode.code.slice(0, 3) }} {{ transferCode.code.slice(3) }}</b><small>действует {{ transferCode.minutes >= 300 * 1440 ? 'год' : transferCode.minutes >= 1440 ? Math.round(transferCode.minutes / 1440) + ' дней' : transferCode.minutes + ' минут' }}; там: заставка «Тумана» → «Продолжить с другого устройства»</small></p>
@@ -489,17 +496,21 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         <section class="solo-block solo-block--bag">
           <p class="solo-label">В карманах</p>
           <div class="solo-bag">
+            <template v-for="g in bagGroups" :key="g.label">
+            <p class="solo-bag__group">{{ g.label }}</p>
             <button
-              v-for="it in v.inventory" :key="it.id" type="button" class="solo-item"
+              v-for="it in g.items" :key="it.id" type="button" class="solo-item"
               :class="{ on: picked === it.id, 'solo-item--equipped': it.equipped, 'solo-item--target': mode?.kind === 'combine' && mode.item !== it.id }"
               :title="it.description" @click="clickItem(it.id)"
             ><SoloIcon :name="it.icon" /><span>{{ it.name }}</span><b v-if="it.count > 1" class="tabnum">×{{ it.count }}</b></button>
+            </template>
           </div>
           <div v-if="pickedItem && !mode" class="solo-detail">
             <img :key="pickedItem.art" class="solo-detail__art" :src="`/art/${story}/${pickedItem.art}.jpg`" alt="" @error="($event.target as HTMLImageElement).hidden = true">
             <p>{{ pickedItem.description }}</p>
             <div class="solo-detail__actions">
               <button v-if="pickedItem.usable && !pickedItem.equipped" type="button" class="solo-btn solo-btn--small" @click="useSelf">{{ itemVerb(pickedItem.kind) }}</button>
+              <button v-if="pickedItem.examinable" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="send({ type: 'examine', item: pickedItem.id })">Осмотреть внимательнее</button>
               <button v-if="v.hotspots.length" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="startMode('use')">Применить к…</button>
               <button v-if="v.inventory.length > 1" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="startMode('combine')">Соединить с…</button>
             </div>
@@ -541,7 +552,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
-      <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" />
+      <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" @notes="notesOpen = true" />
       <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].item?.id ?? found[0].note?.id}`" :item="found[0].item" :note="found[0].note" :story="story" :more="found.length - 1" @done="nextFound" @read="openNote" />
 
       <div v-if="overlay === 'dead'" class="solo-end solo-end--dead" role="alertdialog">

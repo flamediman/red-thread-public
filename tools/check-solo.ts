@@ -119,6 +119,17 @@ for (const h of S.hotspots) {
     if (p.kind === 'dials' && p.answer.length !== p.dials.length) err(`${w}: ответов не столько, сколько дисков`)
     if (p.kind === 'sequence') for (const a of p.answer) if (!p.buttons.some(b => b.id === a)) err(`${w}: в последовательности нет кнопки ${a}`)
     if (p.kind === 'word' && !p.answers.length) err(`${w}: у слова нет ответов`)
+    if (p.kind === 'clock' && !/^\d{1,2}:\d{2}$/.test(p.answer)) err(`${w}: время «${p.answer}» не в виде Ч:ММ`)
+    if (p.kind === 'clock' && Number(p.answer.split(':')[1]) % 5) err(`${w}: минуты кратны пяти — иначе стрелку не поставить`)
+    if (p.kind === 'keys') for (const a of p.answer) if (!p.keys.some(k => k.id === a)) err(`${w}: в мелодии нет клавиши ${a}`)
+    if (p.kind === 'arrange') { if (p.answer.length !== p.slots.length) err(`${w}: ответов не столько, сколько мест`); for (const a of p.answer) if (!p.pieces.some(x => x.id === a)) err(`${w}: в раскладке нет вещи ${a}`) }
+    if (p.kind === 'grille') {
+      const n = p.grid.length
+      if (p.grid.some(r => [...r].length !== n)) err(`${w}: сетка решётки не квадратная`)
+      const cover = new Set<string>()
+      for (const h of p.holes) { let [r, c] = h; for (let k = 0; k < 4; k++) { cover.add(`${r},${c}`); [r, c] = [c, n - 1 - r] } }
+      if (cover.size !== n * n || p.holes.length * 4 !== n * n) err(`${w}: прорези при четырёх поворотах не покрывают сетку ровно один раз`)
+    }
   }
   if (!h.look && !h.puzzle && !h.talk && !h.use?.length) err(`${w}: с ним ничего нельзя сделать`)
 }

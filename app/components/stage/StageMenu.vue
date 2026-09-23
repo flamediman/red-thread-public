@@ -143,7 +143,7 @@ function openSolo(e: MouseEvent, id: string) {
             <span class="case-row__title">{{ s.title }}</span>
             <span class="case-row__go" aria-hidden="true">→</span>
             <span class="case-row__sub">{{ s.subtitle }}</span>
-            <span class="case-row__meta"><b>одиночная игра</b> · компьютер или планшет · {{ s.minutes }} минут</span>
+            <span class="case-row__meta"><b>одиночная игра</b><template v-if="s.hard"> · <b>сложная</b></template> · компьютер или планшет · {{ s.minutes }} минут</span>
           </a>
         </div>
       </section>

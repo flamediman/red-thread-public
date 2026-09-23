@@ -47,6 +47,10 @@ interface Run {
   notes: string[]
   /** прочитанные записки (открывали в журнале) */
   read?: string[]
+  /** где нашли записку: id записки → id места */
+  notesAt?: Record<string, string>
+  /** предметы, которые уже осматривали внимательно */
+  examined?: string[]
   health: number
   battery: number
   light: boolean
@@ -181,6 +185,7 @@ export class SoloGame {
     if (this.live.dialogue || this.live.puzzle) return
     switch (msg.type) {
       case 'go': return this.go(msg.to)
+      case 'examine': return this.examine(msg.item)
       case 'noteRead': {
         const r = this.run
         if (r && r.notes.includes(msg.id) && !(r.read ?? []).includes(msg.id)) { r.read = [...(r.read ?? []), msg.id]; this.changed() }
@@ -230,8 +235,8 @@ export class SoloGame {
     return true
   }
 
-  private say(text?: string, sfx?: string[], voice?: string, extra: { art?: string; found?: SoloView['feed'][number]['found']; note?: SoloView['feed'][number]['note'] } = {}) {
-    if (!text && !sfx?.length && !extra.art && !extra.found && !extra.note) return
+  private say(text?: string, sfx?: string[], voice?: string, extra: { art?: string; found?: SoloView['feed'][number]['found']; note?: SoloView['feed'][number]['note']; melody?: SoloView['feed'][number]['melody'] } = {}) {
+    if (!text && !sfx?.length && !extra.art && !extra.found && !extra.note && !extra.melody) return
     this.feed = [...this.feed, { seq: ++this.seq, text: text ?? '', sfx, voice, ...extra }].slice(-FEED)
   }
   private artOf(item: SoloItem) { return item.art ?? `i_${item.id}` }
@@ -256,8 +261,10 @@ export class SoloGame {
     }
     for (const f of e.set ?? []) if (!r.flags.includes(f)) r.flags.push(f)
     if (e.unset) r.flags = r.flags.filter(f => !e.unset!.includes(f))
+    if (e.melody) this.say(undefined, undefined, undefined, { melody: e.melody })
     if (e.note && !r.notes.includes(e.note)) {
       r.notes.push(e.note)
+      r.notesAt = { ...(r.notesAt ?? {}), [e.note]: r.place }
       // записка показывается карточкой, как находка: иначе о ней узнаёшь только из ленты
       const n = this.S.notes.find(x => x.id === e.note)
       if (n) this.say(undefined, undefined, undefined, { note: { id: n.id, title: n.title, text: n.text } })
@@ -323,6 +330,7 @@ export class SoloGame {
       r.opened.push(this.lockKey(here.id, to))
       if (byItem && exit.lock.consume) this.apply({ take: [exit.lock.item!] })
       if (exit.lock.open) this.apply(exit.lock.open)
+      if (byItem) this.dropSpent()
       if (this.live.dead) return this.changed()
     }
     this.enter(to, true, exit.sfx)
@@ -497,8 +505,41 @@ export class SoloGame {
     if (u.once && r.used.includes(key)) { this.say('Это уже сделано.'); return this.changed() }
     if (!r.used.includes(key)) r.used.push(key)
     this.apply(u.effect)
+    this.dropSpent()
     this.actSpawn(h.id)
     this.changed()
+  }
+
+  /** осмотреть вещь внимательнее: первый раз — её эффект (надпись на обороте, что-то внутри), потом — короткое after */
+  private examine(itemId: string) {
+    const r = this.run!
+    const item = this.ITEM.get(itemId)
+    if (!item || !this.has(itemId)) return
+    if (!item.examine) { this.say(item.description); return this.changed() }
+    if ((r.examined ?? []).includes(itemId)) { this.say(item.examine.after ?? item.description); return this.changed() }
+    r.examined = [...(r.examined ?? []), itemId]
+    const { after: _after, ...effect } = item.examine
+    this.apply(effect)
+    this.changed()
+  }
+
+  /** ключ или инструмент, который открыл всё, что мог, уходит из карманов — как в старых хоррорах: «больше не нужен» */
+  private dropSpent() {
+    const r = this.run!
+    for (const [id, n] of Object.entries(r.items)) {
+      if (!n) continue
+      const it = this.ITEM.get(id)
+      if (!it || (it.kind !== 'key' && it.kind !== 'tool')) continue
+      const doors = this.S.places.flatMap(pl => pl.exits.filter(x => x.lock?.item === id).map(x => this.lockKey(pl.id, x.to)))
+      const uses = this.S.hotspots.flatMap(h => (h.use ?? []).filter(u => u.item === id).map(u => ({ key: `${h.id}:${id}`, once: !!u.once })))
+      if (!doors.length && !uses.length) continue
+      if (it.combine?.length) continue
+      const spent = doors.every(k => r.opened.includes(k)) && uses.every(u => u.once && r.used.includes(u.key))
+      if (!spent) continue
+      r.items[id] = 0
+      if (r.weapon === id) r.weapon = null
+      this.say(`«${it.name}» больше не нужен. Вы оставляете его здесь.`)
+    }
   }
 
   private combine(a: string, b: string) {
@@ -516,8 +557,13 @@ export class SoloGame {
     if (!h || !p || this.live.puzzle !== hotspotId || !Array.isArray(answer)) return
     const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replaceAll('ё', 'е')
     let right = false
+    // часы: двенадцатичасовой циферблат — 0:30 и 12:30 одно и то же
+    const clock = (t: unknown) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t ?? '').trim()); return m ? (Number(m[1]) % 12) * 60 + Number(m[2]) : -1 }
     if (p.kind === 'code') right = norm(answer.join('')) === norm(p.answer)
     else if (p.kind === 'word') right = p.answers.map(norm).includes(norm(answer[0]))
+    // решётку читают целой фразой: пробелы и знаки не считаются
+    else if (p.kind === 'grille') { const only = (x: unknown) => norm(x).replace(/[^a-zа-я0-9]/g, ''); right = p.answers.map(only).includes(only(answer[0])) }
+    else if (p.kind === 'clock') right = clock(answer[0]) >= 0 && clock(answer[0]) === clock(p.answer)
     else right = answer.length === p.answer.length && answer.every((a, i) => norm(a) === norm(p.answer[i]))
     if (!right) { this.say(p.fail, ['solo-wrong']); return this.changed() }
     this.live.puzzle = null
@@ -1226,9 +1272,9 @@ export class SoloGame {
       })),
       inventory: Object.entries(r.items).filter(([, n]) => n > 0).map(([id, count]) => {
         const it = this.ITEM.get(id)!
-        return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, art: this.artOf(it), count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon' }
+        return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, art: this.artOf(it), count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon', examinable: !!it.examine }
       }),
-      notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x).map(n => ({ ...n, read: (r.read ?? []).includes(n.id) })),
+      notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x).map(n => ({ ...n, read: (r.read ?? []).includes(n.id), where: this.PLACE.get(r.notesAt?.[n.id] ?? '')?.name ?? null })),
       health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, radio: this.radio(), radioOn: r.radioOn !== false, otherworld: r.otherworld,
       weapon: r.weapon ? this.ITEM.get(r.weapon)?.name ?? null : null,
       map: {
@@ -1308,6 +1354,10 @@ export class SoloGame {
       case 'dials': return { kind: 'dials', prompt: p.prompt, dials: p.dials, fail: p.fail, art: p.art }
       case 'sequence': return { kind: 'sequence', prompt: p.prompt, buttons: p.buttons, fail: p.fail, art: p.art }
       case 'word': return { kind: 'word', prompt: p.prompt, fail: p.fail, art: p.art }
+      case 'clock': return { kind: 'clock', prompt: p.prompt, start: p.start, fail: p.fail, art: p.art }
+      case 'keys': return { kind: 'keys', prompt: p.prompt, keys: p.keys, timbre: p.timbre, fail: p.fail, art: p.art }
+      case 'arrange': return { kind: 'arrange', prompt: p.prompt, slots: p.slots, pieces: p.pieces, fail: p.fail, art: p.art }
+      case 'grille': return { kind: 'grille', prompt: p.prompt, grid: p.grid, holes: p.holes, fail: p.fail, art: p.art }
     }
   }
 

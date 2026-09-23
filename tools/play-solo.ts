@@ -103,7 +103,7 @@ function choose(d: NonNullable<View['dialogue']>) {
 
 function solve(hotspot: string) {
   const p = S.hotspots.find(h => h.id === hotspot)!.puzzle!
-  const answer = p.kind === 'code' ? p.answer.split('') : p.kind === 'word' ? [p.answers[0]!] : p.answer
+  const answer = p.kind === 'code' ? p.answer.split('') : p.kind === 'word' || p.kind === 'grille' ? [p.answers[0]!] : p.kind === 'clock' ? [p.answer] : p.answer
   g.handle({ type: 'solve', hotspot, answer })
   if (V().puzzle) { console.log(`  ✗ головоломка ${hotspot} не приняла ответ из истории`); g.handle({ type: 'closePuzzle' }) }
   else log(`решено: ${hotspot}`)

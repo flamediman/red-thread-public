@@ -43,6 +43,8 @@ export interface SoloEffect {
   scene?: SoloLine[]
   /** музыкальная тема на время этой сцены (файл в music/ истории): воспоминание, откровение */
   music?: string
+  /** мелодия нотами (C5, G4…): клиент проигрывает её синтезатором — шкатулка, пианино. Для загадок на слух */
+  melody?: { notes: string[]; timbre?: 'box' | 'piano' | 'bugle' }
   give?: string[]
   take?: string[]
   set?: string[]
@@ -151,6 +153,14 @@ export type SoloPuzzle =
   | { kind: 'dials'; prompt: string; dials: { label: string; values: string[] }[]; answer: string[]; success: SoloEffect; fail: string; art?: string }
   | { kind: 'sequence'; prompt: string; buttons: { id: string; label: string }[]; answer: string[]; success: SoloEffect; fail: string; art?: string }
   | { kind: 'word'; prompt: string; answers: string[]; success: SoloEffect; fail: string; art?: string }
+  /** часы: выставить стрелки; ответ «Ч:ММ» по двенадцатичасовому циферблату (0:30 и 12:30 — одно и то же) */
+  | { kind: 'clock'; prompt: string; answer: string; start?: string; success: SoloEffect; fail: string; art?: string }
+  /** клавиши: у каждой своя нота (C5, E5…), нажатия звучат; ответ — ноты по порядку. Мелодию слышат в другом месте */
+  | { kind: 'keys'; prompt: string; keys: { id: string; note: string; black?: boolean }[]; answer: string[]; timbre?: 'piano' | 'box' | 'bugle'; success: SoloEffect; fail: string; art?: string }
+  /** раскладка: разложить вещи по местам; ответ — id вещи для каждого места по порядку (лишние вещи остаются) */
+  | { kind: 'arrange'; prompt: string; slots: { id: string; label: string }[]; pieces: { id: string; label: string }[]; answer: string[]; success: SoloEffect; fail: string; art?: string }
+  /** решётка Кардано: сетка букв и трафарет с прорезями (для положения 0), трафарет поворачивают на 90°; ответ — слово */
+  | { kind: 'grille'; prompt: string; grid: string[]; holes: [number, number][]; answers: string[]; success: SoloEffect; fail: string; art?: string }
 /* art у головоломки — крупный план того, что открываем; без цифр и букв, чтобы картинка не подсказывала ответ */
 
 /** головоломка без ответа — то, что уходит клиенту */
@@ -195,9 +205,12 @@ export interface SoloItem {
   weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean; zones?: number; tempo?: number }
   /** соединить с другим предметом */
   combine?: { with: string; result: string; text: string }[]
+  /** осмотреть внимательнее: в первый раз — эффект (на обороте надпись, внутри что-то), потом — after */
+  examine?: SoloEffect & { after?: string }
 }
 
-export interface SoloNote { id: string; title: string; text: string; voice?: string }
+/** kind: memo — памятка к загадке (переписанная подсказка), остальное — найденные бумаги */
+export interface SoloNote { id: string; title: string; text: string; voice?: string; kind?: 'doc' | 'memo' }
 
 export interface SoloMonster {
   id: string
@@ -349,6 +362,8 @@ export interface SoloInfo {
   lede: string
   date: string
   minutes: string
+  /** сложная игра: загадки без подсказок — пометка на карточке и заставке */
+  hard?: boolean
   ready: boolean
   /** имя героя — подпись к его репликам */
   hero: string
@@ -373,9 +388,9 @@ export interface SoloView {
   } | null
   exits: { to: string; label: string; locked: string | null; known: boolean }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]
-  inventory: { id: string; name: string; description: string; kind: SoloItemKind; icon: string; art: string; count: number; equipped: boolean; usable: boolean }[]
+  inventory: { id: string; name: string; description: string; kind: SoloItemKind; icon: string; art: string; count: number; equipped: boolean; usable: boolean; examinable: boolean }[]
   /** read — записку уже открывали в журнале; значок «Записки» считает непрочитанные */
-  notes: (SoloNote & { read: boolean })[]
+  notes: (SoloNote & { read: boolean; where: string | null })[]
   health: number
   battery: number
   light: boolean
@@ -389,7 +404,7 @@ export interface SoloView {
   /** карта — вся схема района, как на бумажной туристической карте; visited — где были, known — что видно с соседних мест */
   map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; building?: string; visited: boolean; known: boolean; here: boolean; save: boolean; locked: boolean }[]; links: [string, string][] }
   /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
-  feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string }; note?: { id: string; title: string; text: string } }[]
+  feed: { seq: number; text: string; sfx?: string[]; voice?: string; art?: string; found?: { id: string; name: string; description: string; art: string }; note?: { id: string; title: string; text: string }; melody?: SoloEffect['melody'] }[]
   scene: { seq: number; lines: SoloLine[]; music?: string } | null
   encounter: {
     monster: string; name: string; hp: number; maxHp: number; round: number
@@ -447,6 +462,7 @@ export type SoloClientMessage =
   | { type: 'choose'; index: number }
   | { type: 'sceneDone'; seq: number }
   | { type: 'noteRead'; id: string }
+  | { type: 'examine'; item: string }
   | { type: 'light'; on: boolean }
   /** приёмник: выключить, чтобы не шипел (и не подсказывал) */
   | { type: 'radio'; on: boolean }
