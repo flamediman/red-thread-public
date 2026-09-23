@@ -41,7 +41,8 @@ async function draw(id, prompt, w, h) {
     parts.push(jpeg(target(id)))
     lead = 'Re-render the attached frame as a high-quality film photograph. Keep exactly the same composition, camera angle and framing, the same objects in the same places, the same light direction, colour palette and mood. Improve realism, detail and textures; remove AI artifacts, warped geometry and garbled text. The frame shows: '
   } else {
-    for (const r of refs) if (existsSync(target(r))) parts.push(jpeg(target(r)))
+    // образец — id картинки этого набора или путь к файлу (например, кадр из папки дела для картинки меню)
+    for (const r of refs) { const f = r.includes('/') ? resolve(root, r) : target(r); if (existsSync(f)) parts.push(jpeg(f)) }
     if (parts.length) lead = 'The attached images are finished frames from the same game. Match their photographic style, lighting, film grain and colour exactly, but depict a new subject. '
   }
   parts.push({ text: `${lead}${prompt}. No text, no letters, no captions, no watermark, no people unless described.` })
