@@ -80,12 +80,18 @@ const fogAmount = computed(() => fogBase.value * (FOG_BY_WEATHER[place.value?.we
 
 /* фонарь следует за курсором или пальцем */
 const torch = reactive({ x: 62, y: 42 })
+/* куда смотрит камера объёмного кадра: за курсором, пока он над картинкой; ушёл курсор (к действиям справа) —
+   камера плавно возвращается в середину, а луч фонаря остаётся, где был. Иначе всё время чтения и выбора
+   кадр стоял бы в крайнем повороте */
+const gaze = reactive({ x: 50, y: 50 })
 function onPointer(e: PointerEvent) {
   const el = e.currentTarget as HTMLElement
   const r = el.getBoundingClientRect()
   torch.x = Math.round(((e.clientX - r.left) / r.width) * 100)
   torch.y = Math.round(((e.clientY - r.top) / r.height) * 100)
+  if (e.pointerType === 'mouse') { gaze.x = torch.x; gaze.y = torch.y }
 }
+function onPointerLeave() { gaze.x = 50; gaze.y = 50 }
 
 /* лента последствий: после перехода старое уходит, новое — со звуком */
 const feedFloor = ref(0)
@@ -530,11 +536,11 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         <div
           class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk, 'solo-view--weak': v.battery < 15, 'solo-view--depth': !!depthSrc }]"
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
-          @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
+          @pointermove="onPointer" @pointerdown="onPointer" @pointerleave="onPointerLeave" @click="backToPlace"
         >
           <!-- объёмный кадр — один на всю игру: места сменяются внутри него перетеканием (SoloDepth) -->
           <Transition name="solo-over">
-            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :gx="gaze.x" :gy="gaze.y" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
           </Transition>
           <!-- плоский кадр (крупный план, нет карты глубины): уходящий гаснет, только когда новый нарисован (onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
@@ -578,23 +584,25 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         </div>
 
         <div class="solo-status">
-          <div class="solo-ecg" :class="`solo-ecg--${healthState.key}`" :title="healthState.label">
-            <svg viewBox="0 0 200 40" aria-hidden="true">
-              <path class="solo-ecg__base" pathLength="100" d="M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200" />
-              <path class="solo-ecg__beat" pathLength="100" d="M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200" />
-            </svg>
-            <span>{{ healthState.label }}</span>
+          <!-- пульс, фонарь и приёмник — одной строкой, как в играх -->
+          <div class="solo-status__row">
+            <div class="solo-ecg" :class="`solo-ecg--${healthState.key}`" :title="healthState.label">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
+                <path class="solo-ecg__base" pathLength="100" d="M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200" />
+                <path class="solo-ecg__beat" pathLength="100" d="M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200" />
+              </svg>
+              <span>{{ healthState.label }}</span>
+            </div>
+            <button v-if="hasFlashlight" type="button" class="solo-light" :class="{ on: v.light }" :title="torchDead ? 'Фонарь заглох — потрясите его: несколько раз быстро нажмите F' : `Фонарь (F), заряд ${v.battery} %`" @click="toggleLight">
+              <SoloIcon name="item-flashlight" />
+              <span class="solo-battery" :class="{ low: lowBattery, dead: torchDead }" :aria-label="torchDead ? 'фонарь заглох' : `заряд ${v.battery} %`">
+                <i v-for="n in 5" :key="n" :class="{ full: v.battery > (n - 1) * 20 + 3 }" />
+              </span>
+            </button>
+            <button v-if="hasRadio" type="button" class="solo-radio" :class="[`solo-radio--${v.radio}`, { 'solo-radio--off': !v.radioOn }]" :title="v.radioOn ? 'Приёмник шипит, когда рядом что-то есть. Щелчок — выключить (R)' : 'Приёмник выключен. Щелчок — включить (R)'" :aria-label="v.radioOn ? 'приёмник включён' : 'приёмник выключен'" @click="toggleRadio">
+              <SoloIcon name="item-radio" /><span><i /><i /><i /><i /><i /></span>
+            </button>
           </div>
-          <button v-if="hasFlashlight" type="button" class="solo-light" :class="{ on: v.light }" title="Фонарь (F)" @click="toggleLight">
-            <SoloIcon name="item-flashlight" />
-            <span class="solo-battery" :class="{ low: lowBattery, dead: torchDead }" :aria-label="`заряд ${v.battery} %`">
-              <i v-for="n in 5" :key="n" :class="{ full: v.battery > (n - 1) * 20 + 3 }" />
-            </span>
-            <span class="tabnum">{{ torchDead ? 'заглох' : `${v.battery}%` }}</span>
-          </button>
-          <button v-if="hasRadio" type="button" class="solo-radio" :class="[`solo-radio--${v.radio}`, { 'solo-radio--off': !v.radioOn }]" :title="v.radioOn ? 'Приёмник шипит, когда рядом что-то есть. Щелчок — выключить (R)' : 'Приёмник выключен. Щелчок — включить (R)'" @click="toggleRadio">
-            <SoloIcon name="item-radio" /><span><i /><i /><i /><i /><i /></span><small>{{ v.radioOn ? '' : 'выкл' }}</small>
-          </button>
           <div v-if="v.weapon || v.ammo" class="solo-weapon"><SoloIcon :name="v.inventory.find(i => i.equipped)?.icon ?? 'weapon'" />{{ v.weapon ?? 'без оружия' }}<b v-if="v.ammo" class="tabnum"> · патронов {{ v.ammo }}</b></div>
         </div>
 

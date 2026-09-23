@@ -54,8 +54,9 @@ export function serveMedia(event: H3Event, kind: MediaKind) {
     etag,
     'last-modified': stat.mtime.toUTCString(),
     'accept-ranges': 'bytes',
-    // дома файлы меняются на лету — браузер переспрашивает; в сети их кэширует CDN и браузер на час
-    'cache-control': IS_PUBLIC ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-cache'
+    // дома файлы меняются на лету — браузер переспрашивает. В сети звук кэшируется на час; картинки — с перепроверкой
+    // (ответ 304, если не менялись): имена кадров при перерисовке не меняются, и старый кадр жил бы в кэше до суток
+    'cache-control': IS_PUBLIC && kind !== 'art' ? 'public, max-age=3600, stale-while-revalidate=86400' : IS_PUBLIC ? 'public, no-cache' : 'no-cache'
   })
   if (getRequestHeader(event, 'if-none-match') === etag) {
     setResponseStatus(event, 304)

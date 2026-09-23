@@ -176,29 +176,28 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 @media (hover: hover) { .solo-tool:not(:disabled):hover { background: rgba(230, 227, 218, 0.09); color: var(--paper); } }
 
 .solo-status { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border-radius: 10px; background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.06); }
-.solo-ecg { --ecg: var(--tuman-ok); display: flex; align-items: center; gap: 0.9rem; font-family: var(--font-ui); font-size: 0.8rem; font-weight: 700; color: var(--ecg);
-  svg { flex: none; width: 10rem; height: 2rem; overflow: visible; }
-  path { fill: none; stroke: var(--ecg); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.solo-status__row { display: flex; align-items: center; gap: 0.35rem; }
+.solo-ecg { --ecg: var(--tuman-ok); flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.7rem; margin-right: 0.3rem; font-family: var(--font-ui); font-size: 0.8rem; font-weight: 700; color: var(--ecg);
+  svg { flex: 1 1 8rem; min-width: 3.5rem; max-width: 10rem; height: 2rem; overflow: visible; }
+  span { white-space: nowrap; }
+  path { fill: none; stroke: var(--ecg); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   &__base { opacity: 0.16; }
   &__beat { stroke-dasharray: 20 80; animation: ecg 2.2s linear infinite; filter: drop-shadow(0 0 3px var(--ecg)); }
   &--hurt { --ecg: var(--tuman-warn); .solo-ecg__beat { animation-duration: 1.4s; } }
   &--bad { --ecg: var(--tuman-red); .solo-ecg__beat { animation-duration: 0.75s; } span { animation: low-pulse 0.75s ease-in-out infinite; } }
 }
 @keyframes ecg { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
-.solo-light { display: grid; grid-template-columns: auto auto minmax(3.2rem, 1fr); align-items: center; gap: 0.6rem; padding: 0.35rem 0.4rem; margin: 0 -0.4rem; border-radius: 7px; color: var(--paper-faint); font-family: var(--font-ui); font-size: 0.78rem; font-weight: 600; text-align: right;
-  &__bar { height: 4px; border-radius: 2px; background: rgba(230, 227, 218, 0.1); overflow: hidden;
-    i { display: block; height: 100%; background: var(--paper-faint); transform-origin: left; transition: transform 0.5s ease; } }
-  &.on { color: #efe2b0; .solo-light__bar i { background: #efe2b0; box-shadow: 0 0 8px rgba(239, 226, 176, 0.6); } } }
+.solo-light { flex: none; display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.5rem; border-radius: 7px; color: var(--paper-faint);
+  &.on { color: #efe2b0; } }
 @media (hover: hover) { .solo-light:hover { background: rgba(230, 227, 218, 0.06); } .solo-view__back:hover { background: rgba(6, 7, 7, 0.9); color: var(--paper); } }
-.solo-radio { display: flex; align-items: center; gap: 0.6rem; color: var(--paper-faint);
+.solo-radio { display: flex; align-items: center; gap: 0.45rem; color: var(--paper-faint);
   span { display: flex; align-items: flex-end; gap: 3px; height: 1rem; }
   i { width: 4px; border-radius: 1px; background: rgba(230, 227, 218, 0.14); height: 30%; }
   i:nth-child(2) { height: 45%; } i:nth-child(3) { height: 60%; } i:nth-child(4) { height: 80%; } i:nth-child(5) { height: 100%; }
   &--1 { color: var(--tuman-warn); i:nth-child(-n+3) { background: var(--tuman-warn); animation: static-bar 0.35s steps(2) infinite; } }
   &--2 { color: var(--tuman-red); i { background: var(--tuman-red); animation: static-bar 0.18s steps(2) infinite; } i:nth-child(2n) { animation-delay: 0.09s; } }
   /* кнопка: щелчок выключает приёмник — шкала гаснет, подпись «выкл» */
-  cursor: pointer; padding: 0.3rem 0.5rem; margin: -0.3rem -0.5rem; border-radius: 8px; text-align: left; font: inherit; transition: background-color var(--dur-fast) ease, opacity var(--dur-fast) ease;
-  small { font-family: var(--font-ui); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+  flex: none; cursor: pointer; padding: 0.4rem 0.5rem; border-radius: 7px; text-align: left; font: inherit; transition: background-color var(--dur-fast) ease, opacity var(--dur-fast) ease;
   &--off { opacity: 0.45; i { background: rgba(230, 227, 218, 0.1) !important; animation: none !important; } }
 }
 @media (hover: hover) { .solo-radio:hover { background: rgba(230, 227, 218, 0.06); } }
@@ -643,7 +642,6 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   &.low { color: var(--tuman-red); i.full:last-of-type, i.full:has(+ i:not(.full)) { animation: battery-blink 1s steps(2) infinite; } }
   &.dead i { background: rgba(230, 227, 218, 0.08); animation: none; } }
 @keyframes battery-blink { 50% { opacity: 0.2; } }
-.solo-light .tabnum { text-align: right; }
 /* подсказка, когда фонарь заглох */
 .solo-torch-dead { position: absolute; left: 50%; top: 42%; z-index: 7; transform: translateX(-50%); max-width: min(30rem, 86%); margin: 0; padding: 0.7rem 1.1rem;
   border-radius: 10px; background: rgba(6, 7, 7, 0.82); color: var(--paper); font-family: var(--font-ui); font-size: 0.92rem; text-align: center; pointer-events: none; }
