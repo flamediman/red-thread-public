@@ -84,7 +84,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div class="solo-enc" :class="{ 'solo-enc--hurt': flash === 'hurt' }" role="alertdialog" aria-modal="true">
-    <SoloDepth v-if="deep" class="solo-enc__art" :src="`/art/${story}/${mArt}.jpg`" :depth="`/art/${story}/z_${mArt}.jpg`" mode="none" :lx="50" :ly="50" :focus="focus?.[mArt]" :fog="0.45" motion="breath" @fail="depthFail = true" />
+    <SoloDepth v-if="deep" class="solo-enc__art" :src="`/art/${story}/${mArt}.jpg`" :depth="`/art/${story}/z_${mArt}.jpg`" mode="none" :lx="50" :ly="50" :focus="focus?.[mArt]" :fog="0.15" motion="breath" @fail="depthFail = true" />
     <img v-else class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" :style="{ objectPosition: focus?.[`m_${enc.monster}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
