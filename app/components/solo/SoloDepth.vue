@@ -59,7 +59,9 @@ void main() {
   }
   // затенение в углах и щелях: соседи ближе — сюда меньше попадает рассеянного света
   float occ = 0.0;
-  for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; occ += max(0.0, depthAt(o + off) - d - 0.01); }
+  // только небольшой перепад — настоящий угол; большой (предмет далеко перед фоном) не затеняет, иначе вокруг ближних
+  // предметов на светлом тумане проступает тёмный силуэт
+  for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; float df = depthAt(o + off) - d - 0.01; occ += df > 0.0 && df < 0.1 ? df : 0.0; }
   float ao = clamp(1.0 - occ * 2.2, 0.45, 1.0);
   // мокро: дождь темнит поверхности
   albedo *= mix(1.0, 0.86, rain);
@@ -69,7 +71,11 @@ void main() {
   float storm = smoothstep(0.75, 1.0, rain);
   vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
   float drift = fbm(vec2(sc.x * 2.2 + t * 0.035 + (1.0 - d) * 1.5, sc.y * 1.6 - t * 0.012));
-  float fogF = fogAmt * pow(1.0 - d, 1.25) * (0.55 + 0.8 * drift);
+  // туман — по глубине, поджатой внутрь ближних предметов: мягкий край сети вылезает за контур, и без этого вокруг
+  // предмета светилась бы кайма незатуманенного фона
+  float fd = d;
+  for (int k = 0; k < 8; k++) { float a = float(k) * 0.785; fd = min(fd, depthAt(o + vec2(cos(a), sin(a)) * texel * 2.2)); }
+  float fogF = fogAmt * pow(1.0 - fd, 1.25) * (0.55 + 0.8 * drift);
   vec3 col;
   float lit = 0.0, cone = 0.0;
   if (mode < 0.5) {

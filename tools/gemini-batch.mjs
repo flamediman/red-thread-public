@@ -63,7 +63,7 @@ async function upload(buf, name) {
 /** вырезать по центру под пропорции кадра и привести к ширине кадра дела (не шире 1600) */
 function fit(src, dst, w, h) {
   const ratio = w / h
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', `crop='min(iw,ih*${ratio.toFixed(4)})':'min(ih,iw/${ratio.toFixed(4)})',scale=${Math.min(w, 1600)}:-2:flags=lanczos`, '-q:v', '2', dst])
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', `crop='min(iw,ih*${ratio.toFixed(4)})':'min(ih,iw/${ratio.toFixed(4)})',scale=${Math.min(w, 1600)}:-2:flags=lanczos`, '-q:v', '4', dst])
 }
 
 if (cmd === 'submit') {
