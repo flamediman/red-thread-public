@@ -3,7 +3,7 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; windy?: number }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -41,6 +41,7 @@ uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
+uniform sampler2D windTex; uniform float windOn; uniform float windAmt;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -60,6 +61,16 @@ void main() {
   }
   if (hit && tMiss > tHit) for (int k = 0; k < 6; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
   vec2 o = q - cam * (tHit - 0.35);
+  // ветер: трава и деревья (маска растительности) качаются — верхушки сильнее, порывами; в грозу сильнее
+  if (windOn > 0.5) {
+    float wm = textureLod(windTex, o, 0.0).r;
+    if (wm > 0.02) {
+      float gust = 0.55 + 0.45 * sin(t * 0.61) * sin(t * 0.23 + 1.3);
+      vec2 sway = vec2(sin(t * 1.7 + o.y * 9.0 + o.x * 4.0) + 0.5 * sin(t * 3.3 + o.x * 17.0 + o.y * 5.0),
+                       0.3 * sin(t * 2.4 + o.x * 11.0));
+      o += sway * wm * (0.25 + 0.75 * (1.0 - o.y)) * 0.0014 * windAmt * gust;
+    }
+  }
   vec3 albedo = textureLod(img, o, 0.0).rgb;
   // резкая глубина — только для параллакса и для того, что прячется за предметами (дождь, пыль)
   float d = depthAt(o);
@@ -238,7 +249,9 @@ let texImg: WebGLTexture | null = null, texDep: WebGLTexture | null = null, texP
 type Scene = Pick<typeof props, 'mode' | 'weak' | 'focus' | 'rain' | 'fog' | 'other' | 'lights' | 'motion' | 'surface'>
 const snapshot = (): Scene => ({ mode: props.mode, weak: props.weak, focus: props.focus, rain: props.rain, fog: props.fog, other: props.other, lights: props.lights, motion: props.motion, surface: props.surface })
 let applied: Scene = snapshot()
-let pending: { img: ImageBitmap | HTMLImageElement; dep: ImageBitmap | HTMLImageElement; key: string } | null = null
+let pending: { img: ImageBitmap | HTMLImageElement; dep: ImageBitmap | HTMLImageElement; wind: ImageBitmap | HTMLImageElement | null; key: string } | null = null
+let texWind: WebGLTexture | null = null
+let windOn = false
 let loadingKey = ''
 let fadeStart = -1
 let shownKey = ''
@@ -273,13 +286,13 @@ function shader(type: number, src: string) {
   return s
 }
 /** новые картинки: грузим в фоне; кадр сменится в frame(), когда обе готовы */
-async function request(src: string, depth: string) {
+async function request(src: string, depth: string, wind?: string) {
   const key = `${src}|${depth}`
   loadingKey = key
   try {
-    const [img, dep] = await Promise.all([decode(src), decode(depth)])
+    const [img, dep, w] = await Promise.all([decode(src), decode(depth), wind ? decode(wind).catch(() => null) : Promise.resolve(null)])
     if (dead || loadingKey !== key) return
-    pending = { img, dep, key }
+    pending = { img, dep, wind: w, key }
   } catch { if (!dead && loadingKey === key) emit('fail') }
 }
 function swap(ms: number) {
@@ -296,6 +309,8 @@ function swap(ms: number) {
   texSize.w = p.img.width; texSize.h = p.img.height
   texImg = upload(0, p.img, true, texImg)
   texDep = upload(1, p.dep, true, texDep)
+  windOn = !!p.wind
+  if (p.wind) texWind = upload(3, p.wind, false, texWind)
   g.uniform2f(u.texel!, 3 / p.img.width, 3 / p.img.height)
   applied = snapshot()
   shownKey = p.key
@@ -320,9 +335,9 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet']) u[k] = gl.getUniformLocation(prog, k)
-    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2)
-    void request(props.src, props.depth)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt']) u[k] = gl.getUniformLocation(prog, k)
+    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3)
+    void request(props.src, props.depth, props.wind)
     raf = requestAnimationFrame(frame)
   } catch { emit('fail') }
 }
@@ -363,6 +378,8 @@ function draw(ms: number) {
   g.uniform1f(u.fogAmt!, sc.fog ?? 0.6)
   g.uniform1f(u.other!, sc.other ? 1 : 0)
   g.uniform1f(u.glossy!, GLOSS[sc.surface ?? ''] ?? 0.4)
+  g.uniform1f(u.windOn!, windOn && !still ? 1 : 0)
+  g.uniform1f(u.windAmt!, props.windy ?? 1)
   g.uniform1f(u.wet!, Math.max(sc.surface === 'water' ? 1 : 0, sc.rain ?? 0))
   g.uniform1f(u.flash!, props.flash ?? 0)
   g.uniform2f(u.view!, w, h)
@@ -388,7 +405,7 @@ function frame(ms: number) {
   raf = requestAnimationFrame(frame)
 }
 
-watch(() => [props.src, props.depth] as const, ([src, depth]) => { if (gl && prog) void request(src, depth) })
+watch(() => [props.src, props.depth] as const, ([src, depth]) => { if (gl && prog) void request(src, depth, props.wind) })
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.022; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.012 })

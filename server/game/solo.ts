@@ -1330,7 +1330,7 @@ export class SoloGame {
   view(): SoloView {
     const r = this.run
     const empty: SoloView = {
-      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, lights: this.S.lights ?? {}, depth: this.S.depth ?? [], started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
+      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, lights: this.S.lights ?? {}, wind: this.S.wind ?? [], depth: this.S.depth ?? [], started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
       ammo: 0, radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, boss: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }

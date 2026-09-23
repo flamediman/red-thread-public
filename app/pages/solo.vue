@@ -63,6 +63,10 @@ const darkness = computed(() => !place.value ? 'none' : !place.value.dark ? 'non
 /* объём (2,5D): у кадра есть карта глубины — рисуем WebGL-рельефом; не вышло — обычная картинка */
 const depthFail = ref(false)
 const depthSrc = computed(() => artSrc.value && v.value?.depth.includes(shownArt.value) && !depthFail.value ? `/art/${story.value}/z_${shownArt.value}.jpg` : '')
+/* ветер: маска растительности кадра; сила — по погоде (в грозу деревья гнёт сильнее) */
+const windSrc = computed(() => (artSrc.value && v.value?.wind?.includes(shownArt.value) ? `/art/${story.value}/w_${shownArt.value}.jpg` : undefined))
+const WINDY: Record<string, number> = { fog: 0.6, drizzle: 0.8, rain: 1.1, storm: 1.9 }
+const windy = computed(() => WINDY[place.value?.weather ?? 'fog'] ?? 0.6)
 watch(artSrc, () => { depthFail.value = false })
 /* туман в объёмном кадре: на улице гуще, в гудящих помещениях реже, в сырых подвалах и на изнанке — между */
 /* погода по ходу сюжета: сила дождя в кадре и туман (дождь прибивает туман) */
@@ -460,7 +464,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         >
           <!-- объёмный кадр — один на всю игру: места сменяются внутри него перетеканием (SoloDepth) -->
           <Transition name="solo-over">
-            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
           </Transition>
           <!-- плоский кадр (крупный план, нет карты глубины): уходящий гаснет, только когда новый нарисован (onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
@@ -597,7 +601,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <!-- ── поверх всего ── -->
       <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="sceneDone" />
       <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
-      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" @send="relay" />
+      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :depth="v.depth" :wind="v.wind" :offset="clockOffset" @send="relay" />
       <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" @send="relay" />
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
