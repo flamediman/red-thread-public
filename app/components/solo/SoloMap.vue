@@ -221,7 +221,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <text text-anchor="middle" :transform="`translate(${cx(p)},${p.outdoor && labelInside(p) ? box(p).y + 3.4 : labelInside(p) ? cy(p) - (nameLines(p).length - 1) * 1.2 + 0.9 : box(p).y + box(p).h + 3.1}) scale(${K})`">
               <tspan v-for="(t, i) in nameLines(p)" :key="i" x="0" :dy="i ? 2.6 : 0">{{ t }}</tspan>
             </text>
-            <g v-if="p.save && p.visited" class="m-save" :transform="`translate(${box(p).x + box(p).w - 2.2},${box(p).y + 2.2}) scale(${K * 0.12})`">
+            <g v-if="p.save && p.visited" class="m-save" :transform="`translate(${box(p).x + box(p).w - 2.2},${box(p).y + (p.puzzle ? box(p).h - 2.2 : 2.2)}) scale(${K * 0.12})`">
               <path :d="PHONE" transform="translate(-12,-12)" />
             </g>
           </g>
