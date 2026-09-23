@@ -48,11 +48,12 @@ async function draw(id, prompt, w, h) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY },
-    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: nearest(w, h) } } }),
+    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: nearest(w, h), imageSize: '2K' } } }),
     signal: AbortSignal.timeout(240000)
   })
   const d = await r.json()
-  const img = d.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData
+  // у Pro бывают черновые «мысленные» картинки — берём последнюю итоговую
+  const img = (d.candidates?.[0]?.content?.parts ?? []).filter(p => p.inlineData && !p.thought).pop()?.inlineData
   if (!img) throw new Error(`нет картинки: ${r.status} ${JSON.stringify(d).slice(0, 200)}`)
   return Buffer.from(img.data, 'base64')
 }
