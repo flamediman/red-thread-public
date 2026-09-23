@@ -116,7 +116,7 @@ function frame(ms: number) {
   cam.x += (cam.tx - cam.x) * 0.05; cam.y += (cam.ty - cam.y) * 0.05
   gl.uniform2f(u.cover!, cover[0]!, cover[1]!)
   gl.uniform2f(u.shift!, shift[0]!, shift[1]!)
-  gl.uniform2f(u.cam!, cam.x + Math.sin(t * 0.37) * 0.006, cam.y + Math.sin(t * 0.23) * 0.004)
+  gl.uniform2f(u.cam!, still ? 0 : cam.x + Math.sin(t * 0.37) * 0.006, still ? 0 : cam.y + Math.sin(t * 0.23) * 0.004)
   gl.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
   gl.uniform1f(u.mode!, props.mode === 'none' ? 0 : props.mode === 'torch' ? 1 : 2)
   gl.uniform1f(u.t!, t)
@@ -125,7 +125,9 @@ function frame(ms: number) {
   raf = requestAnimationFrame(frame)
 }
 
-watch(() => [props.lx, props.ly], ([x, y]) => { cam.tx = ((x ?? 50) / 100 - 0.5) * -0.035; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.02 })
+/* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
+const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.035; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.02 })
 onMounted(init)
 onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension('WEBGL_lose_context')?.loseContext() })
 </script>

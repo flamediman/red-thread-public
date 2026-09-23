@@ -12,3 +12,4 @@ server/scenario/cases.gen.ts
 # запасные варианты картинок генератора
 .variants
 *.tmp.jpg
+.cache
