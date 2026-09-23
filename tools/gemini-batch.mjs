@@ -7,7 +7,7 @@
 //   mode 'place' — нарисовать заново, но места и люди как на образцах (погони, крупные планы, сцены)
 //   mode 'edit' — переделать первый образец: та же композиция (изнанка из кадра места, повтор в 2K); text — что изменить
 // Готовые картинки — в art/.variants/<id>.nb.jpg (кадры в игре не трогаются), ход дел — в .cache/gemini-batch/<имя>.json.
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { artDir, loadArtSet, readEnv, root } from './paths.mjs'
@@ -60,10 +60,10 @@ async function upload(buf, name) {
   return j.file.name
 }
 
-/** вырезать по центру под пропорции кадра и привести к ширине кадра дела (не шире 1600) */
+/** вырезать по центру под пропорции кадра, не шире 2560 (исходник в полном разрешении остаётся в .variants/full) */
 function fit(src, dst, w, h) {
   const ratio = w / h
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', `crop='min(iw,ih*${ratio.toFixed(4)})':'min(ih,iw/${ratio.toFixed(4)})',scale=${Math.min(w, 1600)}:-2:flags=lanczos`, '-q:v', '4', dst])
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', `crop='min(iw,ih*${ratio.toFixed(4)})':'min(ih,iw/${ratio.toFixed(4)})',scale='min(iw,2560)':-2:flags=lanczos`, '-q:v', '3', dst])
 }
 
 if (cmd === 'submit') {
@@ -117,11 +117,11 @@ async function unpack(st, file) {
     outTok += resp?.usageMetadata?.candidatesTokenCount ?? 0
     inTok += resp?.usageMetadata?.promptTokenCount ?? 0
     if (!img) { bad++; console.log('  ✗', id, JSON.stringify(row.error ?? resp?.candidates?.[0]?.finishReason ?? resp?.promptFeedback ?? '').slice(0, 160)); continue }
-    const raw = resolve(VAR, `${id}.nb.raw`)
+    mkdirSync(resolve(VAR, 'full'), { recursive: true })
+    const raw = resolve(VAR, 'full', `${id}.${a1}.jpg`)
     writeFileSync(raw, Buffer.from(img.data, 'base64'))
     const { w, h } = IMAGES[id]
     fit(raw, resolve(VAR, `${id}.nb.jpg`), w, h)
-    unlinkSync(raw)
     ok++
   }
   console.log(`картинок: ${ok}, без картинки: ${bad}; токенов: вход ${inTok}, выход ${outTok} ≈ $${(inTok / 1e6 * 1 + outTok / 1e6 * 60).toFixed(2)} по пакетной цене`)

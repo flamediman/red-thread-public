@@ -59,11 +59,11 @@ async function draw(id, prompt, w, h) {
   return Buffer.from(img.data, 'base64')
 }
 
-/** вырезать по центру под пропорции w:h и привести к ширине кадра дела */
+/** вырезать по центру под пропорции w:h, не шире 2560 */
 function fit(src, dst, w, h) {
   const ratio = w / h
   const crop = `crop='min(iw,ih*${ratio.toFixed(4)})':'min(ih,iw/${ratio.toFixed(4)})'`
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', `${crop},scale=${Math.min(w, 1600)}:-2:flags=lanczos`, '-q:v', '2', dst])
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-vf', `${crop},scale='min(iw,2560)':-2:flags=lanczos`, '-q:v', '3', dst])
 }
 
 async function one(id) {
