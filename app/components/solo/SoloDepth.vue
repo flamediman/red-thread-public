@@ -49,12 +49,17 @@ float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a
 vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
 void main() {
   vec2 q = toTex(uv);
-  // Параллакс по плавной глубине: точка кадра сдвигается на cam·(глубина − 0,35), глубина — размытая (мип-уровень),
-  // несколько приближений подряд. Без поиска лучом по резкой глубине: он оставлял у крутых краёв тонкие полоски —
-  // повтор контура. Здесь край предмета и фон рядом с ним сдвигаются плавно: ни полосок, ни двойных линий
-  float lod = quality > 0.5 ? 1.8 : 2.4;
-  vec2 o = q;
-  for (int k = 0; k < 3; k++) o = q - cam * (textureLod(dep, o, lod).r - 0.35);
+  // Параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35); от ближнего к дальнему — ближнее
+  // закрывает дальнее, поэтому край предмета не «перегибается» и не показывается дважды (двойников нет)
+  int N = quality > 0.5 ? 32 : 18;
+  float tHit = 0.0, tMiss = 1.0; bool hit = false;
+  for (int i = 0; i <= N; i++) {
+    float tt = 1.0 - float(i) / float(N);
+    if (depthAt(q - cam * (tt - 0.35)) >= tt) { tHit = tt; hit = true; break; }
+    tMiss = tt;
+  }
+  if (hit && tMiss > tHit) for (int k = 0; k < 6; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
+  vec2 o = q - cam * (tHit - 0.35);
   vec3 albedo = textureLod(img, o, 0.0).rgb;
   // резкая глубина — только для параллакса и для того, что прячется за предметами (дождь, пыль)
   float d = depthAt(o);
@@ -65,6 +70,19 @@ void main() {
   float dx = textureLod(dep, o + vec2(st.x, 0.0), 2.0).r - textureLod(dep, o - vec2(st.x, 0.0), 2.0).r;
   float dy = textureLod(dep, o + vec2(0.0, st.y), 2.0).r - textureLod(dep, o - vec2(0.0, st.y), 2.0).r;
   vec3 n = normalize(vec3(-dx * 2.5, dy * 2.5, 1.0));
+  // Растяжение: при сдвиге камеры за краем предмета открывается фон, которого нет на картинке, и край тянется
+  // резиной — там точка картинки меняется медленнее, чем экран. Только в таких местах берём цвет с фона за краем
+  float qd = length(abs(dFdx(q)) + abs(dFdy(q))), od = length(abs(dFdx(o)) + abs(dFdy(o)));
+  float edge = smoothstep(0.3, 0.65, 1.0 - clamp(od / max(qd, 1e-6), 0.0, 1.0));
+  if (edge > 0.0) {
+    float sx = depthAt(o + vec2(texel.x, 0.0)) - depthAt(o - vec2(texel.x, 0.0));
+    float sy = depthAt(o + vec2(0.0, texel.y)) - depthAt(o - vec2(0.0, texel.y));
+    vec2 down = -normalize(vec2(sx, sy) + 1e-6) * texel;
+    for (int k = 1; k <= 6; k++) {
+      vec2 bp = o + down * float(k) * 1.5;
+      if (depthAt(bp) < d - 0.07) { albedo = mix(albedo, textureLod(img, bp + down, 0.0).rgb, edge); break; }
+    }
+  }
   // затенение в углах и щелях — по сглаженной глубине и только для небольших перепадов (настоящие углы)
   // Плавно, без порогов: жёсткий порог перепада давал линию на одном и том же расстоянии от каждого края (контуры).
   // На светлых кадрах тени уже нарисованы в картинке — там затенения нет, только в темноте под фонарём
