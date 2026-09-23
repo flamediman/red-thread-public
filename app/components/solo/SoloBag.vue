@@ -45,7 +45,7 @@ const hide = (e: Event) => { (e.target as HTMLImageElement).style.visibility = '
     <div class="solo-inv" role="dialog" aria-modal="true" aria-label="Вещи">
       <header class="solo-inv__head">
         <h2>{{ combining ? `Соединить «${combiningName}» с…` : 'Вещи' }}</h2>
-        <span class="solo-keys">I — закрыть</span>
+        <span class="solo-keys">Esc — закрыть</span>
         <button type="button" class="solo-map__close" aria-label="Закрыть" @click="emit('close')">×</button>
       </header>
       <div class="solo-inv__body">

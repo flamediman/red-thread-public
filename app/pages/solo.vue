@@ -202,6 +202,11 @@ function clickItem(id: string) {
   mode.value = null
   picked.value = picked.value === id ? null : id
 }
+/* картинки вещей грузятся заранее — окно вещей открывается сразу полным */
+watch(() => v.value?.inventory.map(i => i.art).join(','), arts => {
+  if (!arts || !story.value) return
+  for (const a of arts.split(',')) { const im = new Image(); im.src = `/art/${story.value}/${a}.jpg` }
+}, { immediate: true })
 /** в окне вещей: выбранная остаётся выбранной (как в играх); при «Соединить с…» вторая вещь соединяет */
 function pickInBag(id: string) {
   if (mode.value?.kind === 'combine' && mode.value.item !== id) { clickItem(id); return }
@@ -618,7 +623,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
 
         <section class="solo-block solo-block--bag">
           <button type="button" class="solo-bagbtn" :class="{ on: bagOpen }" title="Вещи (I)" @click="bagOpen = true">
-            <span class="solo-bagbtn__top"><span class="solo-label">Вещи</span><span class="solo-keys">I</span><b class="tabnum">{{ v.inventory.length }}</b></span>
+            <span class="solo-bagbtn__top"><span class="solo-label">Вещи</span><b class="tabnum">{{ v.inventory.length }}</b></span>
             <span class="solo-bagbtn__icons">
               <SoloIcon v-for="it in v.inventory.slice(0, 8)" :key="it.id" :name="it.icon" :class="{ equipped: it.equipped }" />
             </span>
