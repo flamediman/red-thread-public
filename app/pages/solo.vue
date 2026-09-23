@@ -26,6 +26,8 @@ const entered = ref(false)
 const menuOpen = ref(false)
 const confirmNew = ref(false)
 const saveOpen = ref(false)
+/** вещи — отдельным окном (I) */
+const bagOpen = ref(false)
 const mapOpen = ref(false)
 const notesOpen = ref(false)
 watch(mapOpen, on => { if (on) void audio.sfx('map-unfold', 0.55) })
@@ -124,7 +126,63 @@ const healthState = computed(() => {
 })
 const hasFlashlight = computed(() => !!v.value?.inventory.some(i => i.id === 'flashlight'))
 const hasRadio = computed(() => !!v.value?.inventory.some(i => i.id === 'radio'))
-const toggleLight = () => { if (v.value && hasFlashlight.value) send({ type: 'light', on: !v.value.light }) }
+/* Фонарь от заряда: чем меньше, тем тусклее и уже луч. Ниже 30 % мигает и изредка глохнет сам — тогда F и тап по
+   фонарю не включают его, а трясут: 3–5 быстрых нажатий (на телефоне — встряхнуть) — и он оживает, мигнув */
+const torchDead = ref(false)
+const flick = ref(1)
+let shakeNeed = 4
+const shakes: number[] = []
+const torchPower = computed(() => (torchDead.value ? 0 : (0.3 + 0.7 * Math.min(1, Math.max(0, (v.value?.battery ?? 100) / 60))) * flick.value))
+const torchBeam = computed(() => Math.min(1, Math.max(0.25, ((v.value?.battery ?? 100) - 4) / 46)))
+const lowBattery = computed(() => (v.value?.battery ?? 100) < 30)
+function flickerSeq(steps: [number, number][], done?: () => void) {
+  for (const [at, val] of steps) setTimeout(() => { flick.value = val }, at)
+  if (done) setTimeout(done, steps[steps.length - 1]![0] + 10)
+}
+function reviveTorch() {
+  torchDead.value = false
+  flickerSeq([[0, 0.4], [80, 0], [160, 0.7], [260, 0.2], [380, 1]])
+  if (v.value && !v.value.light) send({ type: 'light', on: true })
+}
+function shakeTorch() {
+  const now = Date.now()
+  shakes.push(now)
+  while (shakes.length && now - shakes[0]! > 2500) shakes.shift()
+  // каждый встряхнутый раз фонарь чуть вспыхивает — видно, что он «почти»
+  flickerSeq([[0, 0.25], [90, 0]])
+  if (shakes.length >= shakeNeed) { shakes.length = 0; reviveTorch() }
+}
+const toggleLight = () => {
+  if (!v.value || !hasFlashlight.value) return
+  if (torchDead.value) return shakeTorch()
+  send({ type: 'light', on: !v.value.light })
+}
+let flickTimer: ReturnType<typeof setTimeout> | null = null
+function flickerLoop() {
+  flickTimer = setTimeout(() => {
+    const s = v.value
+    const b = s?.battery ?? 100
+    if (s?.light && !torchDead.value && b < 30 && darkness.value === 'torch' && !overlay.value) {
+      // провалы яркости — чем меньше заряд, тем чаще
+      if (Math.random() < 0.08 + (30 - b) / 30 * 0.25) flickerSeq([[0, 0.25 + Math.random() * 0.4], [60 + Math.random() * 120, 1]])
+      // изредка глохнет совсем
+      if (Math.random() < (30 - b) / 30 * 0.012) {
+        shakeNeed = 3 + Math.floor(Math.random() * 3)
+        flickerSeq([[0, 0.3], [90, 1], [170, 0.15], [240, 0.6], [330, 0]], () => { torchDead.value = true; if (v.value?.light) send({ type: 'light', on: false }) })
+      }
+    }
+    flickerLoop()
+  }, 250)
+}
+/* на телефоне — встряхнуть сам телефон (где датчик доступен без запроса разрешения) */
+function onMotion(e: DeviceMotionEvent) {
+  const a = e.accelerationIncludingGravity
+  if (!torchDead.value || !a) return
+  if (Math.hypot(a.x ?? 0, a.y ?? 0, a.z ?? 0) > 22) shakeTorch()
+}
+onMounted(() => { flickerLoop(); window.addEventListener('devicemotion', onMotion) })
+onBeforeUnmount(() => { if (flickTimer) clearTimeout(flickTimer); window.removeEventListener('devicemotion', onMotion) })
+const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 const toggleRadio = () => { if (v.value && hasRadio.value) { void audio.sfx('radio-click', 0.6); send({ type: 'radio', on: !v.value.radioOn }) } }
 
 /* ── вещи: применить к месту или соединить с другой вещью ── */
@@ -143,6 +201,12 @@ function clickItem(id: string) {
   }
   mode.value = null
   picked.value = picked.value === id ? null : id
+}
+/** в окне вещей: выбранная остаётся выбранной (как в играх); при «Соединить с…» вторая вещь соединяет */
+function pickInBag(id: string) {
+  if (mode.value?.kind === 'combine' && mode.value.item !== id) { clickItem(id); return }
+  if (mode.value?.kind === 'combine') return
+  picked.value = id
 }
 function clickHotspot(id: string) {
   if (mode.value?.kind === 'use') { send({ type: 'use', item: mode.value.item, hotspot: id }); mode.value = null; picked.value = null; return }
@@ -363,12 +427,12 @@ onMounted(scheduleRest)
 onBeforeUnmount(() => { if (restTimer) clearTimeout(restTimer) })
 
 /* ── клавиатура ── */
-const anyPanel = computed(() => menuOpen.value || saveOpen.value || mapOpen.value || notesOpen.value)
+const anyPanel = computed(() => menuOpen.value || saveOpen.value || mapOpen.value || notesOpen.value || bagOpen.value)
 function onKey(e: KeyboardEvent) {
   if (!entered.value || !v.value?.started || overlay.value) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
   // карта и записки закрываются сами — клавиша не должна заодно открыть паузу
-  if (mapOpen.value || notesOpen.value) return
+  if (mapOpen.value || notesOpen.value || bagOpen.value) return
   if (e.code === 'Escape') {
     e.preventDefault()
     if (mode.value || picked.value) { mode.value = null; picked.value = null }
@@ -380,6 +444,7 @@ function onKey(e: KeyboardEvent) {
   if (e.code === 'KeyM') { e.preventDefault(); mapOpen.value = true }
   else if (e.code === 'KeyJ') { e.preventDefault(); notesOpen.value = true }
   else if (e.code === 'KeyF') { e.preventDefault(); toggleLight() }
+  else if (e.code === 'KeyI' && !anyPanel.value) { e.preventDefault(); bagOpen.value = true }
   else if (e.code === 'KeyR') { e.preventDefault(); toggleRadio() }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
@@ -464,7 +529,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         >
           <!-- объёмный кадр — один на всю игру: места сменяются внутри него перетеканием (SoloDepth) -->
           <Transition name="solo-over">
-            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
           </Transition>
           <!-- плоский кадр (крупный план, нет карты глубины): уходящий гаснет, только когда новый нарисован (onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
@@ -476,6 +541,9 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <i class="solo-tint" aria-hidden="true" />
           <SoloFog :density="place?.ambience.includes('room-hum') ? 0.45 : 1" :other="v.otherworld" />
           <Transition name="solo-over"><i :key="`${darkness}-${!!depthSrc}-${v.battery < 15}`" class="solo-view__dark" aria-hidden="true" /></Transition>
+          <Transition name="fade">
+            <p v-if="torchDead" class="solo-torch-dead" role="status">Фонарь заглох. {{ coarse ? 'Встряхните телефон или несколько раз быстро тапните по фонарю' : 'Потрясите его — несколько раз быстро нажмите F' }}</p>
+          </Transition>
           <i v-if="!depthSrc" class="solo-view__flash" :style="{ opacity: flash * 0.55 }" aria-hidden="true" />
           <i :key="hurtFlash" class="solo-view__hurt" :class="{ on: hurtFlash > 0 }" aria-hidden="true" />
           <i v-if="v.health <= 30" class="solo-view__pulse" aria-hidden="true" />
@@ -514,8 +582,10 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           </div>
           <button v-if="hasFlashlight" type="button" class="solo-light" :class="{ on: v.light }" title="Фонарь (F)" @click="toggleLight">
             <SoloIcon name="item-flashlight" />
-            <span class="solo-light__bar"><i :style="{ transform: `scaleX(${v.battery / 100})` }" /></span>
-            <span class="tabnum">{{ v.battery }}%</span>
+            <span class="solo-battery" :class="{ low: lowBattery, dead: torchDead }" :aria-label="`заряд ${v.battery} %`">
+              <i v-for="n in 5" :key="n" :class="{ full: v.battery > (n - 1) * 20 + 3 }" />
+            </span>
+            <span class="tabnum">{{ torchDead ? 'заглох' : `${v.battery}%` }}</span>
           </button>
           <button v-if="hasRadio" type="button" class="solo-radio" :class="[`solo-radio--${v.radio}`, { 'solo-radio--off': !v.radioOn }]" :title="v.radioOn ? 'Приёмник шипит, когда рядом что-то есть. Щелчок — выключить (R)' : 'Приёмник выключен. Щелчок — включить (R)'" @click="toggleRadio">
             <SoloIcon name="item-radio" /><span><i /><i /><i /><i /><i /></span><small>{{ v.radioOn ? '' : 'выкл' }}</small>
@@ -547,32 +617,24 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         </section>
 
         <section class="solo-block solo-block--bag">
-          <p class="solo-label">В карманах</p>
-          <div class="solo-bag">
-            <template v-for="g in bagGroups" :key="g.label">
-            <p class="solo-bag__group">{{ g.label }}</p>
-            <button
-              v-for="it in g.items" :key="it.id" type="button" class="solo-item"
-              :class="{ on: picked === it.id, 'solo-item--equipped': it.equipped, 'solo-item--target': mode?.kind === 'combine' && mode.item !== it.id }"
-              :title="it.description" @click="clickItem(it.id)"
-            ><SoloIcon :name="it.icon" /><span>{{ it.name }}</span><b v-if="it.count > 1" class="tabnum">×{{ it.count }}</b></button>
-            </template>
-          </div>
-          <div v-if="pickedItem && !mode" class="solo-detail">
-            <img :key="pickedItem.art" class="solo-detail__art" :src="`/art/${story}/${pickedItem.art}.jpg`" alt="" @error="($event.target as HTMLImageElement).hidden = true">
-            <p>{{ pickedItem.description }}</p>
-            <div class="solo-detail__actions">
-              <button v-if="pickedItem.usable && !pickedItem.equipped" type="button" class="solo-btn solo-btn--small" @click="useSelf">{{ itemVerb(pickedItem.kind) }}</button>
-              <button v-if="pickedItem.examinable" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="send({ type: 'examine', item: pickedItem.id })">Осмотреть внимательнее</button>
-              <button v-if="v.hotspots.length" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="startMode('use')">Применить к…</button>
-              <button v-if="v.inventory.length > 1" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="startMode('combine')">Соединить с…</button>
-            </div>
-          </div>
+          <button type="button" class="solo-bagbtn" :class="{ on: bagOpen }" title="Вещи (I)" @click="bagOpen = true">
+            <span class="solo-bagbtn__top"><span class="solo-label">Вещи</span><span class="solo-keys">I</span><b class="tabnum">{{ v.inventory.length }}</b></span>
+            <span class="solo-bagbtn__icons">
+              <SoloIcon v-for="it in v.inventory.slice(0, 8)" :key="it.id" :name="it.icon" :class="{ equipped: it.equipped }" />
+            </span>
+          </button>
+          <p v-if="mode?.kind === 'use'" class="solo-bagbtn__mode">Применить «{{ mode.name }}» — выберите, к чему. <button type="button" class="solo-link" @click="mode = null; picked = null">Отмена</button></p>
         </section>
       </aside>
 
       <!-- ── панели ── -->
       <SoloMap v-if="mapOpen" :map="v.map" :area="place?.area ?? ''" :story="story" @close="mapOpen = false" />
+      <SoloBag
+        v-if="bagOpen" :items="v.inventory" :story="story" :picked="picked" :combining="mode?.kind === 'combine' ? mode.item : null"
+        :can-apply="v.hotspots.length > 0" :groups="BAG" :verb="itemVerb"
+        @pick="pickInBag" @use="useSelf" @examine="id => { send({ type: 'examine', item: id }); bagOpen = false }"
+        @apply="startMode('use'); bagOpen = false" @combine="startMode('combine')" @cancel="mode = null" @close="bagOpen = false; if (mode?.kind === 'combine') mode = null"
+      />
       <SoloNotes v-if="notesOpen" :notes="v.notes" :focus="notesFocus" @close="notesOpen = false" @read="readNote" />
 
       <div v-if="saveOpen" class="solo-veil" @click.self="saveOpen = false">

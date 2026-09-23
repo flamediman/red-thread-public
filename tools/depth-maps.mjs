@@ -72,8 +72,8 @@ function calmThin(src, W, H) {
     цвета. Сеть считает глубину в ~518 px и размывает края — растянутый край глубины вылезает за контур предмета,
     и всё, что по нему считается (туман, свет, параллакс), обводит предмет каймой. После уточнения край глубины лежит
     на краю предмета: белая статуя в сером тумане отделяется чисто, тонкие детали не рвутся (цвет у них свой) */
-function snapToImage(depth, rgb, W, H) {
-  const R = 10, STEP = 2, SS = 2 * 6 * 6, SC = 2 * 0.07 * 0.07
+function snapToImage(depth, rgb, W, H, R = 10, STEP = 2, SIG = 6) {
+  const SS = 2 * SIG * SIG, SC = 2 * 0.07 * 0.07
   const out = new Float32Array(W * H)
   const ws = []
   for (let dy = -R; dy <= R; dy += STEP) for (let dx = -R; dx <= R; dx += STEP) ws.push([dx, dy, Math.exp(-(dx * dx + dy * dy) / SS)])
@@ -91,6 +91,74 @@ function snapToImage(depth, rgb, W, H) {
     out[i] = sum / wsum
   }
   return out
+}
+/** Живое и мягкое — не плоскость: крона, трава, небо, ткань; для них остаётся сглаженная глубина */
+const NONPLANAR = new Set(['tree', 'grass', 'plant', 'palm', 'flower', 'field', 'sky', 'mountain', 'hill', 'rock', 'person', 'animal',
+  'curtain', 'blanket', 'bag', 'apparel', 'pillow', 'cushion', 'towel', 'plaything', 'food'])
+/** Сквозное (решётка, забор, перила): плоскостью целиком, вместе с просветами — без выравнивания по цвету,
+    иначе просветы растаскиваются к далёкому фону и прутья волнятся */
+const SEETHROUGH = new Set(['fence', 'railing', 'bannister', 'screen door', 'grandstand', 'rack', 'door', 'gate'])
+/** Глубина плоскостями по предметам: сегментация делит кадр на предметы (статуя, знак, ворота, стена, пол, дорога),
+    каждому подгоняется плоскость (наклон пола и стен сохраняется). Предмет при сдвиге камеры двигается как жёсткая
+    карточка — не гнётся и не волнится; объём между предметами остаётся. Если плоскость ложится плохо (изогнутое),
+    остаётся исходная глубина */
+function planes(field, segParts, W, H) {
+  const mw = segParts[0].mask.width, mh = segParts[0].mask.height
+  const lab = new Int16Array(mw * mh).fill(-1)
+  segParts.forEach((p, k) => { const d = p.mask.data; for (let i = 0; i < d.length; i++) if (d[i] > 127) lab[i] = k })
+  const L = new Int16Array(W * H)
+  for (let y = 0; y < H; y++) { const my = Math.min(mh - 1, Math.floor(y * mh / H)); for (let x = 0; x < W; x++) L[y * W + x] = lab[my * mw + Math.min(mw - 1, Math.floor(x * mw / W))] }
+  const out = Float32Array.from(field)
+  const lock = new Uint8Array(W * H)
+  const seen = new Uint8Array(W * H)
+  const queue = new Int32Array(W * H)
+  const minArea = W * H * 0.002
+  let fitted = 0
+  for (let s0 = 0; s0 < W * H; s0++) {
+    if (seen[s0]) continue
+    const k = L[s0]
+    // связная область одного предмета
+    let qh = 0, qt = 0
+    queue[qt++] = s0; seen[s0] = 1
+    while (qh < qt) {
+      const i = queue[qh++], x = i % W, y = (i - x) / W
+      if (x > 0 && !seen[i - 1] && L[i - 1] === k) { seen[i - 1] = 1; queue[qt++] = i - 1 }
+      if (x < W - 1 && !seen[i + 1] && L[i + 1] === k) { seen[i + 1] = 1; queue[qt++] = i + 1 }
+      if (y > 0 && !seen[i - W] && L[i - W] === k) { seen[i - W] = 1; queue[qt++] = i - W }
+      if (y < H - 1 && !seen[i + W] && L[i + W] === k) { seen[i + W] = 1; queue[qt++] = i + W }
+    }
+    if (k < 0 || qt < minArea || NONPLANAR.has(segParts[k].label)) continue
+    // плоскость d = a·x + b·y + c наименьшими квадратами, два прохода: второй — без выбросов (кайма у края области)
+    let a = 0, b = 0, c = 0, rms = 1, keep = null
+    for (let pass = 0; pass < 2; pass++) {
+      let sxx = 0, sxy = 0, sx = 0, syy = 0, sy = 0, n = 0, sxd = 0, syd = 0, sd = 0
+      for (let j = 0; j < qt; j += 3) {
+        const i = queue[j]
+        if (keep && !keep(i)) continue
+        const x = (i % W) / W, y = Math.floor(i / W) / H, d = field[i]
+        sxx += x * x; sxy += x * y; sx += x; syy += y * y; sy += y; n++; sxd += x * d; syd += y * d; sd += d
+      }
+      if (n < 30) break
+      // решение 3×3
+      const M = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, n]], v = [sxd, syd, sd]
+      const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+      const D = det(M)
+      if (Math.abs(D) < 1e-12) break
+      const col = (ci) => M.map((r, ri) => r.map((val, cj) => (cj === ci ? v[ri] : val)))
+      a = det(col(0)) / D; b = det(col(1)) / D; c = det(col(2)) / D
+      let se = 0, m2 = 0
+      for (let j = 0; j < qt; j += 3) { const i = queue[j]; const e = field[i] - (a * (i % W) / W + b * Math.floor(i / W) / H + c); se += e * e; m2++ }
+      rms = Math.sqrt(se / Math.max(1, m2))
+      const lim = 2 * rms + 0.01
+      keep = (i) => Math.abs(field[i] - (a * (i % W) / W + b * Math.floor(i / W) / H + c)) < lim
+    }
+    const see = SEETHROUGH.has(segParts[k].label)
+    // сплошное — только если плоскость легла; сквозное (прутья близко, просветы далеко) — плоскостью в любом случае
+    if (rms > (see ? 0.3 : 0.07)) continue
+    for (let j = 0; j < qt; j++) { const i = queue[j]; out[i] = Math.max(0, Math.min(1, a * (i % W) / W + b * Math.floor(i / W) / H + c)); if (see) lock[i] = 1 }
+    fitted++
+  }
+  return { out, fitted, lock }
 }
 /** Максимум по квадрату (2r+1)²: по строкам, потом по столбцам */
 function dilate(src, W, H, r) {
@@ -128,6 +196,7 @@ function blur(src, W, H, sigma) {
 }
 
 const est = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { dtype: 'fp32' })
+const seg = await pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512')
 const list = readdirSync(dir).filter(f => /^(l|o|x|m)_.*\.jpg$/.test(f) && (!only || only.has(f.slice(0, -4))))
 let done = 0
 for (const f of list) {
@@ -147,13 +216,17 @@ for (const f of list) {
   const rgbBuf = await sharp(`${dir}/${f}`).removeAlpha().blur(0.6).raw().toBuffer()
   const rgb = new Float32Array(rgbBuf.length)
   for (let i = 0; i < rgb.length; i++) rgb[i] = rgbBuf[i] / 255
-  const snapped = snapToImage(snapToImage(calmThin(resize(raw, w, h, W, H), W, H), rgb, W, H), rgb, W, H)
+  // плоское должно двигаться как жёсткая карточка: внутри однородного по цвету (лицо знака, полотно ворот) глубина
+  // выравнивается на большом радиусе, иначе при сдвиге камеры плоский предмет гнётся и волнится
+  const { out: planar, fitted, lock } = planes(calmThin(resize(raw, w, h, W, H), W, H), await seg(`${dir}/${f}`), W, H)
+  const snapped = snapToImage(snapToImage(planar, rgb, W, H), rgb, W, H)
+  for (let i = 0; i < lock.length; i++) if (lock[i]) snapped[i] = planar[i]
   const field = blur(dilate(snapped, W, H, DILATE), W, H, BLUR)
   const px = Buffer.alloc(W * H)
   for (let i = 0; i < px.length; i++) px[i] = Math.max(0, Math.min(255, Math.round(field[i] * 255 + Math.random() - 0.5)))
   await sharp(px, { raw: { width: W, height: H, channels: 1 } }).jpeg({ quality: 92 }).toFile(out)
   done++
-  console.log('  ✓', f)
+  console.log('  ✓', f, `плоскостей ${fitted}`)
 }
 console.log('готово карт:', done, 'из', list.length)
 console.log('для SoloStory.depth:', JSON.stringify(readdirSync(dir).filter(f => f.startsWith('z_')).map(f => f.slice(2, -4))))

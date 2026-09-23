@@ -3,29 +3,37 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; windy?: number }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; windy?: number; leaves?: number; power?: number; beam?: number }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
 const ready = ref(false)
 /* телефон и планшет — меньше пикселей: шейдер тяжёлый */
 const dprCap = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 1.25 : 2
-/* Автокачество: шейдер меряет, успевает ли устройство. Средний кадр дольше 26 мс (меньше ~38 кадров в секунду) —
-   ступень ниже: меньше пикселей (картинка растягивается), без теней, затенения углов, лишних слоёв дождя и пыли.
-   Ступень запоминается в браузере: в следующий раз сразу с неё. На слабой памяти начинаем со второй */
-const QKEY = 'rn:depth-q'
+/* Автокачество: шейдер меряет, успевает ли устройство. Средний кадр дольше 28 мс (меньше ~35 кадров в секунду) два окна
+   подряд — ступень ниже: меньше пикселей, без затенения углов, лишних слоёв дождя и пыли. Запас большой (кадр короче 13 мс) —
+   ступень выше. Первые секунды после появления и после смены кадра не считаются: загрузка картинок и сборка шейдера
+   медленные всегда, и раньше из-за них мощный компьютер навсегда уходил в низкое разрешение — картинка рябила */
+const QKEY = 'rn:depth-q2'
 const SCALE = [1, 0.75, 0.55]
 let level = 0
 try { level = Math.min(2, Math.max(0, Number(localStorage.getItem(QKEY)) || 0)) } catch { /* приватный режим */ }
 if (level === 0 && typeof navigator !== 'undefined' && ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 2) level = 1
-let lastMs = 0, acc = 0, samples = 0
+let lastMs = 0, acc = 0, samples = 0, slow = 0, quietUntil = 0
 function measure(ms: number) {
-  if (lastMs) { const dt = ms - lastMs; if (dt < 200) { acc += dt; samples++ } }
+  const dt = lastMs ? ms - lastMs : 0
   lastMs = ms
-  if (samples < 90) return
+  if (!quietUntil) quietUntil = ms + 3000
+  if (ms < quietUntil || dt <= 0 || dt > 200) return
+  acc += dt; samples++
+  if (samples < 120) return
   const avg = acc / samples
   acc = 0; samples = 0
-  if (avg > 26 && level < 2) { level++; try { localStorage.setItem(QKEY, String(level)) } catch { /* приватный режим */ } }
+  if (avg > 28) slow++; else slow = 0
+  let next = level
+  if (slow >= 2 && level < 2) { next = level + 1; slow = 0 }
+  else if (avg < 13 && level > 0) next = level - 1
+  if (next !== level) { level = next; quietUntil = ms + 2000; try { localStorage.setItem(QKEY, String(level)) } catch { /* приватный режим */ } }
 }
 let born = 0
 
@@ -37,11 +45,11 @@ precision highp float;
 in vec2 uv; out vec4 color;
 uniform sampler2D img; uniform sampler2D dep;
 uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
-uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
+uniform float mode; uniform float t; uniform float power; uniform float beamR; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
-uniform sampler2D windTex; uniform float windOn; uniform float windAmt;
+uniform sampler2D windTex; uniform float windOn; uniform float windAmt; uniform float leaves;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -66,9 +74,12 @@ void main() {
     float wm = textureLod(windTex, o, 0.0).r;
     if (wm > 0.02) {
       float gust = 0.55 + 0.45 * sin(t * 0.61) * sin(t * 0.23 + 1.3);
-      vec2 sway = vec2(sin(t * 1.7 + o.y * 9.0 + o.x * 4.0) + 0.5 * sin(t * 3.3 + o.x * 17.0 + o.y * 5.0),
-                       0.3 * sin(t * 2.4 + o.x * 11.0));
-      o += sway * wm * (0.25 + 0.75 * (1.0 - o.y)) * 0.0014 * windAmt * gust;
+      // ветки — целиком и плавно (крупная волна по высоте), трава внизу — мельче и чаще
+      float up = 1.0 - o.y;
+      vec2 branch = vec2(sin(t * 1.1 + o.y * 3.0 + o.x * 2.0) + 0.35 * sin(t * 2.3 + o.x * 7.0), 0.25 * sin(t * 1.6 + o.x * 5.0));
+      vec2 blade = vec2(sin(t * 3.2 + o.x * 40.0 + o.y * 12.0), 0.0);
+      float low = smoothstep(0.55, 0.85, o.y);
+      o += (branch * (0.3 + 0.7 * up) * (1.0 - low) * 0.0034 + blade * low * 0.0018) * wm * windAmt * gust;
     }
   }
   vec3 albedo = textureLod(img, o, 0.0).rgb;
@@ -134,21 +145,22 @@ void main() {
     vec3 L = vec3(hand * vec2(1.6, 1.0), 1.3);
     vec3 toL = L - P; float dist = length(toL); vec3 l = toL / dist;
     float diffuse = max(dot(n, l), 0.0) * 0.7 + 0.3;
-    float radius = weak > 0.5 ? 0.24 : 0.46;
+    // луч от заряда: полный — широкий и яркий, к нулю — узкий и тусклый (мигание и провалы задаёт страница через power)
+    float radius = mix(0.22, 0.46, beamR);
     float r = distance(sc, torch * vec2(1.6, 1.0));
     cone = mode > 1.5 ? 0.0 : 1.0 - smoothstep(radius * 0.3, radius, r);
-    float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 1.6 : 0.6));
+    float fall = 1.0 / (1.0 + dist * dist * mix(1.6, 0.6, beamR));
     float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
     // самое дальнее (туман, небо) луч почти не достаёт — иначе светлый туман в центре луча засвечивается в белое
-    lit = cone * diffuse * fall * 2.2 * flicker * mix(0.45, 1.0, smoothstep(0.03, 0.25, ds));
+    lit = cone * diffuse * fall * 2.2 * flicker * power * mix(0.45, 1.0, smoothstep(0.03, 0.25, ds));
     // отражение фонаря на гладком: фонарь почти у глаз, поэтому блестит то, что смотрит на нас, — в центре луча;
     // нарисованные отражения стекла и металла вспыхивают сильнее, блик едет за лучом
     float core = 1.0 - smoothstep(0.0, radius * 0.75, r);
-    float glint = cone * pow(max(n.z, 0.0), 6.0) * gloss * pow(lum, 2.0) * core * core * fall * 3.0 * flicker;
+    float glint = cone * power * pow(max(n.z, 0.0), 6.0) * gloss * pow(lum, 2.0) * core * core * fall * 3.0 * flicker;
     // вода и мокрый пол отражают фонарь даже тёмными: узкое световое пятно на полу в центре луча, едет за ним;
     // на тёмной воде заметнее, на светлом полу (и так освещён) слабее — без слепящего пересвета
     float lying = max(floorness, smoothstep(0.004, 0.02, dy) * 0.6);
-    glint += cone * lying * wet * pow(core, 4.0) * fall * 0.32 * (1.0 - 0.7 * lum) * flicker;
+    glint += cone * power * lying * wet * pow(core, 4.0) * fall * 0.32 * (1.0 - 0.7 * lum) * flicker;
     // мокрый пол блестит в луче
     float spec = rain * cone * pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 18.0) * step(0.002, dy) * 0.8;
     float ambient = (0.04 + 0.06 * ds) * ao;
@@ -156,7 +168,7 @@ void main() {
     col = albedo * (ambient + warm * lit) + warm * (spec + glint);
     // туман и пыль видны только в луче: объёмный конус
     float beam = (1.0 - smoothstep(radius * 0.2, radius * 1.3, r)) * (mode > 1.5 ? 0.0 : 1.0);
-    col += warm * beam * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - ds * 0.6) * flicker;
+    col += warm * beam * power * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - ds * 0.6) * flicker;
   }
   // лампы, нарисованные в кадре: в темноте светятся сами; пятно света ложится только на то, что рядом с лампой по глубине
   // (стол под лампой — да, стена в пяти метрах перед ней — нет); вокруг — свечение в тумане
@@ -194,6 +206,26 @@ void main() {
     }
   }
   col += (mode < 0.5 ? vec3(0.06) : vec3(1.0, 0.9, 0.72) * cone * 0.9) * motes * moteAmt;
+  // листья: в кадрах с растительностью под открытым небом летят по ветру, кружатся; ближний слой крупнее и быстрее,
+  // дальний тонет в тумане; ближний предмет листья закрывает
+  if (leaves > 0.01) for (int k = 0; k < 2; k++) {
+    float fk = float(k);
+    float z = 0.86 - fk * 0.36;
+    vec2 g = (uv - cam * (z - 0.35) * 2.0) * vec2(1.6, 1.0) * (4.5 + fk * 4.0) + vec2(-t * (0.42 - 0.14 * fk) * windAmt, -t * 0.1);
+    vec2 cell = floor(g); vec2 f = fract(g) - 0.5;
+    float h = hash(cell + fk * 31.0);
+    if (h > 1.0 - 0.11 * leaves && z > d + 0.03) {
+      vec2 off = vec2(hash(cell + 5.3), hash(cell + 9.1)) - 0.5;
+      vec2 pp = f - off * 0.5 - vec2(0.0, 0.16 * sin(t * 2.1 + h * 40.0));
+      float ang = t * (1.4 + h * 3.0) + h * 6.28;
+      vec2 rr = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * pp;
+      float sz = 0.1 + 0.06 * hash(cell + 1.7);
+      float leaf = smoothstep(1.0, 0.55, length(rr / vec2(sz, sz * (0.35 + 0.35 * abs(sin(t * 3.0 + h * 9.0))))));
+      vec3 lc = mix(vec3(0.2, 0.15, 0.09), vec3(0.42, 0.33, 0.16), hash(cell + 2.2));
+      lc = mode < 0.5 ? mix(lc, fogCol, 0.25 + 0.35 * fk) : lc * (0.08 + 1.4 * cone);
+      col = mix(col, lc, leaf * (0.9 - fk * 0.35));
+    }
+  }
   // дождь: четыре слоя тонких струй на разной глубине, со сдвигом параллакса; у каждой струи своя скорость;
   // дальние слои гуще и бледнее; ближний предмет закрывает дальние струи
   if (rain > 0.01) {
@@ -315,6 +347,7 @@ function swap(ms: number) {
   applied = snapshot()
   shownKey = p.key
   born = ms
+  quietUntil = ms + 1500
   if (!ready.value) { ready.value = true }
   emit('ready')
 }
@@ -335,7 +368,7 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3)
     void request(props.src, props.depth, props.wind)
     raf = requestAnimationFrame(frame)
@@ -373,13 +406,15 @@ function draw(ms: number) {
   g.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
   g.uniform1f(u.mode!, sc.mode === 'none' ? 0 : sc.mode === 'torch' ? 1 : 2)
   g.uniform1f(u.t!, t)
-  g.uniform1f(u.weak!, sc.weak ? 1 : 0)
+  g.uniform1f(u.power!, props.power ?? 1)
+  g.uniform1f(u.beamR!, props.beam ?? 1)
   g.uniform1f(u.rain!, sc.rain ?? 0)
   g.uniform1f(u.fogAmt!, sc.fog ?? 0.6)
   g.uniform1f(u.other!, sc.other ? 1 : 0)
   g.uniform1f(u.glossy!, GLOSS[sc.surface ?? ''] ?? 0.4)
   g.uniform1f(u.windOn!, windOn && !still ? 1 : 0)
   g.uniform1f(u.windAmt!, props.windy ?? 1)
+  g.uniform1f(u.leaves!, windOn && !still ? props.leaves ?? 0 : 0)
   g.uniform1f(u.wet!, Math.max(sc.surface === 'water' ? 1 : 0, sc.rain ?? 0))
   g.uniform1f(u.flash!, props.flash ?? 0)
   g.uniform2f(u.view!, w, h)
@@ -408,7 +443,7 @@ function frame(ms: number) {
 watch(() => [props.src, props.depth] as const, ([src, depth]) => { if (gl && prog) void request(src, depth, props.wind) })
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
-watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.022; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.012 })
+watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.018; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.01 })
 onMounted(init)
 onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension('WEBGL_lose_context')?.loseContext() })
 </script>
