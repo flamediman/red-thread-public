@@ -400,7 +400,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
         >
           <!-- длительность явно: у кадра бесконечная анимация наезда, и без неё Vue ждал бы её конца, а старый кадр висел бы минуту -->
-          <Transition name="solo-cut" :duration="{ enter: 1400, leave: 900 }">
+          <Transition name="solo-cut" :duration="{ enter: 1400, leave: 1400 }">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
             <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="place?.weather === 'rain' ? 1 : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" />
             <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @error="artOk = false">
