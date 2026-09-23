@@ -4,7 +4,11 @@
    Цифры 1–5 — варианты. */
 import type { SoloClientMessage, SoloQteKey, SoloView } from '#shared/types'
 
-const props = defineProps<{ enc: NonNullable<SoloView['encounter']>; story: string; offset: number; light: boolean; health: number; focus?: Record<string, string> }>()
+const props = defineProps<{ enc: NonNullable<SoloView['encounter']>; story: string; offset: number; light: boolean; health: number; focus?: Record<string, string>; depth?: string[] }>()
+/* карточка существа объёмная, если есть карта глубины: камера медленно «дышит» и подбирается ближе */
+const depthFail = ref(false)
+const mArt = computed(() => `m_${props.enc.monster}`)
+const deep = computed(() => !depthFail.value && !!props.depth?.includes(mArt.value))
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
 const audio = useAudio()
 
@@ -80,7 +84,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div class="solo-enc" :class="{ 'solo-enc--hurt': flash === 'hurt' }" role="alertdialog" aria-modal="true">
-    <img class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" :style="{ objectPosition: focus?.[`m_${enc.monster}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
+    <SoloDepth v-if="deep" class="solo-enc__art" :src="`/art/${story}/${mArt}.jpg`" :depth="`/art/${story}/z_${mArt}.jpg`" mode="none" :lx="50" :ly="50" :focus="focus?.[mArt]" :fog="0.45" motion="breath" @fail="depthFail = true" />
+    <img v-else class="solo-enc__art" :src="`/art/${story}/m_${enc.monster}.jpg`" :style="{ objectPosition: focus?.[`m_${enc.monster}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
     <i class="solo-enc__flash" :class="flash && `solo-enc__flash--${flash}`" aria-hidden="true" />

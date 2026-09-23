@@ -3,13 +3,31 @@
    Камера чуть дышит и смещается за курсором — ближнее уходит сильнее дальнего. В тёмных местах свет считает шейдер:
    пятно фонаря ложится по настоящим стенам и полу, дальнее гаснет раньше ближнего, свет чуть дрожит.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[] }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath' }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
 const ready = ref(false)
 /* телефон и планшет — меньше пикселей: шейдер тяжёлый */
 const dprCap = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 1.25 : 2
+/* Автокачество: шейдер меряет, успевает ли устройство. Средний кадр дольше 26 мс (меньше ~38 кадров в секунду) —
+   ступень ниже: меньше пикселей (картинка растягивается), без теней, затенения углов, лишних слоёв дождя и пыли.
+   Ступень запоминается в браузере: в следующий раз сразу с неё. На слабой памяти начинаем со второй */
+const QKEY = 'rn:depth-q'
+const SCALE = [1, 0.75, 0.55]
+let level = 0
+try { level = Math.min(2, Math.max(0, Number(localStorage.getItem(QKEY)) || 0)) } catch { /* приватный режим */ }
+if (level === 0 && typeof navigator !== 'undefined' && ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 2) level = 1
+let lastMs = 0, acc = 0, samples = 0
+function measure(ms: number) {
+  if (lastMs) { const dt = ms - lastMs; if (dt < 200) { acc += dt; samples++ } }
+  lastMs = ms
+  if (samples < 90) return
+  const avg = acc / samples
+  acc = 0; samples = 0
+  if (avg > 26 && level < 2) { level++; try { localStorage.setItem(QKEY, String(level)) } catch { /* приватный режим */ } }
+}
+let born = 0
 
 const VS = `#version 300 es
 in vec2 p; out vec2 uv;
@@ -21,7 +39,7 @@ uniform sampler2D img; uniform sampler2D dep;
 uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
-uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN;
+uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 float depthAt(vec2 q) { return texture(dep, q).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -31,7 +49,7 @@ vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
 void main() {
   vec2 q = toTex(uv);
   // параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35); от ближнего к дальнему — ближнее закрывает дальнее
-  const int N = 28;
+  int N = quality > 0.5 ? 28 : 16;
   float tHit = 0.0, tMiss = 1.0; bool hit = false;
   for (int i = 0; i <= N; i++) {
     float tt = 1.0 - float(i) / float(N);
@@ -62,7 +80,7 @@ void main() {
   float occ = 0.0;
   // только небольшой перепад — настоящий угол; большой (предмет далеко перед фоном) не затеняет, иначе вокруг ближних
   // предметов на светлом тумане проступает тёмный силуэт
-  for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; float df = depthAt(o + off) - d - 0.01; occ += df > 0.0 && df < 0.1 ? df : 0.0; }
+  if (quality > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; float df = depthAt(o + off) - d - 0.01; occ += df > 0.0 && df < 0.1 ? df : 0.0; }
   float ao = clamp(1.0 - occ * 2.2, 0.45, 1.0);
   // мокро: дождь темнит поверхности
   albedo *= mix(1.0, 0.86, rain);
@@ -75,7 +93,7 @@ void main() {
   // туман — по глубине, поджатой внутрь ближних предметов: мягкий край сети вылезает за контур, и без этого вокруг
   // предмета светилась бы кайма незатуманенного фона
   float fd = d;
-  for (int k = 0; k < 8; k++) { float a = float(k) * 0.785; fd = min(fd, depthAt(o + vec2(cos(a), sin(a)) * texel * 2.2)); }
+  for (int k = 0; k < 8; k += (quality > 0.5 ? 1 : 2)) { float a = float(k) * 0.785; fd = min(fd, depthAt(o + vec2(cos(a), sin(a)) * texel * 2.2)); }
   float fogF = fogAmt * pow(1.0 - fd, 1.25) * (0.55 + 0.8 * drift);
   vec3 col;
   float lit = 0.0, cone = 0.0;
@@ -93,7 +111,7 @@ void main() {
     cone = mode > 1.5 ? 0.0 : 1.0 - smoothstep(radius * 0.3, radius, r);
     float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 2.0 : 0.8));
     float shadow = 1.0;
-    if (cone > 0.01) for (int k = 1; k <= 10; k++) {
+    if (cone > 0.01 && quality > 0.5) for (int k = 1; k <= 10; k++) {
       float f = float(k) / 12.0;
       vec2 sp = mix(uv, torch, f);
       float zr = mix(d, 1.15, f);
@@ -131,7 +149,7 @@ void main() {
   // (без фонаря мелкие точки на экране читаются как битые пиксели)
   float motes = 0.0;
   float moteAmt = mode < 0.5 ? 0.0 : 1.0;
-  if (moteAmt > 0.0) for (int k = 0; k < 3; k++) {
+  if (moteAmt > 0.0) for (int k = 0; k < (quality > 0.5 ? 3 : 1); k++) {
     float z = 0.92 - float(k) * 0.2;
     vec2 g = (uv - cam * (z - 0.35) * 2.0) * vec2(1.6, 1.0) * (26.0 + float(k) * 14.0) + vec2(t * 0.25 + sin(t * 0.3 + float(k)) * 0.6, -t * 0.12 * (1.0 + float(k)));
     vec2 cell = floor(g); vec2 f = fract(g) - 0.5;
@@ -146,7 +164,7 @@ void main() {
   // дальние слои гуще и бледнее; ближний предмет закрывает дальние струи
   if (rain > 0.01) {
     float drops = 0.0;
-    for (int k = 0; k < 4; k++) {
+    for (int k = 0; k < (quality > 0.5 ? 4 : 2); k++) {
       float fk = float(k);
       float z = 0.95 - fk * 0.22;
       vec2 rp = uv - cam * (z - 0.35) * 2.0;
@@ -227,7 +245,7 @@ async function init() {
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
     texture(0, img); texture(1, dep)
-    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1)
     gl.uniform2f(u.texel!, 3 / img.naturalWidth, 3 / img.naturalHeight)
     raf = requestAnimationFrame(frame)
@@ -237,11 +255,17 @@ async function init() {
 function frame(ms: number) {
   if (dead || !gl || !prog) return
   const c = canvas.value!
-  const w = Math.round(c.clientWidth * Math.min(dprCap, devicePixelRatio)), h = Math.round(c.clientHeight * Math.min(dprCap, devicePixelRatio))
+  measure(ms)
+  const px = Math.min(dprCap, devicePixelRatio) * SCALE[level]!
+  const w = Math.round(c.clientWidth * px), h = Math.round(c.clientHeight * px)
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; gl.viewport(0, 0, w, h) }
   // «object-fit: cover» с запасом на параллакс: кадр чуть больше окна
   const ca = w / h, ia = texSize.w / texSize.h
-  const cover = ca > ia ? [0.94, 0.94 * ia / ca] : [0.94 * ca / ia, 0.94]
+  // бег — медленный наезд вперёд за первые 8 с; дыхание — ещё медленнее, за 25 с
+  if (!born) born = ms
+  const age = (ms - born) / 1000
+  const zoom = still ? 1 : props.motion === 'run' ? 1 - Math.min(age / 8, 1) * 0.06 : props.motion === 'breath' ? 1 - Math.min(age / 25, 1) * 0.05 : 1
+  const cover = ca > ia ? [0.94 * zoom, 0.94 * zoom * ia / ca] : [0.94 * zoom * ca / ia, 0.94 * zoom]
   const [fx, fy] = (props.focus ?? '50% 50%').split(' ').map(v => parseFloat(v) / 100)
   const shift = [(1 - cover[0]!) * ((fx ?? 0.5) - 0.5), (1 - cover[1]!) * ((fy ?? 0.5) - 0.5)]
   // камера: медленное дыхание и мягкое следование за курсором
@@ -249,7 +273,13 @@ function frame(ms: number) {
   cam.x += (cam.tx - cam.x) * 0.05; cam.y += (cam.ty - cam.y) * 0.05
   gl.uniform2f(u.cover!, cover[0]!, cover[1]!)
   gl.uniform2f(u.shift!, shift[0]!, shift[1]!)
-  gl.uniform2f(u.cam!, still ? 0 : cam.x + Math.sin(t * 0.37) * 0.004, still ? 0 : cam.y + Math.sin(t * 0.23) * 0.0025)
+  // камера: бег — покачивание в такт шагам (вбок раз за два шага, вверх-вниз на каждый); дыхание — медленный вдох;
+  // спокойно — едва заметно
+  let bx = Math.sin(t * 0.37) * 0.004, by = Math.sin(t * 0.23) * 0.0025
+  if (props.motion === 'run') { bx = Math.sin(t * Math.PI * 2.2) * 0.007; by = Math.abs(Math.sin(t * Math.PI * 4.4)) * 0.009 - 0.0045 }
+  else if (props.motion === 'breath') { bx = Math.sin(t * 0.5) * 0.006; by = Math.sin(t * 1.1) * 0.004 }
+  gl.uniform2f(u.cam!, still ? 0 : cam.x + bx, still ? 0 : cam.y + by)
+  gl.uniform1f(u.quality!, level === 0 ? 1 : 0)
   gl.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
   gl.uniform1f(u.mode!, props.mode === 'none' ? 0 : props.mode === 'torch' ? 1 : 2)
   gl.uniform1f(u.t!, t)
@@ -278,5 +308,5 @@ onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension
 </script>
 
 <template>
-  <canvas ref="canvas" class="solo-view__art solo-view__depth" :class="{ 'solo-view__depth--ready': ready }" aria-hidden="true" />
+  <canvas ref="canvas" class="solo-depth" :class="{ 'solo-depth--ready': ready }" aria-hidden="true" />
 </template>

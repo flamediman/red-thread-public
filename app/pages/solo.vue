@@ -455,7 +455,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <!-- смена кадра — на JS: уходящий кадр гаснет, только когда новый уже нарисован (см. onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
             <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
             <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @load="frameReady++" @error="artOk = false">
           </Transition>
           <Transition name="fade">
@@ -589,9 +589,9 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <!-- ── поверх всего ── -->
       <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="sceneDone" />
       <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
-      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
-      <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :offset="clockOffset" @send="relay" />
-      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
+      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" @send="relay" />
+      <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" @send="relay" />
+      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" @notes="notesOpen = true" />
       <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].item?.id ?? found[0].note?.id}`" :item="found[0].item" :note="found[0].note" :story="story" :more="found.length - 1" @done="nextFound" @read="openNote" />

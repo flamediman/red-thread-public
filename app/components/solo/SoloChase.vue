@@ -2,7 +2,10 @@
 /* Погоня: отбиться нельзя, только выбрать, куда бежать, пока не догнали. Цифры 1–4 — варианты. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
-const props = defineProps<{ chase: NonNullable<SoloView['chase']>; story: string; offset: number; focus?: Record<string, string> }>()
+const props = defineProps<{ chase: NonNullable<SoloView['chase']>; story: string; offset: number; focus?: Record<string, string>; depth?: string[] }>()
+/* кадр шага объёмный, если для него есть карта глубины: камера бежит — покачивается в такт шагам и наезжает вперёд */
+const depthFail = ref(false)
+const deep = computed(() => !depthFail.value && !!props.depth?.includes(props.chase.art))
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
 
 const now = ref(Date.now())
@@ -37,7 +40,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="solo-enc solo-enc--chase" role="alertdialog" aria-modal="true" :style="{ '--glow': glow }">
     <Transition name="fade" mode="out-in">
-      <img :key="chase.art" class="solo-enc__art" :src="`/art/${story}/${chase.art}.jpg`" :style="{ objectPosition: focus?.[chase.art] }" alt="" @error="fallback($event)">
+      <SoloDepth v-if="deep" :key="`d-${chase.art}`" class="solo-enc__art" :src="`/art/${story}/${chase.art}.jpg`" :depth="`/art/${story}/z_${chase.art}.jpg`" mode="none" :lx="50" :ly="50" :focus="focus?.[chase.art]" :fog="0.55" motion="run" @fail="depthFail = true" />
+      <img v-else :key="chase.art" class="solo-enc__art" :src="`/art/${story}/${chase.art}.jpg`" :style="{ objectPosition: focus?.[chase.art] }" alt="" @error="fallback($event)">
     </Transition>
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="1" other />

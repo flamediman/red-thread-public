@@ -1,6 +1,6 @@
 // Карты глубины для объёмных кадров (2,5D): Depth Anything V2 Small (ONNX) локально, ~1 с на кадр, без ключей и кредитов.
 //   Один раз: npm i --no-save @huggingface/transformers sharp   (модель ~100 МБ скачается в .cache при первом запуске)
-//   node tools/depth-maps.mjs ../red-thread-secret/<история>/art [--force] [--only l_kpp,l_turn]   — для всех l_*/o_* без готовой z_*
+//   node tools/depth-maps.mjs ../red-thread-secret/<история>/art [--force] [--only l_kpp,l_turn]   — для всех l_*/o_* (места), x_* (погони), m_* (существа) без готовой z_*
 //   затем имена — в SoloStory.depth
 // Вся обработка — в числах с плавающей точкой, в восемь бит карта попадает только в самом конце, с шумом-дизерингом:
 //   иначе на плавном полу видны ступеньки глубины, а свет фонаря рисует по ним горизонтали.
@@ -104,7 +104,7 @@ function blur(src, W, H, sigma) {
 }
 
 const est = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { dtype: 'fp32' })
-const list = readdirSync(dir).filter(f => /^(l|o)_.*\.jpg$/.test(f) && (!only || only.has(f.slice(0, -4))))
+const list = readdirSync(dir).filter(f => /^(l|o|x|m)_.*\.jpg$/.test(f) && (!only || only.has(f.slice(0, -4))))
 let done = 0
 for (const f of list) {
   const out = `${dir}/z_${f}`

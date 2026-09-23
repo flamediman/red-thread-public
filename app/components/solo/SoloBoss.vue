@@ -5,7 +5,11 @@
 import type { SoloClientMessage, SoloQteKey, SoloView } from '#shared/types'
 
 type Prompt = NonNullable<SoloView['boss']>['prompts'][number]
-const props = defineProps<{ boss: NonNullable<SoloView['boss']>; story: string; offset: number; focus?: Record<string, string> }>()
+const props = defineProps<{ boss: NonNullable<SoloView['boss']>; story: string; offset: number; focus?: Record<string, string>; depth?: string[] }>()
+/* карточка существа объёмная, если есть карта глубины: камера медленно «дышит» и подбирается ближе */
+const depthFail = ref(false)
+const mArt = computed(() => `m_${props.boss.art}`)
+const deep = computed(() => !depthFail.value && !!props.depth?.includes(mArt.value))
 const emit = defineEmits<{ send: [SoloClientMessage] }>()
 
 const now = ref(Date.now())
@@ -45,7 +49,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 <template>
   <div class="solo-enc solo-boss" :class="{ 'solo-enc--hurt': flash === 'miss' }" role="alertdialog" aria-modal="true">
     <i class="solo-enc__flash" :class="flash === 'hit' && 'solo-enc__flash--hit'" aria-hidden="true" />
-    <img class="solo-enc__art" :src="`/art/${story}/m_${boss.art}.jpg`" :style="{ objectPosition: focus?.[`m_${boss.art}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
+    <SoloDepth v-if="deep" class="solo-enc__art" :src="`/art/${story}/${mArt}.jpg`" :depth="`/art/${story}/z_${mArt}.jpg`" mode="none" :lx="50" :ly="50" :focus="focus?.[mArt]" :fog="0.45" motion="breath" @fail="depthFail = true" />
+    <img v-else class="solo-enc__art" :src="`/art/${story}/m_${boss.art}.jpg`" :style="{ objectPosition: focus?.[`m_${boss.art}`] }" alt="" @error="($event.target as HTMLImageElement).style.visibility = 'hidden'">
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
     <div class="solo-boss__arena"><SoloQte :prompts="boss.prompts" :now="now" @answer="onAnswer" /></div>
