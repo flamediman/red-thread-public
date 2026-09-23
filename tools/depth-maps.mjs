@@ -14,8 +14,8 @@ const dir = process.argv[2]
 if (!dir) { console.error('укажите папку art истории'); process.exit(1) }
 const onlyArg = process.argv.indexOf('--only')
 const only = onlyArg > 0 ? new Set(process.argv[onlyArg + 1].split(',')) : null
-const DILATE = 2
-const BLUR = 1.2
+const DILATE = 1
+const BLUR = 0.7
 
 /** Билинейно растянуть поле w×h до W×H */
 function resize(src, w, h, W, H) {
@@ -65,6 +65,30 @@ function calmThin(src, W, H) {
     const cross = range > 0.02 ? (tv[i] * (2 * R + 1)) / (2 * range) : 0
     const w = Math.min(1, Math.max(0, (cross - 1.5) / 1.2)) * Math.min(1, Math.max(0, (range - 0.03) / 0.05))
     out[i] = src[i] * (1 - w) + mean[i] * w
+  }
+  return out
+}
+/** Уточнение глубины по цвету картинки (совместный двусторонний фильтр): каждая точка берёт глубину соседей похожего
+    цвета. Сеть считает глубину в ~518 px и размывает края — растянутый край глубины вылезает за контур предмета,
+    и всё, что по нему считается (туман, свет, параллакс), обводит предмет каймой. После уточнения край глубины лежит
+    на краю предмета: белая статуя в сером тумане отделяется чисто, тонкие детали не рвутся (цвет у них свой) */
+function snapToImage(depth, rgb, W, H) {
+  const R = 10, STEP = 2, SS = 2 * 6 * 6, SC = 2 * 0.07 * 0.07
+  const out = new Float32Array(W * H)
+  const ws = []
+  for (let dy = -R; dy <= R; dy += STEP) for (let dx = -R; dx <= R; dx += STEP) ws.push([dx, dy, Math.exp(-(dx * dx + dy * dy) / SS)])
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, r0 = rgb[i * 3], g0 = rgb[i * 3 + 1], b0 = rgb[i * 3 + 2]
+    let sum = 0, wsum = 0
+    for (const [dx, dy, w0] of ws) {
+      const xx = x + dx, yy = y + dy
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue
+      const j = yy * W + xx
+      const dr = rgb[j * 3] - r0, dg = rgb[j * 3 + 1] - g0, db = rgb[j * 3 + 2] - b0
+      const w = w0 * Math.exp(-(dr * dr + dg * dg + db * db) / SC)
+      sum += depth[j] * w; wsum += w
+    }
+    out[i] = sum / wsum
   }
   return out
 }
@@ -119,7 +143,12 @@ for (const f of list) {
   const meta = await sharp(`${dir}/${f}`).metadata()
   const W = meta.width, H = meta.height
   // светлое — ближе; расширить ближнее, сгладить, в восемь бит — с шумом, чтобы не было ступенек
-  const field = blur(dilate(calmThin(resize(raw, w, h, W, H), W, H), W, H, DILATE), W, H, BLUR)
+  // цвет кадра — направляющая для краёв глубины (0…1, чуть размытый: зерно плёнки не должно рвать глубину)
+  const rgbBuf = await sharp(`${dir}/${f}`).removeAlpha().blur(0.6).raw().toBuffer()
+  const rgb = new Float32Array(rgbBuf.length)
+  for (let i = 0; i < rgb.length; i++) rgb[i] = rgbBuf[i] / 255
+  const snapped = snapToImage(snapToImage(calmThin(resize(raw, w, h, W, H), W, H), rgb, W, H), rgb, W, H)
+  const field = blur(dilate(snapped, W, H, DILATE), W, H, BLUR)
   const px = Buffer.alloc(W * H)
   for (let i = 0; i < px.length; i++) px[i] = Math.max(0, Math.min(255, Math.round(field[i] * 255 + Math.random() - 0.5)))
   await sharp(px, { raw: { width: W, height: H, channels: 1 } }).jpeg({ quality: 92 }).toFile(out)

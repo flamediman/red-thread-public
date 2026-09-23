@@ -13,9 +13,13 @@ const props = defineProps<{ state: PublicState; phone?: boolean }>()
 const emit = defineEmits<{ send: [ClientMessage]; world: [SettingInfo] }>()
 
 /* ── миры: карусель, у каждого — арт, бригада, дела ── */
+/* у некоторых миров две картинки: до прохождения и после — после любой концовки на этом устройстве (флаг rn:done:<мир>) */
+const AFTER_ART = new Set(['tuman'])
+const done = ref<Set<string>>(new Set())
+onMounted(() => { try { done.value = new Set([...AFTER_ART].filter(id => localStorage.getItem(`rn:done:${id}`))) } catch { /* приватный режим */ } })
 const worlds = computed(() => props.state.catalog.map(g => ({
   ...g,
-  art: `/art/settings/${g.setting.id}.jpg`,
+  art: `/art/settings/${g.setting.id}${done.value.has(g.setting.id) ? '-after' : ''}.jpg`,
   crew: g.detectives.slice(0, 8).map(id => `/art/${g.setting.id}/d_${id}.jpg`),
   cases: g.cases.map(c => {
     const games = props.state.history.filter(h => h.caseId === c.id)

@@ -40,6 +40,7 @@ uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
+uniform sampler2D prev; uniform float fade; uniform vec2 view;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -93,16 +94,20 @@ void main() {
   float storm = smoothstep(0.75, 1.0, rain);
   vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
   float drift = fbm(vec2(sc.x * 2.2 + t * 0.035 + (1.0 - ds) * 1.5, sc.y * 1.6 - t * 0.012));
-  float fogF = fogAmt * pow(1.0 - ds, 1.25) * (0.55 + 0.8 * drift);
-  // гладкость для бликов: стекло, металл, кафель, лак — светлое, бесцветное, с резкой мелкой деталью (грани, отражения)
+  // картинки уже нарисованы в тумане: свой туман шейдера лёгкий, только оживляет нарисованный
+  float fogF = fogAmt * 0.8 * pow(1.0 - ds, 1.25) * (0.55 + 0.8 * drift);
+  // гладкость для отражений (стекло, металл, кафель, лак, мокрое) — по размытой картинке: светлое и бесцветное.
+  // Размытая — чтобы блестели поверхности, а не контуры. Яркость самой точки усиливает нарисованные отражения
+  vec3 ab = textureLod(img, o, 3.0).rgb;
+  float gloss = smoothstep(0.3, 0.7, dot(ab, vec3(0.299, 0.587, 0.114))) * (1.0 - smoothstep(0.06, 0.2, max(ab.r, max(ab.g, ab.b)) - min(ab.r, min(ab.g, ab.b))));
+  gloss = max(gloss, rain * 0.6);
   float lum = dot(albedo, vec3(0.299, 0.587, 0.114));
-  float sat = max(albedo.r, max(albedo.g, albedo.b)) - min(albedo.r, min(albedo.g, albedo.b));
-  float gloss = smoothstep(0.28, 0.7, lum) * (1.0 - smoothstep(0.06, 0.22, sat)) * smoothstep(0.03, 0.14, length(fwidth(albedo)));
+  float floorness = smoothstep(0.015, 0.06, dy);
   vec3 col;
   float lit = 0.0, cone = 0.0;
   if (mode < 0.5) {
     col = albedo * (0.78 + 0.22 * ao) * mix(1.0, 0.62, storm);
-    col = mix(col, fogCol, clamp(fogF, 0.0, 0.82));
+    col = mix(col, fogCol, clamp(fogF, 0.0, 0.6));
   } else {
     // фонарь в руке у героя: источник у камеры, чуть ниже и правее глаз; курсор задаёт, куда смотрит луч (пятно на экране).
     // Свет — по нормали и расстоянию от руки (по сглаженной глубине). Отброшенных теней нет: по карте глубины из одной
@@ -118,10 +123,10 @@ void main() {
     float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 1.6 : 0.6));
     float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
     lit = cone * diffuse * fall * 2.2 * flicker;
-    // блики фонаря на гладком: фонарь почти у глаз, поэтому блестит то, что смотрит прямо на нас, — в центре луча.
-    // Светлые места стекла и металла (нарисованные отражения) вспыхивают сильнее; блик едет за лучом
+    // отражение фонаря на гладком: фонарь почти у глаз, поэтому блестит то, что смотрит на нас, — в центре луча;
+    // нарисованные отражения стекла и металла вспыхивают сильнее, блик едет за лучом
     float core = 1.0 - smoothstep(0.0, radius * 0.75, r);
-    float glint = pow(max(n.z, 0.0), 6.0) * gloss * pow(lum, 1.5) * core * core * fall * 3.4 * flicker;
+    float glint = cone * pow(max(n.z, 0.0), 6.0) * gloss * pow(lum, 2.0) * core * core * fall * 3.0 * flicker;
     // мокрый пол блестит в луче
     float spec = rain * cone * pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 18.0) * step(0.002, dy) * 0.8;
     float ambient = (0.04 + 0.06 * ds) * ao;
@@ -145,6 +150,10 @@ void main() {
     float core = exp(-pow(dist / (r * 0.12), 2.0));
     float glow = exp(-pow(dist / (r * 0.5), 2.0));
     col += albedo * lampCol[k] * pool * 1.6 * fl;
+    // отражения лампы: отблеск на гладком рядом и световая дорожка на полу под лампой (на мокром и кафеле — ярче)
+    col += lampCol[k] * gloss * pow(lum, 2.0) * pool * 1.3 * fl;
+    float streak = exp(-pow(dv.x / (r * 0.16), 2.0)) * smoothstep(lp.y, lp.y + 0.03, o.y) * exp(-(o.y - lp.y) / (r * 2.2));
+    col += lampCol[k] * streak * floorness * (0.25 + 0.75 * gloss) * (0.5 + 0.8 * rain) * 0.55 * fl;
     col = mix(col, albedo * 1.15 + lampCol[k] * 0.12, clamp(core * fl, 0.0, 1.0));
     col += lampCol[k] * glow * (0.07 + 0.12 * fogAmt) * fl;
   }
@@ -194,6 +203,8 @@ void main() {
     float reach = mix(1.0, 0.25, smoothstep(0.35, 0.9, ds)) * (0.75 + 0.25 * (1.0 - uv.y));
     col = col * (1.0 + 0.9 * flash * reach) + sky * 0.2 * flash * reach;
   }
+  // смена кадра: последний кадр прошлого места плавно перетекает в новый
+  if (fade < 0.999) col = mix(texture(prev, gl_FragCoord.xy / view).rgb, col, fade);
   color = vec4(col, 1.0);
 }`
 
@@ -207,25 +218,75 @@ const texSize = { w: 1, h: 1 }
 const cam = { x: 0, y: 0, tx: 0, ty: 0 }
 let prog: WebGLProgram | null = null
 const u: Record<string, WebGLUniformLocation | null> = {}
+let texImg: WebGLTexture | null = null, texDep: WebGLTexture | null = null, texPrev: WebGLTexture | null = null
+/* Холст один на всю игру: при смене места новые картинки грузятся в фоне, а старый кадр рисуется как был — со своей
+   темнотой, погодой и лампами (applied). Готово — последний кадр запоминается в текстуру, и шейдер за FADE мс
+   перетекает из него в новый. Холст и шейдер не пересоздаются, два тяжёлых холста разом не рисуются */
+type Scene = Pick<typeof props, 'mode' | 'weak' | 'focus' | 'rain' | 'fog' | 'other' | 'lights' | 'motion'>
+const snapshot = (): Scene => ({ mode: props.mode, weak: props.weak, focus: props.focus, rain: props.rain, fog: props.fog, other: props.other, lights: props.lights, motion: props.motion })
+let applied: Scene = snapshot()
+let pending: { img: ImageBitmap | HTMLImageElement; dep: ImageBitmap | HTMLImageElement; key: string } | null = null
+let loadingKey = ''
+let fadeStart = -1
+const FADE = 900
 
-function load(url: string) {
-  return new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
+async function decode(url: string): Promise<ImageBitmap | HTMLImageElement> {
+  // декодирование вне основного потока — смена кадра не подтормаживает
+  if (typeof createImageBitmap === 'function') {
+    const r = await fetch(url)
+    if (!r.ok) throw new Error(String(r.status))
+    return createImageBitmap(await r.blob())
+  }
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url })
 }
-function texture(unit: number, img: HTMLImageElement) {
-  const t = gl!.createTexture()
-  gl!.activeTexture(gl!.TEXTURE0 + unit)
-  gl!.bindTexture(gl!.TEXTURE_2D, t)
-  gl!.texImage2D(gl!.TEXTURE_2D, 0, gl!.RGB, gl!.RGB, gl!.UNSIGNED_BYTE, img)
-  gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_MIN_FILTER, gl!.LINEAR)
-  gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_MAG_FILTER, gl!.LINEAR)
-  gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_WRAP_S, gl!.CLAMP_TO_EDGE)
-  gl!.texParameteri(gl!.TEXTURE_2D, gl!.TEXTURE_WRAP_T, gl!.CLAMP_TO_EDGE)
+function upload(unit: number, img: TexImageSource, mip: boolean, old: WebGLTexture | null) {
+  const g = gl!
+  const t = old ?? g.createTexture()
+  g.activeTexture(g.TEXTURE0 + unit)
+  g.bindTexture(g.TEXTURE_2D, t)
+  g.texImage2D(g.TEXTURE_2D, 0, g.RGB, g.RGB, g.UNSIGNED_BYTE, img)
+  if (mip) g.generateMipmap(g.TEXTURE_2D)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, mip ? g.LINEAR_MIPMAP_LINEAR : g.LINEAR)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE)
+  return t
 }
 function shader(type: number, src: string) {
   const s = gl!.createShader(type)!
   gl!.shaderSource(s, src); gl!.compileShader(s)
   if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) throw new Error(gl!.getShaderInfoLog(s) ?? 'shader')
   return s
+}
+/** новые картинки: грузим в фоне; кадр сменится в frame(), когда обе готовы */
+async function request(src: string, depth: string) {
+  const key = `${src}|${depth}`
+  loadingKey = key
+  try {
+    const [img, dep] = await Promise.all([decode(src), decode(depth)])
+    if (dead || loadingKey !== key) return
+    pending = { img, dep, key }
+  } catch { if (!dead && loadingKey === key) emit('fail') }
+}
+function swap(ms: number) {
+  const g = gl!, p = pending!
+  pending = null
+  // прошлый кадр — в текстуру (только что нарисован в этом же кадре анимации)
+  if (texImg) {
+    g.activeTexture(g.TEXTURE2)
+    if (!texPrev) texPrev = upload(2, new ImageData(1, 1), false, null)
+    g.bindTexture(g.TEXTURE_2D, texPrev)
+    g.copyTexImage2D(g.TEXTURE_2D, 0, g.RGB, 0, 0, g.drawingBufferWidth, g.drawingBufferHeight, 0)
+    fadeStart = ms
+  }
+  texSize.w = p.img.width; texSize.h = p.img.height
+  texImg = upload(0, p.img, true, texImg)
+  texDep = upload(1, p.dep, true, texDep)
+  g.uniform2f(u.texel!, 3 / p.img.width, 3 / p.img.height)
+  applied = snapshot()
+  born = ms
+  if (!ready.value) { ready.value = true }
+  emit('ready')
 }
 
 async function init() {
@@ -234,9 +295,6 @@ async function init() {
   gl = c.getContext('webgl2', { antialias: false, premultipliedAlpha: false })
   if (!gl) return emit('fail')
   try {
-    const [img, dep] = await Promise.all([load(props.src), load(props.depth)])
-    if (dead) return
-    texSize.w = img.naturalWidth; texSize.h = img.naturalHeight
     prog = gl.createProgram()!
     gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS))
     gl.linkProgram(prog)
@@ -247,65 +305,70 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    texture(0, img); texture(1, dep)
-    // уровни глубины для сглаженного тумана и света
-    gl.activeTexture(gl.TEXTURE1); gl.generateMipmap(gl.TEXTURE_2D)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
-    for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality']) u[k] = gl.getUniformLocation(prog, k)
-    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1)
-    gl.uniform2f(u.texel!, 3 / img.naturalWidth, 3 / img.naturalHeight)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality']) u[k] = gl.getUniformLocation(prog, k)
+    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2)
+    void request(props.src, props.depth)
     raf = requestAnimationFrame(frame)
   } catch { emit('fail') }
 }
 
-function frame(ms: number) {
-  if (dead || !gl || !prog) return
-  const c = canvas.value!
-  measure(ms)
+function draw(ms: number) {
+  const g = gl!, c = canvas.value!
+  const sc = applied
   const px = Math.min(dprCap, devicePixelRatio) * SCALE[level]!
   const w = Math.round(c.clientWidth * px), h = Math.round(c.clientHeight * px)
-  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; gl.viewport(0, 0, w, h) }
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; g.viewport(0, 0, w, h) }
   // «object-fit: cover» с запасом на параллакс: кадр чуть больше окна
   const ca = w / h, ia = texSize.w / texSize.h
   // бег — медленный наезд вперёд за первые 8 с; дыхание — ещё медленнее, за 25 с
-  if (!born) born = ms
   const age = (ms - born) / 1000
-  const zoom = still ? 1 : props.motion === 'run' ? 1 - Math.min(age / 8, 1) * 0.06 : props.motion === 'breath' ? 1 - Math.min(age / 25, 1) * 0.05 : 1
+  const zoom = still ? 1 : sc.motion === 'run' ? 1 - Math.min(age / 8, 1) * 0.06 : sc.motion === 'breath' ? 1 - Math.min(age / 25, 1) * 0.05 : 1
   const cover = ca > ia ? [0.94 * zoom, 0.94 * zoom * ia / ca] : [0.94 * zoom * ca / ia, 0.94 * zoom]
-  const [fx, fy] = (props.focus ?? '50% 50%').split(' ').map(v => parseFloat(v) / 100)
+  const [fx, fy] = (sc.focus ?? '50% 50%').split(' ').map(v => parseFloat(v) / 100)
   const shift = [(1 - cover[0]!) * ((fx ?? 0.5) - 0.5), (1 - cover[1]!) * ((fy ?? 0.5) - 0.5)]
-  // камера: медленное дыхание и мягкое следование за курсором
   const t = ms / 1000
   cam.x += (cam.tx - cam.x) * 0.05; cam.y += (cam.ty - cam.y) * 0.05
-  gl.uniform2f(u.cover!, cover[0]!, cover[1]!)
-  gl.uniform2f(u.shift!, shift[0]!, shift[1]!)
+  g.uniform2f(u.cover!, cover[0]!, cover[1]!)
+  g.uniform2f(u.shift!, shift[0]!, shift[1]!)
   // камера: бег — покачивание в такт шагам (вбок раз за два шага, вверх-вниз на каждый); дыхание — медленный вдох;
   // спокойно — едва заметно
   let bx = Math.sin(t * 0.37) * 0.004, by = Math.sin(t * 0.23) * 0.0025
-  if (props.motion === 'run') { bx = Math.sin(t * Math.PI * 2.2) * 0.007; by = Math.abs(Math.sin(t * Math.PI * 4.4)) * 0.009 - 0.0045 }
-  else if (props.motion === 'breath') { bx = Math.sin(t * 0.5) * 0.006; by = Math.sin(t * 1.1) * 0.004 }
-  gl.uniform2f(u.cam!, still ? 0 : cam.x + bx, still ? 0 : cam.y + by)
-  gl.uniform1f(u.quality!, level === 0 ? 1 : 0)
-  gl.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
-  gl.uniform1f(u.mode!, props.mode === 'none' ? 0 : props.mode === 'torch' ? 1 : 2)
-  gl.uniform1f(u.t!, t)
-  gl.uniform1f(u.weak!, props.weak ? 1 : 0)
-  gl.uniform1f(u.rain!, props.rain ?? 0)
-  gl.uniform1f(u.fogAmt!, props.fog ?? 0.6)
-  gl.uniform1f(u.other!, props.other ? 1 : 0)
-  gl.uniform1f(u.flash!, props.flash ?? 0)
-  const L = (props.lights ?? []).slice(0, 4)
+  if (sc.motion === 'run') { bx = Math.sin(t * Math.PI * 2.2) * 0.007; by = Math.abs(Math.sin(t * Math.PI * 4.4)) * 0.009 - 0.0045 }
+  else if (sc.motion === 'breath') { bx = Math.sin(t * 0.5) * 0.006; by = Math.sin(t * 1.1) * 0.004 }
+  g.uniform2f(u.cam!, still ? 0 : cam.x + bx, still ? 0 : cam.y + by)
+  g.uniform1f(u.quality!, level === 0 ? 1 : 0)
+  g.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
+  g.uniform1f(u.mode!, sc.mode === 'none' ? 0 : sc.mode === 'torch' ? 1 : 2)
+  g.uniform1f(u.t!, t)
+  g.uniform1f(u.weak!, sc.weak ? 1 : 0)
+  g.uniform1f(u.rain!, sc.rain ?? 0)
+  g.uniform1f(u.fogAmt!, sc.fog ?? 0.6)
+  g.uniform1f(u.other!, sc.other ? 1 : 0)
+  g.uniform1f(u.flash!, props.flash ?? 0)
+  g.uniform2f(u.view!, w, h)
+  g.uniform1f(u.fade!, fadeStart < 0 ? 1 : Math.min(1, (ms - fadeStart) / FADE))
+  const L = (sc.lights ?? []).slice(0, 4)
   const pos = new Float32Array(16), rgb = new Float32Array(12)
   L.forEach((l, i) => {
     pos.set([l.x / 100, l.y / 100, (l.r ?? 8) / 100, l.flicker ? 1 : 0], i * 4)
     rgb.set(LAMP[l.color ?? 'warm'] ?? LAMP.warm!, i * 3)
   })
-  gl.uniform4fv(u.lamp!, pos); gl.uniform3fv(u.lampCol!, rgb); gl.uniform1i(u.lampN!, L.length)
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-  if (!ready.value) { ready.value = true; emit('ready') }
+  g.uniform4fv(u.lamp!, pos); g.uniform3fv(u.lampCol!, rgb); g.uniform1i(u.lampN!, L.length)
+  g.drawArrays(g.TRIANGLE_STRIP, 0, 4)
+}
+
+function frame(ms: number) {
+  if (dead || !gl || !prog) return
+  measure(ms)
+  if (!born) born = ms
+  if (texImg) draw(ms)
+  // новые картинки готовы: снимок только что нарисованного кадра — и смена
+  if (pending) { swap(ms); draw(ms) }
+  if (fadeStart >= 0 && ms - fadeStart > FADE) fadeStart = -1
   raf = requestAnimationFrame(frame)
 }
 
+watch(() => [props.src, props.depth] as const, ([src, depth]) => { if (gl && prog) void request(src, depth) })
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 watch(() => [props.lx, props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.022; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.012 })

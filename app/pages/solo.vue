@@ -270,6 +270,12 @@ function strike(strength: number) {
   for (const [at, val] of steps) setTimeout(() => { flash.value = val }, at)
 }
 
+/* дошёл до любой концовки — на этом устройстве мир в меню показывает «вторую» картинку (как в играх после прохождения) */
+watch(() => v.value?.ending?.id, id => {
+  const world = v.value?.info.settingId
+  if (id && world) try { localStorage.setItem(`rn:done:${world}`, '1') } catch { /* приватный режим */ }
+})
+
 /** музыка молчит (пауза темы района, см. ниже) */
 const musicRest = ref(false)
 /* музыка: тема по району и состоянию, под исследованием — тише ленты атмосферы, в погоне и на заставке — в полную.
@@ -452,11 +458,13 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
           @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
         >
-          <!-- смена кадра — на JS: уходящий кадр гаснет, только когда новый уже нарисован (см. onCutLeave) -->
+          <!-- объёмный кадр — один на всю игру: места сменяются внутри него перетеканием (SoloDepth) -->
+          <Transition name="solo-over">
+            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+          </Transition>
+          <!-- плоский кадр (крупный план, нет карты глубины): уходящий гаснет, только когда новый нарисован (onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
-            <!-- темнота — классом на самом кадре: уходящий кадр тёмной комнаты остаётся тёмным, пока растворяется, а не вспыхивает серым -->
-            <SoloDepth v-if="depthSrc" :key="`d-${artSrc}`" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :weak="v.battery < 15" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
-            <img v-else-if="artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @load="frameReady++" @error="artOk = false">
+            <img v-if="!depthSrc && artOk && artSrc" :key="artSrc" class="solo-view__art" :class="`solo-view__art--${darkness}`" :src="artSrc" :style="{ objectPosition: v.artFocus[shownArt] }" alt="" @load="frameReady++" @error="artOk = false">
           </Transition>
           <Transition name="fade">
             <button v-if="closeup && artOk" type="button" class="solo-view__back" @click.stop="backToPlace">← {{ place?.name }}</button>
