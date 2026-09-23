@@ -40,7 +40,7 @@ uniform vec2 cover; uniform vec2 shift; uniform vec2 cam; uniform vec2 torch;
 uniform float mode; uniform float t; uniform float weak; uniform vec2 texel;
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
-float depthAt(vec2 q) { return texture(dep, q).r; }
+float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }
@@ -58,75 +58,78 @@ void main() {
   }
   if (hit && tMiss > tHit) for (int k = 0; k < 5; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
   vec2 o = q - cam * (tHit - 0.35);
-  vec3 albedo = texture(img, o).rgb;
+  vec3 albedo = textureLod(img, o, 0.0).rgb;
+  // резкая глубина — только для параллакса и для того, что прячется за предметами (дождь, пыль)
   float d = depthAt(o);
-  // нормаль по наклону глубины; dy > 0 — поверхность смотрит вверх (пол, земля)
-  float dx = depthAt(o + vec2(texel.x, 0.0)) - depthAt(o - vec2(texel.x, 0.0));
-  float dy = depthAt(o + vec2(0.0, texel.y)) - depthAt(o - vec2(0.0, texel.y));
-  vec3 n = normalize(vec3(-dx * 9.0, dy * 9.0, 1.0));
-  // край предмета: глубина здесь круто падает, и при сдвиге камеры шейдер растянул бы пиксели края резиной.
-  // На таком склоне берём цвет и глубину (для тумана) с фона за краем: ищем вниз по склону точку заметно дальше
-  float slope = length(vec2(dx, dy));
-  float edge = smoothstep(0.035, 0.1, slope);
+  // Туман, свет, затенение углов считаются по сглаженной глубине (уровни мип-карты): резкий край глубины никогда не
+  // совпадает с краем предмета на картинке, и всё, что по нему посчитано, обводит предмет светлой или тёмной каймой
+  float ds = textureLod(dep, o, 3.0).r;
+  vec2 st = texel * 4.0;
+  float dx = textureLod(dep, o + vec2(st.x, 0.0), 2.0).r - textureLod(dep, o - vec2(st.x, 0.0), 2.0).r;
+  float dy = textureLod(dep, o + vec2(0.0, st.y), 2.0).r - textureLod(dep, o - vec2(0.0, st.y), 2.0).r;
+  vec3 n = normalize(vec3(-dx * 2.5, dy * 2.5, 1.0));
+  // Растяжение: при сдвиге камеры край предмета тянется резиной — там точка картинки меняется медленнее, чем экран.
+  // Только в таких местах берём цвет с фона за краем; когда картинка не тянется, ничего не подменяем
+  float qd = length(abs(dFdx(q)) + abs(dFdy(q))), od = length(abs(dFdx(o)) + abs(dFdy(o)));
+  float edge = smoothstep(0.3, 0.65, 1.0 - clamp(od / max(qd, 1e-6), 0.0, 1.0));
   if (edge > 0.0) {
-    vec2 down = -normalize(vec2(dx, dy) + 1e-6) * texel;
+    float sx = depthAt(o + vec2(texel.x, 0.0)) - depthAt(o - vec2(texel.x, 0.0));
+    float sy = depthAt(o + vec2(0.0, texel.y)) - depthAt(o - vec2(0.0, texel.y));
+    vec2 down = -normalize(vec2(sx, sy) + 1e-6) * texel;
     for (int k = 1; k <= 6; k++) {
       vec2 bp = o + down * float(k) * 1.5;
-      float bd = depthAt(bp);
-      if (bd < d - 0.07) { albedo = mix(albedo, texture(img, bp + down).rgb, edge); d = mix(d, bd, edge); break; }
+      if (depthAt(bp) < d - 0.07) { albedo = mix(albedo, textureLod(img, bp + down, 0.0).rgb, edge); break; }
     }
   }
-  // затенение в углах и щелях: соседи ближе — сюда меньше попадает рассеянного света
+  // затенение в углах и щелях — по сглаженной глубине и только для небольших перепадов (настоящие углы)
   float occ = 0.0;
-  // только небольшой перепад — настоящий угол; большой (предмет далеко перед фоном) не затеняет, иначе вокруг ближних
-  // предметов на светлом тумане проступает тёмный силуэт
-  if (quality > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 3.5; float df = depthAt(o + off) - d - 0.01; occ += df > 0.0 && df < 0.1 ? df : 0.0; }
-  float ao = clamp(1.0 - occ * 2.2, 0.45, 1.0);
+  if (quality > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 5.0; float df = textureLod(dep, o + off, 2.0).r - ds - 0.005; occ += df > 0.0 && df < 0.1 ? df : 0.0; }
+  float ao = clamp(1.0 - occ * 2.5, 0.5, 1.0);
   // мокро: дождь темнит поверхности
   albedo *= mix(1.0, 0.86, rain);
   vec2 sc = uv * vec2(1.6, 1.0);
-  // туман по глубине: дальнее тонет, туман медленно плывёт; на изнанке — ржавый
+  // туман по сглаженной глубине: дальнее тонет, туман медленно плывёт; на изнанке — ржавый
   // гроза: тяжёлое небо — кадр и туман темнеют, чтобы вспышке было куда светлеть
   float storm = smoothstep(0.75, 1.0, rain);
   vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
-  float drift = fbm(vec2(sc.x * 2.2 + t * 0.035 + (1.0 - d) * 1.5, sc.y * 1.6 - t * 0.012));
-  // туман — по глубине, поджатой внутрь ближних предметов: мягкий край сети вылезает за контур, и без этого вокруг
-  // предмета светилась бы кайма незатуманенного фона
-  float fd = d;
-  for (int k = 0; k < 8; k += (quality > 0.5 ? 1 : 2)) { float a = float(k) * 0.785; fd = min(fd, depthAt(o + vec2(cos(a), sin(a)) * texel * 2.2)); }
-  float fogF = fogAmt * pow(1.0 - fd, 1.25) * (0.55 + 0.8 * drift);
+  float drift = fbm(vec2(sc.x * 2.2 + t * 0.035 + (1.0 - ds) * 1.5, sc.y * 1.6 - t * 0.012));
+  float fogF = fogAmt * pow(1.0 - ds, 1.25) * (0.55 + 0.8 * drift);
+  // гладкость для бликов: стекло, металл, кафель, лак — светлое, бесцветное, с резкой мелкой деталью (грани, отражения)
+  float lum = dot(albedo, vec3(0.299, 0.587, 0.114));
+  float sat = max(albedo.r, max(albedo.g, albedo.b)) - min(albedo.r, min(albedo.g, albedo.b));
+  float gloss = smoothstep(0.28, 0.7, lum) * (1.0 - smoothstep(0.06, 0.22, sat)) * smoothstep(0.03, 0.14, length(fwidth(albedo)));
   vec3 col;
   float lit = 0.0, cone = 0.0;
   if (mode < 0.5) {
     col = albedo * (0.78 + 0.22 * ao) * mix(1.0, 0.62, storm);
     col = mix(col, fogCol, clamp(fogF, 0.0, 0.82));
   } else {
-    // фонарь у камеры: пятно по экрану, свет по нормали и расстоянию, тень от ближнего по лучу к фонарю
-    vec3 P = vec3(sc, d * 0.9);
-    vec3 L = vec3(torch * vec2(1.6, 1.0), 1.25);
+    // фонарь в руке у героя: источник у камеры, чуть ниже и правее глаз; курсор задаёт, куда смотрит луч (пятно на экране).
+    // Свет — по нормали и расстоянию от руки (по сглаженной глубине). Отброшенных теней нет: по карте глубины из одной
+    // картинки честную тень не построить — выходила рваная «копия» предмета
+    vec3 P = vec3(sc, ds * 0.9);
+    vec2 hand = vec2(0.58, 1.12);
+    vec3 L = vec3(hand * vec2(1.6, 1.0), 1.3);
     vec3 toL = L - P; float dist = length(toL); vec3 l = toL / dist;
     float diffuse = max(dot(n, l), 0.0) * 0.7 + 0.3;
     float radius = weak > 0.5 ? 0.24 : 0.46;
     float r = distance(sc, torch * vec2(1.6, 1.0));
     cone = mode > 1.5 ? 0.0 : 1.0 - smoothstep(radius * 0.3, radius, r);
-    float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 2.0 : 0.8));
-    float shadow = 1.0;
-    if (cone > 0.01 && quality > 0.5) for (int k = 1; k <= 10; k++) {
-      float f = float(k) / 12.0;
-      vec2 sp = mix(uv, torch, f);
-      float zr = mix(d, 1.15, f);
-      if (depthAt(toTex(sp)) > zr + 0.04) { shadow *= 0.55; }
-    }
+    float fall = 1.0 / (1.0 + dist * dist * (weak > 0.5 ? 1.6 : 0.6));
     float flicker = 0.93 + 0.07 * sin(t * 23.0) * sin(t * 7.3 + 1.7);
-    lit = cone * diffuse * fall * 2.2 * flicker * mix(0.35, 1.0, clamp(shadow, 0.0, 1.0));
+    lit = cone * diffuse * fall * 2.2 * flicker;
+    // блики фонаря на гладком: фонарь почти у глаз, поэтому блестит то, что смотрит прямо на нас, — в центре луча.
+    // Светлые места стекла и металла (нарисованные отражения) вспыхивают сильнее; блик едет за лучом
+    float core = 1.0 - smoothstep(0.0, radius * 0.75, r);
+    float glint = pow(max(n.z, 0.0), 6.0) * gloss * pow(lum, 1.5) * core * core * fall * 3.4 * flicker;
     // мокрый пол блестит в луче
     float spec = rain * cone * pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 18.0) * step(0.002, dy) * 0.8;
-    float ambient = (0.04 + 0.06 * d) * ao;
+    float ambient = (0.04 + 0.06 * ds) * ao;
     vec3 warm = vec3(1.0, 0.9, 0.72);
-    col = albedo * (ambient + warm * lit) + warm * spec;
+    col = albedo * (ambient + warm * lit) + warm * (spec + glint);
     // туман и пыль видны только в луче: объёмный конус
     float beam = (1.0 - smoothstep(radius * 0.2, radius * 1.3, r)) * (mode > 1.5 ? 0.0 : 1.0);
-    col += warm * beam * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - d * 0.6) * flicker;
+    col += warm * beam * (0.05 + 0.13 * fogAmt) * (0.6 + 0.8 * drift) * (1.0 - ds * 0.6) * flicker;
   }
   // лампы, нарисованные в кадре: в темноте светятся сами; пятно света ложится только на то, что рядом с лампой по глубине
   // (стол под лампой — да, стена в пяти метрах перед ней — нет); вокруг — свечение в тумане
@@ -138,7 +141,7 @@ void main() {
     float dist = length(dv);
     float r = lamp[k].z;
     float fl = lamp[k].w > 0.5 ? 0.82 + 0.18 * sin(t * 13.0 + float(k) * 2.1) * sin(t * 5.3 + 1.1) : 1.0;
-    float pool = exp(-pow(dist / r, 2.0)) * exp(-abs(d - ld) * 6.0);
+    float pool = exp(-pow(dist / r, 2.0)) * exp(-abs(ds - ld) * 6.0);
     float core = exp(-pow(dist / (r * 0.12), 2.0));
     float glow = exp(-pow(dist / (r * 0.5), 2.0));
     col += albedo * lampCol[k] * pool * 1.6 * fl;
@@ -188,7 +191,7 @@ void main() {
   // молния: холодный свет с неба — дальнее и небо вспыхивают, ближнее остаётся силуэтом; струи дождя загораются
   if (flash > 0.001) {
     vec3 sky = vec3(0.82, 0.87, 1.0);
-    float reach = mix(1.0, 0.25, smoothstep(0.35, 0.9, d)) * (0.75 + 0.25 * (1.0 - uv.y));
+    float reach = mix(1.0, 0.25, smoothstep(0.35, 0.9, ds)) * (0.75 + 0.25 * (1.0 - uv.y));
     col = col * (1.0 + 0.9 * flash * reach) + sky * 0.2 * flash * reach;
   }
   color = vec4(col, 1.0);
@@ -245,6 +248,9 @@ async function init() {
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
     texture(0, img); texture(1, dep)
+    // уровни глубины для сглаженного тумана и света
+    gl.activeTexture(gl.TEXTURE1); gl.generateMipmap(gl.TEXTURE_2D)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
     for (const k of ['img', 'dep', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'weak', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1)
     gl.uniform2f(u.texel!, 3 / img.naturalWidth, 3 / img.naturalHeight)
