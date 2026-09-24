@@ -146,6 +146,8 @@ export interface SoloPlace {
   /** под открытым небом: атмосфера звучит без «стекла» */
   outdoor?: boolean
   surface?: 'asphalt' | 'wood' | 'tile' | 'water' | 'grass'
+  /** шаги при входе, если не по покрытию: 'glass' — по битому стеклу (звук step-<steps>) */
+  steps?: string
   ambience?: string[]
   /** звуки места на изнанке; без них — обычные */
   otherAmbience?: string[]
@@ -425,7 +427,7 @@ export interface SoloView {
   started: boolean
   place: {
     id: string; area: string; name: string; art: string; text: string[]
-    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string; weather: SoloWeather; deep: boolean
+    dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string; steps: string; weather: SoloWeather; deep: boolean
   } | null
   exits: { to: string; label: string; locked: string | null; known: boolean; art?: string }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]

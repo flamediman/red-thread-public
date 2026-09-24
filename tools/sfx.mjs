@@ -140,9 +140,12 @@ const PACKS = {
     // шаги
     'step-asphalt': ['Four slow footsteps of leather shoes on wet asphalt in fog, close, no music', 2.5],
     'step-wood': ['Four slow footsteps on old damp wooden planks of a bridge, soft creaks, close, no music', 2.5],
-    'step-tile': ['Four slow footsteps on a tiled floor in an empty hall with glass crunching under shoes, echo, no music', 2.5],
+    // 25.09: прежние шаги по плитке были с хрустом стекла и эхом — на 88 % выше 6 кГц, громче всех шагов и с перегрузом;
+    // стекло — отдельно (step-glass, у мест с осколками steps: 'glass'), эхо добавляет движок
+    'step-tile': ['Four slow footsteps of leather shoes on a clean tiled floor in a small room, even and dry, close microphone, no echo, no glass, no music', 2.5],
+    'step-glass': ['Three slow careful footsteps of leather shoes on a tiled floor with a few pieces of broken glass: soft crunches and one small shard clinking, dry, close, no echo, no music', 2.5],
     'step-water': ['Four slow footsteps splashing through shallow puddles on asphalt, close, no music', 2.5],
-    'step-grass': ['Four slow footsteps on wet grass and pine needles, close, no music', 2.5],
+    'step-grass': ['Four slow soft footsteps on wet grass and moss, muffled and gentle, close, no rustling leaves, no music', 2.5],
     // мир
     'truck-leave': ['An old Soviet truck turning around on a forest road and driving away, the engine sound fading into complete silence, no music', 7],
     'turnstile': ['An old rusty metal pedestrian turnstile rotating with a long squeaky grinding creak and a heavy clank, close, no music', 2.5],
@@ -247,7 +250,7 @@ const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-f
   'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2, 'projector-run': -3,
   'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'solo-shot-2': 6, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
   'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'glass-break-far': -4, 'glass-break-far-2': -4, 'twig-snap': -4, 'twig-snap-2': -4, 'footsteps-forest': -5, 'footsteps-forest-2': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
-  'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
+  'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-glass': -6, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']
   if (base == null) return

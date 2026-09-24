@@ -119,7 +119,7 @@ watch(view, (nv, ov) => {
   const prevMax = ov?.feed.at(-1)?.seq ?? 0
   if (lastPlayed < 0) { lastPlayed = maxSeq; feedFloor.value = Math.max(0, maxSeq - 3); lastPlace = nv.place?.id ?? ''; lastHealth = nv.health; return }
   if (nv.place && nv.place.id !== lastPlace) {
-    if (lastPlace) { void audio.sfx(`step-${nv.place.surface}`, 0.7); scape.stepped(nv.place.surface) }
+    if (lastPlace) { void audio.sfx(`step-${nv.place.steps ?? nv.place.surface}`, 0.7); scape.stepped(nv.place.surface) }
     feedFloor.value = prevMax
     lastPlace = nv.place.id
     mode.value = null

@@ -1360,7 +1360,7 @@ export class SoloGame {
     return {
       ...empty,
       started: true,
-      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt', weather: this.weather(), deep: !!p.deep },
+      place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt', steps: p.steps ?? p.surface ?? 'asphalt', weather: this.weather(), deep: !!p.deep },
       exits: p.exits.filter(x => this.ok(x.when)).map(x => ({
         to: x.to, label: x.label,
         // кадр места за выходом — страница грузит его заранее, пока игрок читает здесь

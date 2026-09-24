@@ -270,7 +270,7 @@ function variant(name: string) {
 
 /* Звуки браузер держит сутки (routeRules /sfx): у перегенерированного звука — новая версия в адресе, иначе игрок
    ещё день слышит старый. Поднять номер, когда звук переделан */
-const SFX_REV: Record<string, number> = { pines: 2 }
+const SFX_REV: Record<string, number> = { 'pines': 2, 'step-tile': 2, 'step-grass': 2 }
 const sfxUrl = (name: string, world = true) => `/sfx/${world ? `${currentSetting.value}/` : ''}${name}.m4a${SFX_REV[name] ? `?v=${SFX_REV[name]}` : ''}`
 async function loadSfx(name: string): Promise<AudioBuffer | null> {
   if (name.includes('.')) return load(`/sfx/${name}`)
