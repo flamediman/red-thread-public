@@ -25,12 +25,14 @@ function voiced(): Promise<Set<string>> {
 const gains: Partial<Record<Layer, GainNode>> = {}
 /** атмосфера в помещении звучит «за окном»: фильтр высоких частот и приглушение */
 let ambFilter: BiquadFilterNode | null = null
+/** уровень атмосферы по месту (улица — 1, помещение — 0,5), к нему возвращается hush */
+let ambRoomLevel = 1
 /** «далеко»: вход цепочки низких частот и эха — так звучит всё, что где-то за озером или в другом конце здания */
 let farInput: GainNode | null = null
 /** «комната»: короткое эхо для одиночных звуков, доля эха — по покрытию места (кафель гулкий, улица сухая) */
 let room: { input: GainNode; wet: GainNode; conv: ConvolverNode } | null = null
 /** звуки, которые по смыслу всегда далеко: идут через эту цепочку, откуда бы их ни попросили */
-const FAR_NAMES = new Set(['bugle-far-cut', 'bugle-far-full', 'whisper-far', 'siren-bugle', 'oarlocks', 'announce-far', 'branch-far'])
+const FAR_NAMES = new Set(['bugle-far-cut', 'bugle-far-full', 'whisper-far', 'siren-bugle', 'oarlocks', 'announce-far', 'branch-far', 'glass-break-far'])
 let ambRoom: GainNode | null = null
 /** «пространство» места: общее эхо для звуков вокруг героя — две свёртки, между ними плавный переход при смене места */
 let space: { input: GainNode; a: { conv: ConvolverNode; g: GainNode }; b: { conv: ConvolverNode; g: GainNode }; front: 'a' | 'b'; kind: string } | null = null
@@ -231,7 +233,8 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
 const VARIANTS: Record<string, number> = {
   'solo-hit-land': 3, 'solo-swing': 3, 'solo-hurt': 3, 'solo-dodge': 2, 'solo-shot': 2,
   'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2,
-  'thunder-far': 3, 'footsteps-behind': 2, 'whisper-near': 2, 'door-slam-far': 2, 'industrial-clank': 2
+  'thunder-far': 3, 'footsteps-behind': 2, 'whisper-near': 2, 'door-slam-far': 2, 'industrial-clank': 2,
+  'glass-break-far': 2, 'twig-snap': 2, 'footsteps-forest': 2
 }
 const lastVariant = new Map<string, number>()
 function variant(name: string) {
@@ -302,7 +305,19 @@ export function useAudio() {
     const c = ensure(); if (!c || !ambFilter || !ambRoom) return
     // в помещении дождь слышен через стекло: верх приглушён, а не срезан до 650 Гц, как раньше, — иначе звучит «урезанно»
     ambFilter.frequency.setTargetAtTime(outdoors ? 18000 : 3200, c.currentTime, 0.6)
-    ambRoom.gain.setTargetAtTime(outdoors ? 1 : 0.5, c.currentTime, 0.6)
+    ambRoomLevel = outdoors ? 1 : 0.5
+    ambRoom.gain.setTargetAtTime(ambRoomLevel, c.currentTime, 0.6)
+  }
+
+  /** «Лес затих»: атмосфера за секунду проседает вдвое, держится sec и за три секунды возвращается — будто и ветер
+      прислушивается. Звук, ради которого затихло (ветка под чьей-то ногой), играют в самой тишине */
+  function hush(sec = 2.5) {
+    const c = ensure(); if (!c || !ambRoom) return
+    const g = ambRoom.gain, t = c.currentTime
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t)
+    g.linearRampToValueAtTime(ambRoomLevel * 0.5, t + 1.2)
+    g.setValueAtTime(ambRoomLevel * 0.5, t + 1.2 + sec)
+    g.linearRampToValueAtTime(ambRoomLevel, t + 4.2 + sec)
   }
 
   /** Атмосфера: набор петель, которые должны звучать сейчас. Лишние затухают, новые всплывают. */
@@ -610,5 +625,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, setSpace, ambience, theme, stinger, tone, melody, sfx, spatial, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, hush, setRoom, setSpace, ambience, theme, stinger, tone, melody, sfx, spatial, voice, stopVoice, stopAll, preload: load }
 }

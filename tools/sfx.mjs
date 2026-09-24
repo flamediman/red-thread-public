@@ -204,6 +204,15 @@ const PACKS = {
     'pines': ['Calm wind blowing through a pine forest, heard from the forest floor: a soft wide airy wash of the treetops, like distant sea surf, slowly rising and falling, warm and mid-range, no hiss, no close leaves, no crackles, no birds, no music, seamless ambience loop', 22, true],
     'announce-far': ['A distant loudspeaker announcement echoing across a lake in fog, muffled unintelligible woman voice, crackling, very far away, then silence, no music', 5],
     'branch-far': ['A dry branch cracking somewhere far away in a foggy pine forest, then silence, no music', 2],
+    // 25.09: кто-то рядом — окно вдали (город, санаторий, лагерь, водозабор), ветка под чьей-то ногой и осторожные шаги
+    // в лесу. Из трёх вариантов каждого — по спектру (без шороха-подложки); шаги после генерации — через шумовые ворота
+    // (agate по уровню подложки, scratchpad) и без верха выше 6,5 кГц, ветки — без верха выше 7 кГц, окно — выше 9 кГц
+    'glass-break-far': ['A window pane being smashed somewhere far away across an empty foggy town: a distant crash of breaking glass and shards falling onto asphalt, heard from a hundred meters away, then silence, no music', 3],
+    'glass-break-far-2': ['A window pane being smashed somewhere far away across an empty foggy town: a distant crash of breaking glass and shards falling onto asphalt, heard from a hundred meters away, then silence, no music', 3],
+    'twig-snap': ['A single dry twig snapping under a careful foot in a quiet foggy pine forest, heard from about ten meters away, then silence, no music', 1.5],
+    'twig-snap-2': ['A single dry twig snapping under a careful foot in a quiet foggy pine forest, heard from about ten meters away, then silence, no music', 1.5],
+    'footsteps-forest': ['Slow cautious footsteps of one person on a wet forest floor with pine needles and small twigs: four or five steps, then stopping abruptly, heard from about fifteen meters away, no music', 4],
+    'footsteps-forest-2': ['Slow cautious footsteps of one person on a wet forest floor with pine needles and small twigs: four or five steps, then stopping abruptly, heard from about fifteen meters away, no music', 4],
     // ближний слой: случайные звуки рядом с героем раз в 10–25 с, по типу места
     'creak-floor': ['A single slow creak of an old wooden floorboard under weight in a quiet empty room, close, no music', 1.5],
     'drip-one': ['One single water drop falling from a ceiling into a shallow puddle in a dark tiled room with a short echo, no music', 1],
@@ -237,7 +246,7 @@ const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-f
   'knock-three': -4, 'wall-scratch': -6, 'radio-voice-far': -7, 'siren-rise': -4, 'chain-drag': -4, 'industrial-clank': -3, 'industrial-clank-2': -4, 'metal-scream': -5, 'drip-metal': -7,
   'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2, 'projector-run': -3,
   'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'solo-shot-2': 6, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
-  'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
+  'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'glass-break-far': -4, 'glass-break-far-2': -4, 'twig-snap': -4, 'twig-snap-2': -4, 'footsteps-forest': -5, 'footsteps-forest-2': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']

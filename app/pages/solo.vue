@@ -119,7 +119,7 @@ watch(view, (nv, ov) => {
   const prevMax = ov?.feed.at(-1)?.seq ?? 0
   if (lastPlayed < 0) { lastPlayed = maxSeq; feedFloor.value = Math.max(0, maxSeq - 3); lastPlace = nv.place?.id ?? ''; lastHealth = nv.health; return }
   if (nv.place && nv.place.id !== lastPlace) {
-    if (lastPlace) void audio.sfx(`step-${nv.place.surface}`, 0.7)
+    if (lastPlace) { void audio.sfx(`step-${nv.place.surface}`, 0.7); scape.stepped(nv.place.surface) }
     feedFloor.value = prevMax
     lastPlace = nv.place.id
     mode.value = null
@@ -355,12 +355,15 @@ watch([() => place.value?.surface, () => place.value?.outdoor, () => audio.unloc
   if (!ok) return
   audio.setRoom(outdoor ? 0.07 : surface === 'water' ? 0.5 : surface === 'tile' ? 0.36 : 0.16)
 }, { immediate: true })
+/** лес вокруг: дорога и лагерь, а в санатории и у водозабора — места с шумом сосен (лесная дорога, проходная) */
+const inForest = (p: { outdoor: boolean; area: string; ambience: string[] }) =>
+  p.outdoor && (p.area === 'road' || p.area === 'camp' || ((p.area === 'sana' || p.area === 'intake') && p.ambience.includes('pines')))
 /* пространство места для звуков вокруг: лес и улица, деревянная комната, кафель, машинный зал, вода, тоннель — у каждого
    своё эхо; звук вокруг героя идёт через него, поэтому звучит изнутри места, а не поверх */
 watch([() => place.value?.id, () => audio.unlocked.value], () => {
   const p = place.value
   if (!p || !audio.unlocked.value) return
-  const kind = p.outdoor ? (p.area === 'road' || p.area === 'camp' ? 'forest' : 'outdoor')
+  const kind = p.outdoor ? (inForest(p) ? 'forest' : 'outdoor')
     : p.deep ? (p.surface === 'water' ? 'tunnel' : 'water')
       : p.surface === 'water' ? 'water' : p.surface === 'tile' ? 'tile' : p.area === 'intake' ? 'machine' : 'wood'
   audio.setSpace(kind)
@@ -479,11 +482,11 @@ watch(() => !!(entered.value && v.value?.started && audio.unlocked.value), async
 
 /* звуки вокруг героя: даль, рядом, этаж сверху, за спиной в темноте, гром в дождь — у каждого слоя свой случайный ритм
    (useSoundscape). Звучат, пока герой просто идёт; записки и карта их не глушат — читать под шаги сверху страшнее */
-useSoundscape({
+const scape = useSoundscape({
   place: () => {
     const p = place.value
     if (!p) return null
-    return { area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, weather: p.weather, deep: p.deep, ambience: p.ambience }
+    return { area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, weather: p.weather, deep: p.deep, forest: inForest(p), ambience: p.ambience }
   },
   lightning: strength => strike(strength),
   active: () => {
