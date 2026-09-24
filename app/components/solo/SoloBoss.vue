@@ -40,8 +40,11 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.boss.deadline - 
 /* что сейчас: он бьёт (уходите от каждой точки) или бьёте вы; «наоборот» и «в темноте» — по точкам серии */
 const mirror = computed(() => props.boss.prompts.some(p => p.mirror))
 const dark = computed(() => props.boss.prompts.some(p => p.blink))
-const shoot = () => emit('send', { type: 'bossShoot' })
-function onKey(e: KeyboardEvent) { if ((e.code === 'KeyF' || e.code === 'Space') && props.boss.ammo > 0) { e.preventDefault(); shoot() } }
+/* одна кнопка: заряжено — выстрел, ствол пуст, но есть запас — перезарядить (пара секунд, выстрелить в это время нельзя) */
+const reloading = computed(() => props.boss.reloadUntil > now.value)
+const canShoot = computed(() => !reloading.value && (props.boss.ammo > 0 || props.boss.reserve > 0))
+const shoot = () => { if (canShoot.value) emit('send', { type: 'bossShoot' }) }
+function onKey(e: KeyboardEvent) { if ((e.code === 'KeyF' || e.code === 'Space') && canShoot.value) { e.preventDefault(); shoot() } }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
@@ -73,7 +76,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="solo-boss__series" :aria-label="`поймано ${caught} из ${boss.prompts.length}, нужно ${boss.need}`">
         <i v-for="p in boss.prompts" :key="p.id" :class="result(p)" />
         <span>{{ boss.kind === 'defend' ? `уйти от всех ${boss.prompts.length}` : `нужно ${boss.need} из ${boss.prompts.length}` }}</span>
-        <button v-if="boss.ammo > 0" type="button" class="solo-btn solo-btn--small solo-boss__shoot" @click="shoot">Выстрелить · {{ boss.ammo }} <kbd>F</kbd></button>
+        <button v-if="boss.ammo > 0 || boss.reserve > 0" type="button" class="solo-btn solo-btn--small solo-boss__shoot" :disabled="!canShoot" @click="shoot">{{ reloading ? 'Перезарядка…' : boss.ammo > 0 ? `Выстрелить${boss.gun ? `: ${boss.gun}` : ''} · ${boss.ammo}` : `Перезарядить${boss.gun ? `: ${boss.gun}` : ''}` }} <kbd>F</kbd></button>
       </div>
       <p class="solo-enc__legend">Точки вспыхивают одна за другой: жмите их стрелку на клавиатуре или проводите пальцем в её сторону, пока кольцо не сомкнулось.</p>
     </div>

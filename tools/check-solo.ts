@@ -272,6 +272,8 @@ const endingReach = got.endings.has('auto') ? new Set(S.endingRules.map(r => r.e
 for (const e of got.endings) if (e !== 'auto') endingReach.add(e)
 for (const e of S.endings) if (!endingReach.has(e.id)) err(`концовка ${e.id} недостижима`)
 for (const x of S.places.flatMap(p => p.exits)) if (x.lock?.item && !got.items.has(x.lock.item)) err(`ключ ${x.lock.item} не получить`)
+// патроны пачкой идут в запас другого предмета (pool): запас получен, если получена пачка
+for (const it of S.items) if (it.pool && got.items.has(it.id)) got.items.add(it.pool)
 for (const it of S.items) if (!got.items.has(it.id)) warn(`предмет ${it.id} не получить`)
 const notesGiven = new Set([...taken].length ? collectNotes() : [])
 for (const n of S.notes) if (!notesGiven.has(n.id)) warn(`записку ${n.id} нигде не дают`)

@@ -66,17 +66,18 @@ watch(() => props.enc.dazed, (n, o) => { if (n && !o) pop('звон в ушах'
 watch(() => props.enc.text, t => { if (/^Промах|Удар соскальзывает|уклоняется|проходит между|уходит в пустой/.test(t)) pop('мимо', 'miss'); else if (/приходится в пустоту|бьёт мимо|смыкаются на пустоте|хватают воздух|валится на койку|осыпается|только что стояли/.test(t)) pop('увернулись', 'dodge') })
 const onDodge = (id: number, key: SoloQteKey, at: number) => emit('send', { type: 'qte', id, key, at })
 
-function pick(id: string) {
-  const o = props.enc.options.find(x => x.id === id)
+/* вариант — по номеру: выстрелов может быть несколько (у каждого ствола свой), id у них одинаковый */
+function pick(i: number) {
+  const o = props.enc.options[i]
   if (!o?.enabled) return
   if (dodging.value || grappling.value) return
-  if (id === 'light') emit('send', { type: 'light', on: !props.light })
-  else emit('send', { type: 'act', action: id as 'fight' | 'shoot' | 'flee' | 'hide' | 'finish', at: now.value })
+  if (o.id === 'light') emit('send', { type: 'light', on: !props.light })
+  else emit('send', { type: 'act', action: o.id, at: now.value, gun: o.gun })
 }
 function onKey(e: KeyboardEvent) {
   if (grappling.value) { if (!e.repeat) { e.preventDefault(); mash() } return }
   const n = Number(e.key)
-  if (n >= 1 && n <= props.enc.options.length) { e.preventDefault(); pick(props.enc.options[n - 1]!.id) }
+  if (n >= 1 && n <= props.enc.options.length) { e.preventDefault(); pick(n - 1) }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -119,8 +120,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <p class="solo-enc__legend"><span><i class="solo-enc__key solo-enc__key--hit" />удар</span><span><i class="solo-enc__key solo-enc__key--flee" />уход без удара</span><span>жмите, пока бегунок в окне. После окон оно бьёт само, когда захочет: стрелка на экране — уворот, нажмите её или проведите пальцем в её сторону</span></p>
       <div class="solo-enc__options">
         <button
-          v-for="(o, i) in enc.options" :key="o.id" type="button" class="solo-enc__opt"
-          :class="[`solo-enc__opt--${o.id}`, { 'solo-enc__opt--ready': ready(o.id) && !dodging && !grappling }]" :disabled="!o.enabled || dodging || grappling" @click="pick(o.id)"
+          v-for="(o, i) in enc.options" :key="`${o.id}-${o.gun ?? ''}`" type="button" class="solo-enc__opt"
+          :class="[`solo-enc__opt--${o.id}`, { 'solo-enc__opt--ready': ready(o.id) && !dodging && !grappling }]" :disabled="!o.enabled || dodging || grappling" @click="pick(i)"
         ><kbd>{{ i + 1 }}</kbd><span class="solo-enc__opt-text"><b>{{ o.label }}</b><small v-if="o.hint">{{ o.hint }}</small></span></button>
       </div>
     </div>

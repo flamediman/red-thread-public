@@ -675,7 +675,8 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
               <SoloIcon name="item-radio" /><span><i /><i /><i /><i /><i /></span>
             </button>
           </div>
-          <div v-if="v.weapon || v.ammo" class="solo-weapon"><SoloIcon :name="v.inventory.find(i => i.equipped)?.icon ?? 'weapon'" />{{ v.weapon ?? 'без оружия' }}<b v-if="v.ammo" class="tabnum"> · патронов {{ v.ammo }}</b></div>
+          <!-- в руках — оружие; дальше патроны к каждому стволу (у того, что в руках, — просто «патронов») -->
+          <div v-if="v.weapon || v.guns.length" class="solo-weapon"><SoloIcon :name="v.inventory.find(i => i.equipped)?.icon ?? 'weapon'" />{{ v.weapon ?? 'без оружия' }}<b v-for="g in v.guns" :key="g.id" class="tabnum" :title="`${g.name}: в стволе ${g.loaded}, в запасе ${g.ammo - g.loaded}`"> · {{ g.name === v.weapon ? 'патроны' : g.name }} {{ g.loaded }}+{{ g.ammo - g.loaded }}</b></div>
         </div>
 
         <!-- вещи — сразу под меню и состоянием: к ним тянутся чаще всего -->

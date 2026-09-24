@@ -210,6 +210,9 @@ const PACKS = {
     'radio-click': ['A stiff plastic slider switch of an old Soviet transistor radio clicked once, short dry click, close, no music', 0.7],
     'qte-tick': ['A single short soft wooden tick, like a pencil tapped once on a table, dry, close, no music', 0.5],
     'flaregun-load': ['A break-action flare pistol opened with a metallic click, a cardboard cartridge pushed in, snapped shut, close, no music', 1.5],
+    // 25.09: двустволка диспетчера — выстрел (из трёх — одиночный глубокий удар с эхом) и перезарядка (без верха выше 9 кГц)
+    'shotgun-shot': ['A single blast of an old double-barrel hunting shotgun fired in a damp foggy courtyard: a deep heavy boom and a short rolling echo off concrete walls, no music, no voice', 2.5],
+    'shotgun-load': ['An old double-barrel hunting shotgun broken open with a metallic click, two paper shotgun shells pushed into the barrels, snapped shut, close, quiet room, no music', 2],
     'loudspeaker-hum': ['A dead old horn loudspeaker on a wooden pole in an empty pioneer camp: faint steady electric hum with occasional soft crackle and a barely audible distant garbled voice, quiet, no music, seamless ambience loop', 12, true],
     // 25.09: прежняя петля (14 с, «шорох хвои») на 80 % была выше 6 кГц и с яркими вспышками — слышалась шуршанием,
     // повторяющимся на одних и тех же местах; теперь 22 с мягкого шума крон, середина спектра (центр ~0,9 кГц)
@@ -252,7 +255,7 @@ const LEVEL = { tuman: { loop: -30, shot: -21 } }
 /** удары и крики громче ровного уровня, мелочи вроде щелчка фонаря — тише */
 /* далёкое — заметно ниже ровного уровня: горн за озером не должен звучать как горн в руке (16.09.2026 — «слишком громкий и навязчивый») */
 const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-full': -6, 'bugle-far-cut': -8, 'siren-bugle': -5, 'oarlocks': -5, 'phone-far-bugle': -3, 'announce-far': -8, 'branch-far': -6,
-  'fog-drip': -4, 'flag-rope': -3, 'loudspeaker-hum': -3, 'qte-tick': -8, 'radio-click': -6, 'pocket': -5, 'map-unfold': -4, 'flaregun-load': -2,
+  'fog-drip': -4, 'flag-rope': -3, 'loudspeaker-hum': -3, 'qte-tick': -8, 'radio-click': -6, 'pocket': -5, 'map-unfold': -4, 'flaregun-load': -2, 'shotgun-load': -2, 'shotgun-shot': 5,
   'rain-light': -2, 'rain-heavy': 0, 'rain-roof': -3, 'thunder-far': -4, 'thunder-far-2': -5, 'thunder-far-3': -5, 'footsteps-behind': -4, 'footsteps-behind-2': -4, 'breath-behind': -6, 'breath-behind-2': -6, 'whisper-near': -7, 'whisper-near-2': -7,
   'footsteps-above': -6, 'furniture-drag': -6, 'door-slam-far': -3, 'door-slam-far-2': -3, 'child-laugh-far': -8, 'music-box-far': -6, 'phone-ring-far': -6, 'dog-howl-far': -7, 'metal-sheet-far': -6, 'swing-creak': -6, 'crow-far': -8,
   'knock-three': -4, 'wall-scratch': -6, 'radio-voice-far': -7, 'siren-rise': -4, 'chain-drag': -4, 'industrial-clank': -3, 'industrial-clank-2': -4, 'metal-scream': -5, 'drip-metal': -7,

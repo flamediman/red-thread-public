@@ -23,6 +23,10 @@ const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSyn
 const FEED = 14
 const SAVE_SLOTS = 3
 /* голые руки: слабо и узкое окно — бить ими можно только самых хлипких, остальных лучше обойти */
+/** доля урона ствола по боссу */
+const BOSS_GUN = 0.6
+/** перезарядка в бою с боссом, мс: выстрелить снова можно только после неё */
+const BOSS_RELOAD_MS = 2200
 const HANDS: NonNullable<SoloItem['weapon']> = { damage: 6, accuracy: 0.4, sfx: { swing: 'fist-swing', hit: 'fist-hit' } }
 /** запас на окно удара: нажатие чуть раньше или позже края всё ещё засчитывается */
 const ZONE_TOL = 130
@@ -44,7 +48,9 @@ interface Dodge { prompts: Prompt[]; damage: number; text: string; sfx: string[]
 /** захват: сколько раз уже нажали, сколько нужно, что будет */
 interface Grapple { deadline: number; presses: number; need: number; damage: number; free: string; held: string; sfx: string[] }
 /** бой с боссом: серия точек prompts, итог прошлой серии last, phase — какая фаза уже объявлена */
-interface Boss { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string; prompts: Prompt[]; last: 'hit' | 'miss' | null; phase: number; kind?: 'strike' | 'defend'; open?: boolean }
+interface Boss { spawn: string; hp: number; round: number; startedAt: number; deadline: number; text: string; prompts: Prompt[]; last: 'hit' | 'miss' | null; phase: number; kind?: 'strike' | 'defend'; open?: boolean
+  /** перезарядка во время боя с боссом: до этого времени выстрелить нельзя */
+  reloadUntil?: number }
 
 /** всё, что переживает перезагрузку страницы и сохранения */
 interface Run {
@@ -67,6 +73,8 @@ interface Run {
   battery: number
   light: boolean
   ammo: number
+  /** патроны в стволе у каждого ствола (id → сколько); остальное — запас (weapon.ammo в карманах или ammo) */
+  loaded?: Record<string, number>
   weapon: string | null
   /** приёмник выключен игроком; в старых сохранениях поля нет — значит включён */
   radioOn?: boolean
@@ -184,7 +192,7 @@ export class SoloGame {
       case 'radio': r.radioOn = !!msg.on; return this.changed()
       case 'heal': return this.healWith(msg.item)
       case 'equip': return this.equip(msg.item)
-      case 'act': return this.act(msg.action, msg.at)
+      case 'act': return this.act(msg.action, msg.at, msg.gun)
       case 'bossShoot': return this.bossShoot()
       case 'run': return this.run_(msg.index)
       case 'qte': return this.qte(msg.id, msg.key, msg.at)
@@ -296,12 +304,17 @@ export class SoloGame {
     for (const i of e.give ?? []) {
       const item = this.ITEM.get(i)
       if (!item) continue
-      if (item.kind === 'ammo') r.ammo += item.amount ?? 1
+      // патроны ствола со своим запасом (weapon.ammo) — в карманы, числом; остальные (ракетница) — в общий запас
+      const pool = item.pool ?? i
+      if (item.kind === 'ammo' && this.S.items.some(w => w.weapon?.ammo === pool)) r.items[pool] = (r.items[pool] ?? 0) + (item.amount ?? 1)
+      else if (item.kind === 'ammo') r.ammo += item.amount ?? 1
       else r.items[i] = (r.items[i] ?? 0) + 1
       if (item.kind === 'weapon' && !r.weapon) r.weapon = i
       // карточка находки: клиент покажет её, когда закончатся сцена и разговор
       this.say(undefined, undefined, undefined, { found: { id: item.id, name: item.name, description: item.description, art: this.artOf(item) } })
     }
+    // патроны и ствол нашли вне боя — зарядить сразу, молча (звук находки и так есть)
+    if (e.give?.length && !this.live.encounter && !this.live.boss) this.topUp(false)
     for (const f of e.set ?? []) if (!r.flags.includes(f)) r.flags.push(f)
     if (e.unset) r.flags = r.flags.filter(f => !e.unset!.includes(f))
     if (e.melody) this.say(undefined, undefined, undefined, { melody: e.melody })
@@ -495,7 +508,7 @@ export class SoloGame {
   private equip(itemId: string) {
     const item = this.ITEM.get(itemId)
     if (!item || item.kind !== 'weapon' || !this.has(itemId)) return
-    if (this.run!.weapon !== itemId) this.say('', [item.weapon?.usesAmmo ? 'flaregun-load' : 'pipe-pick'])
+    if (this.run!.weapon !== itemId) this.say('', [item.weapon?.sfx?.equip ?? (item.weapon?.usesAmmo ? 'flaregun-load' : 'pipe-pick')])
     this.run!.weapon = itemId
     this.changed()
   }
@@ -663,7 +676,7 @@ export class SoloGame {
   }
 
   /** варианты во встрече с подсказками: что делает действие и что ему мешает */
-  private encounterOptions(m: SoloMonster, p: SoloPlace, gun: SoloItem | undefined): NonNullable<SoloView['encounter']>['options'] {
+  private encounterOptions(m: SoloMonster, p: SoloPlace): NonNullable<SoloView['encounter']>['options'] {
     const r = this.run!
     const dim = this.dim()
     const melee = this.melee()
@@ -686,8 +699,15 @@ export class SoloGame {
       { id: 'fight', label: melee ? `Ударить: ${melee.name}` : 'Отбиваться руками', enabled: true,
         hint: `${melee ? '' : 'Голыми руками — слабо и окно узкое. '}Бить, когда бегунок в красном окне${dim ? '; в темноте оно уже' : ''}.${stunNote}` },
       // стрелять не из чего — варианта нет вовсе; есть оружие без патронов — вариант виден, но закрыт
-      ...(gun ? [{ id: 'shoot' as const, label: r.ammo ? `Стрелять (${r.ammo})` : 'Стрелять: патронов нет', enabled: r.ammo > 0,
-        hint: r.ammo ? 'Почти на всё здоровье существа; раунд длиннее.' : 'Патроны кончились.' }] : []),
+      // у каждого ствола своя кнопка: заряжен — выстрел, пуст — перезарядить (раунд), кончились — видно, но закрыто
+      ...this.guns().map((g) => {
+        const n = this.loadedOf(g), rest = this.reserveOf(g)
+        if (n > 0) return { id: 'shoot' as const, gun: g.id, label: `Выстрел: ${g.name} (${n})`, enabled: true,
+          hint: `${g.weapon!.hint ?? 'Почти на всё здоровье существа; раунд длиннее.'} Заряжено ${n} из ${this.capOf(g)}, в запасе ${rest}.` }
+        if (rest > 0) return { id: 'reload' as const, gun: g.id, label: `Перезарядить: ${g.name}`, enabled: true,
+          hint: e && (e.stun ?? 0) > 0 ? 'Оно оглушено — успеете спокойно.' : 'Уйдёт раунд: оно успеет ударить — уворачивайтесь.' }
+        return { id: 'shoot' as const, gun: g.id, label: `${g.name}: патронов нет`, enabled: false, hint: 'Патроны кончились.' }
+      }),
       // оглушённое и измотанное — добить одним ударом, как в старых хоррорах
       ...(e && (e.stun ?? 0) > 0 && e.hp <= m.hp * 0.35 ? [{ id: 'finish' as const, label: 'Добить', enabled: true, hint: 'Оно лежит. Один удар — и всё.' }] : []),
       { id: 'flee', label: 'Бежать назад', enabled: !!r.prev && !(e && (e.dazed ?? 0) > 0), hint: e && (e.dazed ?? 0) > 0 ? 'Ноги не слушаются — переждите раунд.' : prev ? `Назад: ${prev}. В синем окне — уйдёте без удара.` : 'Отступать некуда.' },
@@ -724,8 +744,8 @@ export class SoloGame {
   /** оружие, от которого зависят окна удара: то, что в руках (ствол — пока есть патроны), иначе ближний бой или руки */
   private zoneWeapon() {
     const r = this.run!
-    const held = r.weapon ? this.ITEM.get(r.weapon)?.weapon : null
-    if (held?.usesAmmo && r.ammo > 0) return held
+    const held = r.weapon ? this.ITEM.get(r.weapon) : null
+    if (held?.weapon?.usesAmmo && this.loadedOf(held) > 0) return held.weapon
     return this.melee()?.weapon ?? HANDS
   }
 
@@ -955,10 +975,12 @@ export class SoloGame {
     this.live.encounter = null
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
     this.say(text, sfx)
+    // бой кончился — стволы можно спокойно зарядить
+    this.topUp(true)
   }
 
   /** бой на время: удар и побег засчитываются, если нажали, пока бегунок в своём окне (время нажатия — по часам клиента, если они не разошлись) */
-  private act(action: 'fight' | 'shoot' | 'flee' | 'hide' | 'finish', at?: number) {
+  private act(action: 'fight' | 'shoot' | 'reload' | 'flee' | 'hide' | 'finish', at?: number, gunId?: string) {
     const e = this.live.encounter
     const r = this.run!
     if (!e) return
@@ -1004,11 +1026,25 @@ export class SoloGame {
         break
       }
       case 'shoot': {
-        const gun = [...Object.keys(r.items)].map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
-        if (!gun || r.ammo <= 0) return
-        r.ammo--
+        const gun = this.gunFor(gunId)
+        if (!gun) return
+        this.fire(gun)
         const shot = this.shotSfx(gun)
         hit(gun.weapon!.damage, true, { land: shot, miss: shot })
+        break
+      }
+      case 'reload': {
+        const gun = this.guns().find(g => g.id === gunId && this.loadedOf(g) < this.capOf(g) && this.reserveOf(g) > 0)
+          ?? this.guns().find(g => this.loadedOf(g) === 0 && this.reserveOf(g) > 0)
+        if (!gun) return
+        this.reloadGun(gun)
+        e.streak = 0
+        const sfx = [gun.weapon?.sfx?.equip ?? 'flaregun-load']
+        const text = gun.weapon?.reload ?? 'Вы перезаряжаете.'
+        // оглушённое не мешает; иначе пока руки заняты — оно бьёт (увернуться можно)
+        if ((e.stun ?? 0) > 0) { this.nextRound(m, `${text} Оно ещё не пришло в себя.`, sfx, 0); break }
+        this.say('', sfx)
+        this.strike(m, `${text} ${m.text.strike ?? ''}`.trim(), `${text} ${m.text.attack}`, [m.sfx.attack], m.damage)
         break
       }
       case 'flee': {
@@ -1053,6 +1089,43 @@ export class SoloGame {
   }
 
   /** чем бить вблизи: то, что в руках, если это не ствол; иначе любое оружие ближнего боя из карманов */
+  /** стволы в карманах */
+  private guns(): SoloItem[] {
+    return Object.keys(this.run!.items).map(i => this.ITEM.get(i)).filter((i): i is SoloItem => !!i?.weapon?.usesAmmo && this.has(i.id))
+  }
+  /* Патроны ствола: сколько заряжено (loaded — в стволе, стреляет сразу) и сколько в запасе (weapon.ammo в карманах или
+     общий ammo — ракетница). Выстрел берёт из ствола; пустой ствол перезаряжают из запаса — в бою это раунд, в который
+     существо успевает ударить. Вне боя стволы дозаряжаются сами (topUp) */
+  private reserveOf(g: SoloItem) { const r = this.run!; return g.weapon?.ammo ? r.items[g.weapon.ammo] ?? 0 : r.ammo }
+  private loadedOf(g: SoloItem) { return this.run!.loaded?.[g.id] ?? 0 }
+  /** всего патронов к стволу: в стволе и в запасе */
+  private ammoOf(g: SoloItem) { return this.loadedOf(g) + this.reserveOf(g) }
+  /** ёмкость: сколько заряжается разом (двустволка — два, ракетница — один) */
+  private capOf(g: SoloItem) { return g.weapon?.capacity ?? 1 }
+  /** зарядить из запаса, сколько влезет; вернёт, сколько зарядили */
+  private reloadGun(g: SoloItem) {
+    const r = this.run!
+    const n = Math.min(this.capOf(g) - this.loadedOf(g), this.reserveOf(g))
+    if (n <= 0) return 0
+    if (g.weapon?.ammo) r.items[g.weapon.ammo] = (r.items[g.weapon.ammo] ?? 0) - n
+    else r.ammo -= n
+    r.loaded = { ...(r.loaded ?? {}), [g.id]: this.loadedOf(g) + n }
+    return n
+  }
+  /** выстрел: минус патрон из ствола */
+  private fire(g: SoloItem) { const r = this.run!; r.loaded = { ...(r.loaded ?? {}), [g.id]: Math.max(0, this.loadedOf(g) - 1) } }
+  /** вне боя: дозарядить все стволы (со звуком, если это после боя) */
+  private topUp(sound: boolean) {
+    for (const g of this.guns()) if (this.reloadGun(g) > 0 && sound) this.say('', [g.weapon?.sfx?.equip ?? 'flaregun-load'])
+  }
+  /** старые сохранения (до перезарядки): всё было в запасе — зарядить стволы молча */
+  private migrateLoaded() { if (this.run && !this.run.loaded) { this.run.loaded = {}; this.topUp(false) } }
+  /** из чего стрелять: названный ствол, иначе тот, что в руках, иначе самый сильный — если он заряжен */
+  private gunFor(id?: string): SoloItem | null {
+    const ready = this.guns().filter(g => this.loadedOf(g) > 0)
+    return ready.find(g => g.id === id) ?? ready.find(g => g.id === this.run!.weapon)
+      ?? ready.sort((a, b) => (b.weapon!.damage) - (a.weapon!.damage))[0] ?? null
+  }
   /** звуки того, чем бьёт герой: у оружия могут быть свои (weapon.sfx), руки — кулаками, иначе — труба */
   private meleeSfx() {
     const w = this.melee()?.weapon ?? HANDS
@@ -1256,23 +1329,36 @@ export class SoloGame {
     if (this.timer) { clearTimeout(this.timer); this.timer = null }
     this.say(spec.text.die, [spec.sfx.die])
     if (spec.success) this.apply(spec.success)
+    this.topUp(true)
     return true
   }
 
-  /** выстрел из ракетницы по боссу — в любой момент боя: почти половина его здоровья, но патронов мало */
+  /** выстрел по боссу — в любой момент боя: из того, что в руках, иначе из самого сильного ствола с патронами */
   private bossShoot() {
     const b = this.live.boss
-    const r = this.run!
     const spec = b && this.bossSpec(b)
-    const gun = Object.keys(r.items).map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
-    if (!b || !spec || !gun || r.ammo <= 0 || this.live.scene) return
-    r.ammo--
-    b.hp -= gun.weapon!.damage
+    if (!b || !spec || this.live.scene) return
+    const now = Date.now()
+    if ((b.reloadUntil ?? 0) > now) return
+    const gun = this.gunFor()
+    if (!gun) {
+      // стволы пусты — та же кнопка перезаряжает; пока руки заняты (BOSS_RELOAD_MS), выстрелить нельзя
+      const g = this.guns().find(x => this.reserveOf(x) > 0)
+      if (!g) return
+      this.reloadGun(g)
+      b.reloadUntil = now + BOSS_RELOAD_MS
+      this.say('', [g.weapon?.sfx?.equip ?? 'flaregun-load'])
+      return this.changed()
+    }
+    this.fire(gun)
+    // босс держит выстрел лучше существа (BOSS_GUN): с двумя стволами за игру семь выстрелов — почти 290 урона при 175
+    // здоровья у двух боссов вместе, и накопивший патроны расстреливал их, не пройдя ни одной серии
+    b.hp -= Math.round(gun.weapon!.damage * BOSS_GUN)
     b.last = 'hit'
     this.say('', [this.shotSfx(gun), spec.sfx.hurt])
     if (this.bossDown(spec)) return this.changed()
     const next = this.bossPhase(spec, b.hp)
-    b.text = next.idx !== b.phase && next.text ? next.text : 'Выстрел бьёт ему в грудь огнём. Он шатается — и идёт снова.'
+    b.text = next.idx !== b.phase && next.text ? next.text : 'Выстрел бьёт ему в грудь. Он шатается — и идёт снова.'
     b.phase = next.idx
     this.changed()
   }
@@ -1313,6 +1399,7 @@ export class SoloGame {
     const deaths = this.run?.deaths ?? s.run.deaths
     this.run = structuredClone(s.run)
     this.run.deaths = Math.max(deaths, this.run.deaths)
+    this.migrateLoaded()
     this.live = { encounter: null, chase: null, boss: null, linger: null, puzzle: null, dialogue: null, scene: null, dead: false }
     this.feed = []
     this.activeSince = Date.now()
@@ -1345,7 +1432,7 @@ export class SoloGame {
     const r = this.run
     const empty: SoloView = {
       build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, lights: this.S.lights ?? {}, wind: this.S.wind ?? [], materials: this.S.materials ?? [], depth: this.S.depth ?? [], started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
-      ammo: 0, radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, boss: null, chase: null, puzzle: null,
+      ammo: 0, guns: [], radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, boss: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }
     if (!r) return empty
@@ -1359,7 +1446,7 @@ export class SoloGame {
     const m = e ? this.MON.get(this.SPAWN.get(e.spawn)!.monster ?? '')! : null
     const b = this.live.boss
     const bs = b ? this.bossSpec(b) : null
-    const gun = Object.keys(r.items).map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
+    const bossGun = this.gunFor() ?? this.guns().find(g => this.reserveOf(g) > 0) ?? null
     const dl = this.live.dialogue
     const dNode = dl ? this.DIALOG.get(dl.id)!.nodes[dl.node] : null
     const ph = this.live.puzzle ? this.HOT.get(this.live.puzzle) : null
@@ -1387,7 +1474,7 @@ export class SoloGame {
         return { id, name: it.name, description: it.description, kind: it.kind, icon: it.icon ? `item-${it.icon}` : `kind-${it.kind}`, art: this.artOf(it), count, equipped: r.weapon === id, usable: it.kind === 'heal' || it.kind === 'battery' || it.kind === 'weapon', examinable: !!it.examine }
       }),
       notes: r.notes.map(n => this.S.notes.find(x => x.id === n)).filter((x): x is NonNullable<typeof x> => !!x).map(n => ({ ...n, read: (r.read ?? []).includes(n.id), where: this.PLACE.get(r.notesAt?.[n.id] ?? '')?.name ?? null })),
-      health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, radio: this.radio(), radioOn: r.radioOn !== false, otherworld: r.otherworld,
+      health: r.health, battery: r.battery, light: r.light, ammo: r.ammo, guns: this.guns().map(g => ({ id: g.id, name: g.name, ammo: this.ammoOf(g), loaded: this.loadedOf(g) })), radio: this.radio(), radioOn: r.radioOn !== false, otherworld: r.otherworld,
       weapon: r.weapon ? this.ITEM.get(r.weapon)?.name ?? null : null,
       map: {
         areas: this.S.areas,
@@ -1411,14 +1498,14 @@ export class SoloGame {
         stunned: (e.stun ?? 0) > 0, dazed: (e.dazed ?? 0) > 0,
         grapple: e.grapple ? { deadline: e.grapple.deadline, presses: e.grapple.presses, need: e.grapple.need } : null,
         mode: e.mode ?? 'normal',
-        options: this.encounterOptions(m, p, gun)
+        options: this.encounterOptions(m, p)
       } : null,
       puzzle: ph?.puzzle ? { hotspot: ph.id, puzzle: this.publicPuzzle(ph) } : null,
       boss: b && bs ? {
         id: bs.id, name: bs.name, art: bs.art ?? bs.id, hp: Math.max(0, b.hp), maxHp: bs.hp, round: b.round, text: b.text,
         startedAt: b.startedAt, deadline: b.deadline, serverNow: now, prompts: b.prompts, last: b.last,
         kind: b.kind ?? 'strike', open: !!b.open, need: b.kind === 'defend' ? b.prompts.length : Math.max(1, this.bossPhase(bs, b.hp).need - (b.open ? 1 : 0)),
-        ammo: Object.keys(r.items).some(i => this.ITEM.get(i)?.weapon?.usesAmmo && this.has(i)) ? r.ammo : 0
+        ammo: bossGun ? this.loadedOf(bossGun) : 0, reserve: bossGun ? this.reserveOf(bossGun) : 0, gun: bossGun?.name ?? null, reloadUntil: b.reloadUntil ?? 0
       } : null,
       dialogue: dl && dNode ? {
         id: dl.id, npc: this.DIALOG.get(dl.id)!.npc, name: this.S.npcs.find(n => n.id === this.DIALOG.get(dl.id)!.npc)?.name ?? '',
@@ -1505,6 +1592,7 @@ export class SoloGame {
       if (!existsSync(this.file)) return
       const d = JSON.parse(readFileSync(this.file, 'utf8')) as Disk
       this.run = d.run && this.PLACE.has(d.run.place) ? d.run : null
+      if (this.run && !d.live?.encounter && !d.live?.boss) this.migrateLoaded()
       // история дописана: концовки, до которой дошёл игрок, больше нет (была промежуточной) — возвращаем его к последнему осмотру
       if (this.run?.ending && !this.S.endings.some(x => x.id === this.run!.ending)) {
         this.run.ending = null

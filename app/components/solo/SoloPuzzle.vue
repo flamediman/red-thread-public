@@ -195,7 +195,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
       <div v-else-if="p.kind === 'dials'" class="solo-dials">
         <div v-for="(d, i) in p.dials" :key="i" class="solo-dial">
           <span class="solo-dial__label">{{ d.label }}</span>
-          <b class="solo-dial__value tabnum">{{ dials[i] }}</b>
+          <b class="solo-dial__value tabnum" :class="{ 'solo-dial__value--long': d.values.some(x => x.length > 6) }">{{ dials[i] }}</b>
           <div class="solo-dial__row">
             <button type="button" aria-label="меньше" @click="turn(i, -1)">◀</button>
             <i class="solo-dial__knob" :style="{ transform: `rotate(${knobAngle(i)}deg)` }" />

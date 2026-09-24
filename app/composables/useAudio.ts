@@ -267,6 +267,7 @@ const VARY: Record<string, { rate: number; db: number; tone?: [number, number]; 
   'solo-hit-land': { rate: 0.08, db: 3, tone: [3000, 14000], pan: 0.15 },
   'solo-swing': { rate: 0.1, db: 2, pan: 0.2 },
   'solo-shot': { rate: 0.025, db: 1.5, tone: [9000, 16000] },
+  'shotgun-shot': { rate: 0.025, db: 1.5, tone: [7000, 14000] },
   'solo-hurt': { rate: 0.05, db: 1.5 }
 }
 const spread = (x: number) => (Math.random() * 2 - 1) * x
@@ -282,7 +283,7 @@ function variant(name: string) {
 
 /* Звуки браузер держит сутки (routeRules /sfx): у перегенерированного звука — новая версия в адресе, иначе игрок
    ещё день слышит старый. Поднять номер, когда звук переделан */
-const SFX_REV: Record<string, number> = { 'pines': 2, 'step-tile': 2, 'step-grass': 2 }
+const SFX_REV: Record<string, number> = { 'pines': 2, 'step-tile': 2, 'step-grass': 2, 'solo-shot': 2 }
 const sfxUrl = (name: string, world = true) => `/sfx/${world ? `${currentSetting.value}/` : ''}${name}.m4a${SFX_REV[name] ? `?v=${SFX_REV[name]}` : ''}`
 async function loadSfx(name: string): Promise<AudioBuffer | null> {
   if (name.includes('.')) return load(`/sfx/${name}`)

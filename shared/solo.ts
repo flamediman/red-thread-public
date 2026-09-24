@@ -231,7 +231,14 @@ export interface SoloItem {
       времени раунда (1.3 — раунд на треть длиннее); usesAmmo — стреляет патронами */
   /** sfx — свои звуки оружия (удар мимо, попадание, выстрел); без них: оружие ближнего боя — solo-swing/solo-hit-land
       (труба), голые руки — fist-swing/fist-hit, огнестрел — solo-shot */
-  weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean; zones?: number; tempo?: number; sfx?: { swing?: string; hit?: string; shot?: string } }
+  weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean; zones?: number; tempo?: number; sfx?: { swing?: string; hit?: string; shot?: string; equip?: string }
+    /** свои патроны ствола: id предмета-запаса (его число — в карманах); без него — общий запас run.ammo (ракетница)
+        и подсказка к выстрелу во встрече */
+    ammo?: string; hint?: string
+    /** ёмкость (сколько заряжается разом; по умолчанию 1) и что происходит при перезарядке */
+    capacity?: number; reload?: string }
+  /** патроны пачкой: в какой запас идут (id предмета-запаса); без него — в свой id */
+  pool?: string
   /** соединить с другим предметом */
   combine?: { with: string; result: string; text: string }[]
   /** осмотреть внимательнее: в первый раз — эффект (на обороте надпись, внутри что-то), потом — after */
@@ -448,6 +455,8 @@ export interface SoloView {
   radioOn: boolean
   otherworld: boolean
   weapon: string | null
+  /** стволы в карманах и патроны к каждому — строка состояния */
+  guns: { id: string; name: string; ammo: number; loaded: number }[]
   /** карта — вся схема района, как на бумажной туристической карте; visited — где были, known — что видно с соседних мест */
   map: { areas: SoloArea[]; places: { id: string; area: string; name: string; x: number; y: number; w: number; h: number; outdoor: boolean; surface: string; poi: string; building?: string; visited: boolean; known: boolean; here: boolean; save: boolean; locked: boolean; puzzle: boolean }[]; links: [string, string][] }
   /** последствия последнего действия — показать и озвучить; art — крупный план осмотра, found — предмет попал в карманы */
@@ -461,7 +470,7 @@ export interface SoloView {
     zones: { hit: [number, number][]; flee: [number, number] | null }
     text: string
     /** hint — что делает действие и почему может не сработать; показывается под кнопкой */
-    options: { id: 'fight' | 'shoot' | 'flee' | 'hide' | 'light' | 'finish'; label: string; enabled: boolean; hint?: string }[]
+    options: { id: 'fight' | 'shoot' | 'reload' | 'flee' | 'hide' | 'light' | 'finish'; label: string; enabled: boolean; hint?: string; gun?: string }[]
     /** существо бьёт: точки уворота (как у босса); пока они есть, полоса раунда стоит */
     dodge: { prompts: SoloQtePrompt[]; deadline: number } | null
     /** существо оглушено точным ударом (окна шире, ответа не будет) / герой оглушён (окна уже, бежать нельзя) */
@@ -483,6 +492,10 @@ export interface SoloView {
     kind: 'strike' | 'defend'; open: boolean
     /** выстрел из ракетницы между сериями: сколько патронов (0 — ружья нет или пусто) */
     ammo: number
+    /** из чего стреляет «Выстрелить»; в запасе к нему; до какого времени идёт перезарядка (часы сервера) */
+    gun: string | null
+    reserve: number
+    reloadUntil: number
     /** итог прошлой серии */
     last: 'hit' | 'miss' | null
   } | null
@@ -520,7 +533,7 @@ export type SoloClientMessage =
   | { type: 'equip'; item: string }
   | { type: 'heal'; item: string }
   /** at — время нажатия по часам сервера (клиент знает сдвиг): так пинг не съедает окно */
-  | { type: 'act'; action: 'fight' | 'shoot' | 'flee' | 'hide' | 'finish'; at?: number }
+  | { type: 'act'; action: 'fight' | 'shoot' | 'reload' | 'flee' | 'hide' | 'finish'; at?: number; gun?: string }
   | { type: 'bossShoot' }
   | { type: 'run'; index: number }
   /** босс: нажата стрелка (или точка) с номером id */
