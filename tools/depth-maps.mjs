@@ -14,7 +14,7 @@ const dir = process.argv[2]
 if (!dir) { console.error('укажите папку art истории'); process.exit(1) }
 const onlyArg = process.argv.indexOf('--only')
 const only = onlyArg > 0 ? new Set(process.argv[onlyArg + 1].split(',')) : null
-const DILATE = Number(process.env.DILATE ?? 3)
+const DILATE = Number(process.env.DILATE ?? 0)
 const BLUR = 0.7
 
 import { resize, box, calmThin, snapToImage, alongLines, connectedParts, fitPlane, NONPLANAR, SEETHROUGH, planes, seeThrough, mendFalseJumps, dilate, blur } from './depth-lib.mjs'

@@ -66,6 +66,7 @@ a.case-row { text-decoration: none; }
    Слой длиннее кадра ровно на этот шаг (плюс запас) с той стороны, откуда он едет: край слоя никогда не заходит в кадр,
    а текстура на планшете остаётся небольшой. */
 $fog-tile: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='600'%3E%3Cfilter id='f' x='0' y='0' width='900' height='600' filterUnits='userSpaceOnUse'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.006' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.9 0 0 0 0 0.88 1.9 0 0 0 -0.62'/%3E%3C/filter%3E%3Crect width='900' height='600' filter='url(%23f)'/%3E%3C/svg%3E";
+$fog-tile-other: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='600'%3E%3Cfilter id='f' x='0' y='0' width='900' height='600' filterUnits='userSpaceOnUse'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.006' numOctaves='4' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.262 0 0 0 0 0.258 0 0 0 0 0.209 1.9 0 0 0 -0.62'/%3E%3C/filter%3E%3Crect width='900' height='600' filter='url(%23f)'/%3E%3C/svg%3E";
 $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E";
 
 .solo-fog { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2;
@@ -78,7 +79,9 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     &--c { left: -760px; right: -60px; top: 45%; opacity: calc(0.5 * var(--fog, 1)); background-size: 700px 470px; animation: fog-c 55s linear infinite;
       mask-image: linear-gradient(180deg, transparent 0%, #000 60%); } }
   &__grain { position: absolute; inset: -50%; width: 200%; height: 200%; opacity: 0.07; background-image: url($grain); animation: grain 1.2s steps(6) infinite; }
-  &--other &__layer { filter: sepia(0.6) hue-rotate(-25deg) saturate(1.4) brightness(0.55); }
+  /* на изнанке — тот же узор уже в цвете, какой давал фильтр sepia(0.6) hue-rotate(-25deg) saturate(1.4) brightness(0.55)
+     (посчитан в Chrome): фильтр на едущем слое во всю ширину пересчитывался каждый кадр */
+  &--other &__layer { background-image: url($fog-tile-other); }
 }
 @keyframes fog-a { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-900px, 0, 0); } }
 @keyframes fog-b { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(1350px, 0, 0); } }
@@ -178,15 +181,21 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 .solo-status { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; border-radius: 10px; background: rgba(0, 0, 0, 0.3); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.06); }
 .solo-status__row { display: flex; align-items: center; gap: 0.35rem; }
 .solo-ecg { --ecg: var(--tuman-ok); flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.7rem; margin-right: 0.3rem; font-family: var(--font-ui); font-size: 0.8rem; font-weight: 700; color: var(--ecg);
-  svg { flex: 1 1 8rem; min-width: 3.5rem; max-width: 10rem; height: 2rem; overflow: visible; }
+  &__trace { position: relative; flex: 1 1 8rem; min-width: 3.5rem; max-width: 10rem; height: 2rem; }
+  svg { position: absolute; left: 0; overflow: visible; }
   span { white-space: nowrap; }
   path { fill: none; stroke: var(--ecg); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-  &__base { opacity: 0.16; }
-  &__beat { stroke-dasharray: 20 80; animation: ecg 2.2s linear infinite; filter: drop-shadow(0 0 3px var(--ecg)); }
-  &--hurt { --ecg: var(--tuman-warn); .solo-ecg__beat { animation-duration: 1.4s; } }
-  &--bad { --ecg: var(--tuman-red); .solo-ecg__beat { animation-duration: 0.75s; } span { animation: low-pulse 0.75s ease-in-out infinite; } }
+  &__base { top: 0; width: 100%; height: 100%; opacity: 0.16; }
+  /* окно в пятую часть ширины едет слева направо, линия в нём — навстречу и стоит на месте; края окна растушёваны,
+     голова пульса ярче хвоста. Поля сверху и снизу — под свечение */
+  &__win { position: absolute; left: 0; top: -6px; bottom: -6px; width: 20%; overflow: hidden; will-change: transform;
+    mask-image: linear-gradient(90deg, transparent, #000 55%, #000 82%, transparent); animation: ecg-win var(--beat, 2.2s) linear infinite; }
+  &__lit { top: 6px; height: calc(100% - 12px); width: 500%; filter: drop-shadow(0 0 3px var(--ecg)); will-change: transform; animation: ecg-lit var(--beat, 2.2s) linear infinite; }
+  &--hurt { --ecg: var(--tuman-warn); --beat: 1.4s; }
+  &--bad { --ecg: var(--tuman-red); --beat: 0.75s; span { animation: low-pulse 0.75s ease-in-out infinite; } }
 }
-@keyframes ecg { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes ecg-win { from { transform: translateX(-100%); } to { transform: translateX(500%); } }
+@keyframes ecg-lit { from { transform: translateX(20%); } to { transform: translateX(-100%); } }
 .solo-light { flex: none; display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.5rem; border-radius: 7px; color: var(--paper-faint);
   &.on { color: #efe2b0; } }
 @media (hover: hover) { .solo-light:hover { background: rgba(230, 227, 218, 0.06); } .solo-view__back:hover { background: rgba(6, 7, 7, 0.9); color: var(--paper); } }
@@ -631,8 +640,12 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 
 /* объёмный кадр (SoloDepth): место, погоня, встреча — разметку даёт тот, кто вставляет; сам холст проявляется,
    когда нарисован первый раз, и не наезжает сам (движение камеры — в шейдере) */
-.solo-depth { display: block; animation: none; filter: var(--photo-filter); opacity: 0; transition: opacity 1.1s ease;
+.solo-depth { display: block; animation: none; filter: none; opacity: 0; transition: opacity 1.1s ease;
   &--ready { opacity: 1; } }
+/* цвет кадра (--photo-filter) и тонировку объёмный кадр считает сам, в шейдере: css-фильтр и слой с наложением
+   умножением поверх холста, который меняется 30 раз в секунду, стоили лишних проходов по всему экрану */
+.solo-depth ~ .solo-tint { display: none; }
+.solo-enc--chase .solo-depth { filter: none; }
 
 /* заряд фонаря — батарейка из пяти делений, как в играх; ниже 30 % деления красные и последнее мигает; заглох — пустая */
 .solo-battery { position: relative; display: inline-flex; gap: 2px; padding: 2px; height: 0.95rem; border: 1.5px solid currentColor; border-radius: 3px; opacity: 0.85;

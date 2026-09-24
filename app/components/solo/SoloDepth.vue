@@ -6,7 +6,7 @@
    отражают, дождь, пыль и листья летят на разной глубине и прячутся за предметами, по небу идут облака, ветки и
    трава качаются (маска ветра w_), вода рябит. Всё — один проход по экрану.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; mat?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; mat?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean; grade?: [number, number, number] }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -52,14 +52,18 @@ uniform float mode; uniform float t; uniform float power; uniform float beamR; u
 uniform float rain; uniform float fogAmt; uniform float other; uniform float flash;
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
-uniform sampler2D windTex; uniform float windOn; uniform float windAmt; uniform float leaves; uniform vec2 imgSize;
-uniform float breath; uniform vec2 sun; uniform float sunOn; uniform float indoor; uniform vec3 fogTint; uniform sampler2D matTex; uniform float matOn;
+uniform sampler2D windTex; uniform float windOn; uniform float windAmt; uniform float leaves; uniform vec4 leafP[7]; uniform vec4 leafQ[7]; uniform int leafN; uniform vec2 imgSize;
+uniform float breath; uniform vec2 sun; uniform float sunOn; uniform float indoor; uniform vec3 fogTint; uniform sampler2D matTex; uniform float matOn; uniform sampler2D noiseTex; uniform vec3 grade; uniform vec4 tint;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hAt(vec2 q, float lod) { return textureLod(dep, q, lod).r; }
 vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+// Случайное без синусов: синус на видеокарте дорогой, а туман, листья и трава брали их сотню на точку — клочья тумана
+// одни стоили больше, чем вся картинка. Шум — из таблицы 256×256, где в каждой клетке сразу четыре её угла (одна
+// выборка вместо четырёх синусов); одиночные случайные числа — арифметикой (хэш Хоскинса)
+float hash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }
+  vec4 c = texelFetch(noiseTex, ivec2(i) & 255, 0);
+  return mix(mix(c.r, c.g, u.x), mix(c.b, c.a, u.x), u.y); }
 float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
 // Бикубическая выборка (Кэтмелл — Ром, пять выборок): кадр немного растянут под окно, и билинейная выборка его мылит
 vec3 sharpAt(vec2 uv) {
@@ -137,7 +141,13 @@ void main() {
   float d = hAt(o, 0.0);
   // Туман, свет, затенение углов считаются по сглаженной глубине (уровни мип-карты): резкий край глубины никогда не
   // совпадает с краем предмета на картинке, и всё, что по нему посчитано, обводит предмет светлой или тёмной каймой
-  float ds = hAt(o, 3.0);
+  float ds0 = hAt(o, 3.0);
+  // У края предмета сглаженная глубина — смесь ближнего и дальнего: туман, свет фонаря и луч по ней рисовали кайму —
+  // на ближнем светлый ореол, на дальнем тёмную полосу у силуэта. У края берём почти резкую глубину
+  float d1 = textureLod(dep, o, 1.0).r;
+  float edgeK = smoothstep(0.012, 0.05, abs(d1 - ds0));
+  float ds = mix(ds0, d1, edgeK);
+  float dF = ds;
   vec2 st = texel * 4.0;
   float dx = hAt(o + vec2(st.x, 0.0), 2.0) - hAt(o - vec2(st.x, 0.0), 2.0);
   float dy = hAt(o + vec2(0.0, st.y), 2.0) - hAt(o - vec2(0.0, st.y), 2.0);
@@ -146,7 +156,7 @@ void main() {
   // Плавно, без порогов: жёсткий порог перепада давал линию на одном и том же расстоянии от каждого края (контуры).
   // На светлых кадрах тени уже нарисованы в картинке — там затенения нет, только в темноте под фонарём
   float occ = 0.0;
-  if (quality > 0.5 && mode > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 5.0; float df = hAt(o + off, 2.0) - ds; occ += df * smoothstep(0.0, 0.03, df) * (1.0 - smoothstep(0.05, 0.14, df)); }
+  if (quality > 0.5 && mode > 0.5) for (int k = 0; k < 6; k++) { float a = float(k) * 1.047; vec2 off = vec2(cos(a), sin(a)) * texel * 5.0; float df = hAt(o + off, 2.0) - ds0; occ += df * smoothstep(0.0, 0.03, df) * (1.0 - smoothstep(0.05, 0.14, df)); }
   float ao = clamp(1.0 - occ * 2.5, 0.6, 1.0);
   // мокро: дождь темнит поверхности
   albedo *= mix(1.0, 0.86, rain);
@@ -159,7 +169,7 @@ void main() {
   vec3 fogCol = mix(fogTint, vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
   float drift = fbm(vec2(sv.x * 2.2 + t * 0.035 + (1.0 - ds) * 1.5, sv.y * 1.6 - t * 0.012));
   // картинки уже нарисованы в тумане: свой туман шейдера лёгкий, только оживляет нарисованный
-  float fogF = fogAmt * 0.4 * pow(1.0 - ds, 1.25) * (0.55 + 0.8 * drift);
+  float fogF = fogAmt * 0.4 * pow(1.0 - dF, 1.25) * (0.55 + 0.8 * drift);
   // гладкость для отражений (стекло, металл, кафель, лак, мокрое) — по размытой картинке: светлое и бесцветное.
   // Размытая — чтобы блестели поверхности, а не контуры. Яркость самой точки усиливает нарисованные отражения
   vec3 ab = textureLod(img, o, 3.0).rgb;
@@ -196,7 +206,7 @@ void main() {
     for (int k = 0; k < 3; k++) {
       float fk = float(k);
       float z = 0.72 - fk * 0.2;
-      float vis = 1.0 - smoothstep(z - 0.12, z - 0.02, ds);
+      float vis = 1.0 - smoothstep(z - 0.12, z - 0.02, dF);
       if (vis < 0.01) continue;
       vec2 fp = vec2(sv.x * (0.9 + fk * 0.4) + t * (0.02 + 0.014 * fk) * (1.0 + storm), sv.y * (4.2 + fk * 1.6) + fk * 7.0);
       // клочья — редкие и вытянутые вдоль земли, между ними — чисто; у земли гуще
@@ -213,14 +223,15 @@ void main() {
       for (int k = 0; k < 12; k++) {
         sp += dir;
         vec2 so = toTex(clamp(sp, 0.0, 1.0));
-        float sd = textureLod(dep, so, 3.0).r;
-        float sl = dot(textureLod(img, so, 4.0).rgb, vec3(0.299, 0.587, 0.114));
+        // тень луча начинается у самого предмета: глубина и яркость почти без размытия
+        float sd = textureLod(dep, so, 1.0).r;
+        float sl = dot(textureLod(img, so, 2.0).rgb, vec3(0.299, 0.587, 0.114));
         float far = indoor > 0.5 ? 1.0 : 1.0 - smoothstep(0.03, 0.12, sd);
         shaft += far * smoothstep(0.55, 0.85, sl) * decay;
         decay *= 0.9;
       }
       // на и так светлом (небо, дымка) лучи не прибавляют — иначе середина кадра выгорала в белое
-      col += fogCol * shaft * mix(0.012, 0.022, indoor) * fogAmt * (1.0 - storm) * (1.0 - 0.6 * ds) * (1.0 - smoothstep(0.45, 0.8, lum));
+      col += fogCol * shaft * mix(0.012, 0.022, indoor) * fogAmt * (1.0 - storm) * (1.0 - 0.6 * dF) * (1.0 - smoothstep(0.45, 0.8, lum));
     }
   } else {
     // фонарь в руке у героя: источник у камеры, чуть ниже и правее глаз; курсор задаёт, куда смотрит луч (пятно на экране).
@@ -325,26 +336,15 @@ void main() {
   // сверху-слева, сносится ветром, покачивается и кувыркается (поворачивается ребром — становится узким, изнанка бледнее).
   // Лист берёзы или осины: шире у черешка, острый кончик, светлее с одного бока, тёмная прожилка и край; дальние мельче
   // и тонут в тумане; ближний предмет лист закрывает
+  // (путь листа одинаков для всего экрана — его считает страница раз в кадр, leafP/leafQ; здесь — только сам лист)
   if (leaves > 0.01) {
-    int NL = int(2.0 + 2.5 * leaves);
     for (int k = 0; k < 7; k++) {
-      if (k >= NL) break;
-      float fk = float(k);
-      float P = 9.0 + 7.0 * hash(vec2(fk, 1.3));
-      float cyc = floor((t + fk * 3.7) / P);
-      float age = mod(t + fk * 3.7, P);
-      vec2 id = vec2(fk, cyc);
-      float h1 = hash(id + 0.17), h2 = hash(id + 3.1), h3 = hash(id + 7.7);
-      float z = mix(0.55, 0.95, h3);
-      // старт выше и левее кадра: часть листьев пролетает мимо, не каждый цикл на экране есть лист
-      vec2 start = vec2(h1 * 1.6 - 0.7, -0.1 - 0.35 * h2);
-      vec2 vel = vec2((0.07 + 0.08 * h2) * (0.6 + 0.6 * windAmt), 0.055 + 0.05 * h1) * mix(0.6, 1.0, z);
-      vec2 pos = start + vel * age + vec2(0.035 * sin(age * 1.6 + h1 * 6.0), 0.02 * sin(age * 2.7 + h2 * 5.0));
+      if (k >= leafN) break;
+      vec2 pos = leafP[k].xy;
+      float sz = leafP[k].z, z = leafP[k].w;
       vec2 dv = (o - pos) * vec2(imgSize.x / imgSize.y, 1.0);
-      float sz = mix(0.006, 0.014, z) * (0.8 + 0.4 * h2);
       if (dot(dv, dv) > sz * sz * 2.5 || z < d + 0.03) continue;
-      float spin = age * (1.6 + 2.2 * h1) + h2 * 6.0;
-      float ang = age * (0.5 + h3) + h1 * 6.28;
+      float ang = leafQ[k].x, spin = leafQ[k].y, h13 = leafQ[k].z, h2 = leafQ[k].w;
       vec2 rr = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * dv;
       float flip = cos(spin), wsc = max(0.14, abs(flip));
       vec2 lp = rr / vec2(sz, sz * 0.62 * wsc);
@@ -355,7 +355,7 @@ void main() {
       float leaf = smoothstep(0.0, aa, inside) * step(abs(lp.x), 1.0);
       float stem = smoothstep(0.1 + aa, 0.0, abs(lp.y)) * step(-1.3, lp.x) * step(lp.x, -0.9);
       // цвет: жёлтая берёза, рыжая осина, бурый сухой; изнанка бледнее и серее
-      vec3 lc = mix(vec3(0.6, 0.49, 0.23), vec3(0.56, 0.3, 0.14), h3 * h1);
+      vec3 lc = mix(vec3(0.6, 0.49, 0.23), vec3(0.56, 0.3, 0.14), h13);
       lc = mix(lc, vec3(0.36, 0.26, 0.15), step(0.75, h2));
       if (flip < 0.0) lc = mix(lc, vec3(0.58, 0.55, 0.42), 0.35) * 0.8;
       // светотень поперёк листа, прожилка посередине, край темнее
@@ -420,13 +420,25 @@ void main() {
     reach *= mix(1.0, 0.35 + 1.3 * smoothstep(0.35, 0.8, fbm(sv * 2.6 + vec2(floor(t * 0.7) * 3.7, 0.0))), skyN);
     col = col * (1.0 + 0.9 * flash * reach) + sky * 0.2 * flash * reach;
   }
-  // смена кадра: последний кадр прошлого места плавно перетекает в новый
+  // Цвет кадра: приглушить, добавить контраста, притемнить и охолодить — то же, что делали css-фильтр холста и слой
+  // тонировки поверх (saturate → contrast → brightness с обрезкой после каждого шага, затем умножение на тон). Здесь —
+  // потому что css-фильтр и наложение умножением заставляли браузер пересобирать весь экран лишними проходами каждый кадр
+  mat3 satM = mat3(0.213 + 0.787 * grade.x, 0.213 - 0.213 * grade.x, 0.213 - 0.213 * grade.x,
+                   0.715 - 0.715 * grade.x, 0.715 + 0.285 * grade.x, 0.715 - 0.715 * grade.x,
+                   0.072 - 0.072 * grade.x, 0.072 - 0.072 * grade.x, 0.072 + 0.928 * grade.x);
+  col = clamp(satM * clamp(col, 0.0, 1.0), 0.0, 1.0);
+  col = clamp((col - 0.5) * grade.y + 0.5, 0.0, 1.0);
+  col = clamp(col * grade.z, 0.0, 1.0) * mix(vec3(1.0), tint.rgb, tint.a);
+  // смена кадра: последний кадр прошлого места плавно перетекает в новый (он уже в этом цвете)
   if (fade < 0.999) col = mix(texture(prev, gl_FragCoord.xy / view).rgb, col, fade);
   color = vec4(col, 1.0);
 }`
 
 /** гладкость по покрытию места */
 const GLOSS: Record<string, number> = { tile: 1, water: 1, wood: 0.45, asphalt: 0.25, grass: 0.1 }
+/** цвет кадра — как --photo-filter «Тумана» (saturate, contrast, brightness) и слой .solo-tint поверх (цвет, доля) */
+const GRADE: [number, number, number] = [0.62, 1.14, 0.72]
+const TINT = [0x5d / 255, 0x6f / 255, 0x75 / 255, 0.35], TINT_OTHER = [0x7a / 255, 0x4a / 255, 0x3c / 255, 0.5]
 /** цвет ламп в кадре */
 const LAMP: Record<string, number[]> = { warm: [1.0, 0.76, 0.46], red: [1.0, 0.26, 0.18], cold: [0.7, 0.8, 1.0] }
 type Img = ImageBitmap | HTMLImageElement
@@ -446,6 +458,8 @@ const snapshot = (): Scene => ({ mode: props.mode, weak: props.weak, focus: prop
 let applied: Scene = snapshot()
 let pending: { img: Img; dep: Img; wind: Img | null; mat: Img | null; key: string } | null = null
 let windOn = false, matOn = false
+/** полная картинка кадра догрузилась после лёгкой копии — подменить в следующем кадре анимации */
+let sharper: { img: Img; key: string } | null = null
 /* точка света для лучей в тумане — самое светлое место картинки (в долях картинки); нет светлого — лучей нет */
 const sunTex = { x: 0.5, y: 0, on: false }
 const fogTint = [0.62, 0.65, 0.66]
@@ -522,10 +536,14 @@ async function request(src: string, depth: string, wind?: string) {
   loadingKey = key
   try {
     const mat = props.mat
-    const [img, dep, w, m] = await Promise.all([decode(src), decode(depth, true), wind ? decode(wind).catch(() => null) : Promise.resolve(null),
+    // сначала лёгкая копия кадра (<кадр>.lq.jpg, ~100 КБ): на медленном интернете переход не ждёт полную картинку;
+    // полная догружается следом и подменяет лёгкую без перехода (та же картинка, резче)
+    const lq = src.replace(/\.jpg$/, '.lq.jpg')
+    const [img, dep, w, m] = await Promise.all([decode(lq).catch(() => decode(src)), decode(depth, true), wind ? decode(wind).catch(() => null) : Promise.resolve(null),
       mat ? decode(mat, true).catch(() => null) : Promise.resolve(null)])
     if (dead || loadingKey !== key) return
     pending = { img, dep, wind: w, mat: m, key }
+    if (lq !== src) decode(src).then(full => { if (!dead && loadingKey === key) sharper = { img: full, key } }).catch(() => {})
   } catch { if (!dead && loadingKey === key) emit('fail') }
 }
 function swap(ms: number) {
@@ -558,6 +576,46 @@ function swap(ms: number) {
   emit('ready')
 }
 
+/* Листья: у каждого свой путь — влетает сверху-слева, сносится ветром, покачивается и кувыркается. Путь одинаков для
+   всего экрана, поэтому считается здесь раз в кадр (в шейдере его считала каждая точка экрана — треть работы
+   видеокарты на лесных кадрах). hash — тот же, что в шейдере */
+const fract = (x: number) => x - Math.floor(x)
+function hash(x: number, y: number) {
+  let a = fract(x * 0.1031), b = fract(y * 0.1031), c = a
+  const d = a * (b + 33.33) + b * (c + 33.33) + c * (a + 33.33)
+  a += d; b += d; c += d
+  return fract((a + b) * c)
+}
+const leafP = new Float32Array(28), leafQ = new Float32Array(28)
+function leafPaths(g: WebGL2RenderingContext, t: number, amount: number) {
+  const n = Math.min(7, Math.floor(2 + 2.5 * amount)), wind = props.windy ?? 1
+  for (let k = 0; k < n; k++) {
+    const P = 9 + 7 * hash(k, 1.3), cyc = Math.floor((t + k * 3.7) / P), age = (t + k * 3.7) - cyc * P
+    const h1 = hash(k + 0.17, cyc + 0.17), h2 = hash(k + 3.1, cyc + 3.1), h3 = hash(k + 7.7, cyc + 7.7)
+    const z = 0.55 + 0.4 * h3
+    // старт выше и левее кадра: часть листьев пролетает мимо, не каждый цикл на экране есть лист
+    const sx = h1 * 1.6 - 0.7, sy = -0.1 - 0.35 * h2, zs = 0.6 + 0.4 * z
+    const vx = (0.07 + 0.08 * h2) * (0.6 + 0.6 * wind) * zs, vy = (0.055 + 0.05 * h1) * zs
+    leafP.set([sx + vx * age + 0.035 * Math.sin(age * 1.6 + h1 * 6), sy + vy * age + 0.02 * Math.sin(age * 2.7 + h2 * 5), (0.006 + 0.008 * z) * (0.8 + 0.4 * h2), z], k * 4)
+    leafQ.set([age * (0.5 + h3) + h1 * 6.28, age * (1.6 + 2.2 * h1) + h2 * 6, h3 * h1, h2], k * 4)
+  }
+  g.uniform4fv(u.leafP!, leafP); g.uniform4fv(u.leafQ!, leafQ); g.uniform1i(u.leafN!, n)
+}
+/** таблица шума для шейдера: 256×256 случайных чисел, в каждой клетке — она и три соседа (правый, нижний, по диагонали) */
+function noiseTable(g: WebGL2RenderingContext) {
+  const N = 256, v = new Uint8Array(N * N), px = new Uint8Array(N * N * 4)
+  let seed = 0x9e3779b9
+  for (let i = 0; i < v.length; i++) { seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x ^= x + Math.imul(x ^ (x >>> 7), 61 | x); v[i] = ((x ^ (x >>> 14)) >>> 0) & 255 }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = (y * N + x) * 4, x1 = (x + 1) & 255, y1 = (y + 1) & 255
+    px[i] = v[y * N + x]!; px[i + 1] = v[y * N + x1]!; px[i + 2] = v[y1 * N + x]!; px[i + 3] = v[y1 * N + x1]!
+  }
+  g.activeTexture(g.TEXTURE5)
+  g.bindTexture(g.TEXTURE_2D, g.createTexture())
+  g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, N, N, 0, g.RGBA, g.UNSIGNED_BYTE, px)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.NEAREST)
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.NEAREST)
+}
 async function init() {
   const c = canvas.value
   if (!c) return
@@ -574,8 +632,9 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'breath', 'sun', 'sunOn', 'indoor', 'fogTint', 'matTex', 'matOn']) u[k] = gl.getUniformLocation(prog, k)
-    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3); gl.uniform1i(u.matTex!, 4)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'breath', 'sun', 'sunOn', 'indoor', 'fogTint', 'matTex', 'matOn', 'noiseTex', 'leafP', 'leafQ', 'leafN', 'grade', 'tint']) u[k] = gl.getUniformLocation(prog, k)
+    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3); gl.uniform1i(u.matTex!, 4); gl.uniform1i(u.noiseTex!, 5)
+    noiseTable(gl)
     void request(props.src, props.depth, props.wind)
     raf = requestAnimationFrame(frame)
   } catch { emit('fail') }
@@ -626,10 +685,17 @@ function draw(ms: number) {
   g.uniform3f(u.fogTint!, fogTint[0]!, fogTint[1]!, fogTint[2]!)
   g.uniform1f(u.indoor!, props.outdoor === false ? 1 : 0)
   g.uniform1f(u.windAmt!, props.windy ?? 1)
-  g.uniform1f(u.leaves!, windOn && !still ? props.leaves ?? 0 : 0)
+  const lv = windOn && !still ? props.leaves ?? 0 : 0
+  g.uniform1f(u.leaves!, lv)
+  if (lv > 0.01) leafPaths(g, t, lv)
   g.uniform1f(u.wet!, Math.max(sc.surface === 'water' ? 1 : 0, sc.rain ?? 0))
   g.uniform1f(u.flash!, props.flash ?? 0)
   g.uniform2f(u.view!, w, h)
+  const gr = props.grade ?? GRADE
+  g.uniform3f(u.grade!, gr[0], gr[1], gr[2])
+  // тон — как у слоя .solo-tint: ржавый на изнанке (класс .solo--other у страницы; встречи его не передают)
+  const tn = c.closest('.solo--other') ? TINT_OTHER : TINT
+  g.uniform4f(u.tint!, tn[0]!, tn[1]!, tn[2]!, tn[3]!)
   g.uniform1f(u.fade!, fadeStart < 0 ? 1 : Math.min(1, (ms - fadeStart) / FADE))
   const L = (sc.lights ?? []).slice(0, 4)
   const pos = new Float32Array(16), rgb = new Float32Array(12)
@@ -654,6 +720,15 @@ function frame(ms: number) {
   if (texImg) draw(ms)
   // новые картинки готовы: снимок только что нарисованного кадра — и смена
   if (pending) { swap(ms); draw(ms) }
+  else if (sharper && sharper.key === shownKey) {
+    // полная картинка вместо лёгкой: тот же кадр, без перехода
+    const g = gl!
+    texSize.w = sharper.img.width; texSize.h = sharper.img.height
+    texImg = upload(0, sharper.img, true, texImg)
+    g.uniform2f(u.imgSize!, sharper.img.width, sharper.img.height)
+    findSun(sharper.img)
+    sharper = null
+  }
   if (fadeStart >= 0 && ms - fadeStart > FADE) fadeStart = -1
   raf = requestAnimationFrame(frame)
 }

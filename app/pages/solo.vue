@@ -7,6 +7,8 @@ import type { SoloClientMessage, SoloView } from '#shared/types'
 useHead({ title: 'Туман — Красная нить', htmlAttrs: { 'data-setting': 'tuman' } })
 
 const route = useRoute()
+/** линия кардиограммы в строке состояния: два удара на ширину */
+const ECG = 'M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200'
 const storyId = typeof route.query.story === 'string' ? route.query.story : undefined
 const { view, connected, error, clockOffset, send, transferCode, adoptError, transfer, adopt } = useSolo(storyId)
 /* перенос партии между устройствами: у партии один код на год */
@@ -214,11 +216,13 @@ watch(() => v.value?.exits.map(x => x.art ?? '').join(','), async list => {
   const urls: string[] = []
   for (const a of list.split(',')) {
     if (!a) continue
-    urls.push(`/art/${story.value}/${a}.jpg`)
-    if (v.value?.depth.includes(a)) urls.push(`/art/${story.value}/z_${a}.jpg`)
+    // объёмный кадр: сперва лёгкая копия и глубина (переход не ждёт), полная — последней
+    if (v.value?.depth.includes(a)) urls.push(`/art/${story.value}/${a}.lq.jpg`, `/art/${story.value}/z_${a}.jpg`)
+    else urls.push(`/art/${story.value}/${a}.jpg`)
     if (v.value?.wind?.includes(a)) urls.push(`/art/${story.value}/w_${a}.jpg`)
     if (v.value?.materials?.includes(a)) urls.push(`/art/${story.value}/g_${a}.png`)
   }
+  for (const a of list.split(',')) if (a && v.value?.depth.includes(a)) urls.push(`/art/${story.value}/${a}.jpg`)
   for (const u of urls) {
     if (preloaded.has(u)) continue
     preloaded.add(u)
@@ -396,9 +400,9 @@ const themeName = computed<string | null>(() => {
   // сцена или разговор со своей темой — воспоминание, признание
   if (s.scene?.music) return s.scene.music
   if (s.dialogue?.music) return s.dialogue.music
-  // босс и тяжёлые существа — своя музыка; мелочь вроде горниста идёт под тему района и дрон встречи
+  // босс — своя музыка; любая встреча с существом — боевая тема (спокойная тема района под дракой не звучит)
   if (s.boss) return 'boss'
-  if (s.encounter && HEAVY.has(s.encounter.monster)) return 'fight'
+  if (s.encounter) return 'fight'
   const pid = place.value?.id ?? ''
   const area = place.value?.area
   const has = (id: string) => s.notes.some(n => n.id === id)
@@ -413,14 +417,14 @@ const themeName = computed<string | null>(() => {
 })
 /** места у воды, где вместо темы района — озеро */
 const LAKE = new Set(['quay', 'camp_boathouse', 'bridge', 'camp_pier', 'shore', 'intake_out'])
-/** существа, под которых включается боевая тема (у остальных — тема района тише и дрон) */
+/** тяжёлые существа: боевая тема в полную (у остальных — чуть тише) */
 const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper'])
 const themeLevel = computed(() => {
   const s = v.value
   if (!s || !entered.value || !s.started || s.ending || s.chase) return 1
   if (s.boss || (s.encounter && HEAVY.has(s.encounter.monster))) return 1
   if (s.scene?.music || s.dialogue?.music) return 0.8
-  if (s.encounter) return 0.3
+  if (s.encounter) return 0.8
   if (s.scene || s.dialogue) return 0.45
   if (musicRest.value) return 0
   // в тёмных местах музыка почти уходит: остаётся дыхание, шаги и то, что в темноте; со светом — чуть громче
@@ -614,10 +618,12 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <!-- пульс, фонарь и приёмник — одной строкой, как в играх -->
           <div class="solo-status__row">
             <div class="solo-ecg" :class="`solo-ecg--${healthState.key}`" :title="healthState.label">
-              <svg viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
-                <path class="solo-ecg__base" pathLength="100" d="M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200" />
-                <path class="solo-ecg__beat" pathLength="100" d="M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200" />
-              </svg>
+              <!-- пульс бежит окном по неподвижной линии: окно и линия в нём двигаются навстречу (только transform —
+                   анимацию ведёт видеокарта; штрих по stroke-dashoffset перерисовывался основным потоком каждый кадр) -->
+              <i class="solo-ecg__trace" aria-hidden="true">
+                <svg class="solo-ecg__base" viewBox="0 0 200 40" preserveAspectRatio="none"><path :d="ECG" /></svg>
+                <i class="solo-ecg__win"><svg class="solo-ecg__lit" viewBox="0 0 200 40" preserveAspectRatio="none"><path :d="ECG" /></svg></i>
+              </i>
               <span>{{ healthState.label }}</span>
             </div>
             <button v-if="hasFlashlight" type="button" class="solo-light" :class="{ on: v.light }" :title="torchDead ? 'Фонарь заглох — потрясите его: несколько раз быстро нажмите F' : `Фонарь (F), заряд ${v.battery} %`" @click="toggleLight">
@@ -707,7 +713,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" @send="relay" />
       <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
-      <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" @send="relay" @notes="notesOpen = true" />
+      <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" :paused="notesOpen" @send="relay" @notes="notesOpen = true" />
       <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].item?.id ?? found[0].note?.id}`" :item="found[0].item" :note="found[0].note" :story="story" :more="found.length - 1" @done="nextFound" @read="openNote" />
 
       <div v-if="overlay === 'dead'" class="solo-end solo-end--dead" role="alertdialog">

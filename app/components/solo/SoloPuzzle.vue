@@ -3,7 +3,7 @@
    решётка-трафарет. Ответ проверяет сервер. Записки можно открыть, не уходя от замка. */
 import type { SoloClientMessage, SoloView } from '#shared/types'
 
-const props = defineProps<{ data: NonNullable<SoloView['puzzle']>; story: string; lastFail: string | null }>()
+const props = defineProps<{ data: NonNullable<SoloView['puzzle']>; story: string; lastFail: string | null; paused?: boolean }>()
 const emit = defineEmits<{ send: [SoloClientMessage]; notes: [] }>()
 const audio = useAudio()
 const p = computed(() => props.data.puzzle)
@@ -143,8 +143,15 @@ function submit() {
 }
 const close = () => emit('send', { type: 'closePuzzle' })
 
+/* Пока открыта головоломка, клавиши принадлежат ей: цифра или буква, набранная на замке, не открывает ни вещи, ни
+   записки, ни карту (на русской раскладке «О» — это клавиша J, «Ш» — I). Остальные окна слушают клавиши по всплытию —
+   здесь, на перехвате, событие дальше не идёт */
 function onKey(e: KeyboardEvent) {
-  if (e.code === 'Escape') { e.preventDefault(); close() }
+  // поверх открыты записки — клавиши им
+  if (props.paused) return
+  e.stopImmediatePropagation()
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+  if (e.code === 'Escape') { e.preventDefault(); close(); return }
   const v = p.value
   if (v.kind === 'code' && e.key.length === 1) {
     const ch = e.key.toUpperCase().replace('Ё', 'Е')
@@ -155,6 +162,7 @@ function onKey(e: KeyboardEvent) {
       next[focus.value] = ch
       wheels.value = next
       focus.value = Math.min(focus.value + 1, v.length - 1)
+      return
     }
   }
   if (v.kind === 'code' && e.code === 'Backspace') { e.preventDefault(); focus.value = Math.max(0, focus.value - 1) }
@@ -162,10 +170,11 @@ function onKey(e: KeyboardEvent) {
   if (v.kind === 'code' && e.code === 'ArrowRight') { e.preventDefault(); focus.value = Math.min(v.length - 1, focus.value + 1) }
   if (v.kind === 'code' && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) { e.preventDefault(); spin(focus.value, e.code === 'ArrowUp' ? 1 : -1) }
   if (e.code === 'Enter' && p.value.kind !== 'sequence' && p.value.kind !== 'keys') { e.preventDefault(); submit() }
-  if (e.code === 'KeyJ' && p.value.kind !== 'word' && p.value.kind !== 'grille') { e.preventDefault(); emit('notes') }
+  // записки — по J только там, где с клавиатуры ничего не набирают (у кодового замка на буквах J — это «О»)
+  if (e.code === 'KeyJ' && (v.kind === 'dials' || v.kind === 'sequence' || v.kind === 'clock' || v.kind === 'arrange' || (v.kind === 'code' && v.alphabet === 'digits'))) { e.preventDefault(); emit('notes') }
 }
-onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+onMounted(() => window.addEventListener('keydown', onKey, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 </script>
 
 <template>
