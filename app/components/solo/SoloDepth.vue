@@ -10,29 +10,29 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 const ready = ref(false)
 /* телефон и планшет — меньше пикселей: шейдер тяжёлый */
 const dprCap = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 1.25 : 2
-/* Автокачество: шейдер меряет, успевает ли устройство. Средний кадр дольше 28 мс (меньше ~35 кадров в секунду) два окна
-   подряд — ступень ниже: меньше пикселей, без затенения углов, лишних слоёв дождя и пыли. Запас большой (кадр короче 13 мс) —
-   ступень выше. Первые секунды после появления и после смены кадра не считаются: загрузка картинок и сборка шейдера
-   медленные всегда, и раньше из-за них мощный компьютер навсегда уходил в низкое разрешение — картинка рябила */
-const QKEY = 'rn:depth-q2'
+/* Автокачество: шейдер меряет, успевает ли устройство за своим темпом (30 кадров в секунду в покое, 60 при движении).
+   Отстаёт больше чем в полтора раза два окна подряд — ступень ниже: меньше пикселей, без бикубики и затенения углов,
+   меньше шагов луча. Идёт почти вровень — ступень выше. Первые секунды после появления и после смены кадра не
+   считаются: загрузка картинок и сборка шейдера медленные всегда */
+const QKEY = 'rn:depth-q3'
 const SCALE = [1, 0.75, 0.55]
 let level = 0
 try { level = Math.min(2, Math.max(0, Number(localStorage.getItem(QKEY)) || 0)) } catch { /* приватный режим */ }
 if (level === 0 && typeof navigator !== 'undefined' && ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) <= 2) level = 1
 let lastMs = 0, acc = 0, samples = 0, slow = 0, quietUntil = 0
-function measure(ms: number) {
+function measure(ms: number, expected: number) {
   const dt = lastMs ? ms - lastMs : 0
   lastMs = ms
   if (!quietUntil) quietUntil = ms + 3000
-  if (ms < quietUntil || dt <= 0 || dt > 200) return
-  acc += dt; samples++
-  if (samples < 120) return
-  const avg = acc / samples
+  if (ms < quietUntil || dt <= 0 || dt > 250) return
+  acc += dt / expected; samples++
+  if (samples < 60) return
+  const lag = acc / samples
   acc = 0; samples = 0
-  if (avg > 28) slow++; else slow = 0
+  if (lag > 1.6) slow++; else slow = 0
   let next = level
   if (slow >= 2 && level < 2) { next = level + 1; slow = 0 }
-  else if (avg < 13 && level > 0) next = level - 1
+  else if (lag < 1.15 && level > 0) next = level - 1
   if (next !== level) { level = next; quietUntil = ms + 2000; try { localStorage.setItem(QKEY, String(level)) } catch { /* приватный режим */ } }
 }
 let born = 0
@@ -50,7 +50,7 @@ uniform float rain; uniform float fogAmt; uniform float other; uniform float fla
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
 uniform sampler2D windTex; uniform float windOn; uniform float windAmt; uniform float leaves; uniform vec2 imgSize;
-uniform sampler2D bgTex; uniform float bgOn;
+uniform sampler2D bgTex; uniform float bgOn; uniform float steps;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -70,14 +70,16 @@ void main() {
   vec2 q = toTex(uv);
   // Параллакс лучом: поверхность глубины t видна со сдвигом cam·(t − 0,35); от ближнего к дальнему — ближнее
   // закрывает дальнее, поэтому край предмета не «перегибается» и не показывается дважды (двойников нет)
-  int N = quality > 0.5 ? 32 : 18;
+  // шагов столько, сколько нужно при нынешнем сдвиге камеры (steps считает страница): в покое — несколько
+  int N = int(steps);
   float tHit = 0.0, tMiss = 1.0; bool hit = false;
-  for (int i = 0; i <= N; i++) {
+  for (int i = 0; i <= 32; i++) {
+    if (i > N) break;
     float tt = 1.0 - float(i) / float(N);
     if (depthAt(q - cam * (tt - 0.35)) >= tt) { tHit = tt; hit = true; break; }
     tMiss = tt;
   }
-  if (hit && tMiss > tHit) for (int k = 0; k < 6; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
+  if (hit && tMiss > tHit) for (int k = 0; k < 4; k++) { float tm = 0.5 * (tHit + tMiss); if (depthAt(q - cam * (tm - 0.35)) >= tm) tHit = tm; else tMiss = tm; }
   vec2 o = q - cam * (tHit - 0.35);
   // ветер: маска растительности — красное ветки и кроны, зелёное трава. У каждой ветки своя фаза (плавный шум размером
   // с ветку), поэтому крона не колышется флагом целиком; порыв идёт по кадру волной по ветру, между порывами почти тихо.
@@ -438,7 +440,7 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'bgTex', 'bgOn']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'cam', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'bgTex', 'bgOn', 'steps']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3); gl.uniform1i(u.bgTex!, 4)
     void request(props.src, props.depth, props.wind)
     raf = requestAnimationFrame(frame)
@@ -451,11 +453,14 @@ function draw(ms: number) {
   // тогда старый кадр дорисовывается таким, каким был
   if (`${props.src}|${props.depth}` === shownKey) applied = snapshot()
   const sc = applied
-  const px = Math.min(dprCap, devicePixelRatio) * SCALE[level]!
+  // «object-fit: cover» с запасом на параллакс: кадр чуть больше окна
+  const ca = c.clientWidth / Math.max(1, c.clientHeight), ia = texSize.w / texSize.h
+  // точек холста — не больше, чем точек картинки на экране: сверх этого видеокарта считает одно и то же дважды
+  // (на ретине холст был вдвое больше картинки — отсюда нагрузка как при монтаже)
+  const texAcross = texSize.w * (ca > ia ? 0.94 : 0.94 * ca / ia)
+  const px = Math.min(dprCap, devicePixelRatio, Math.max(1, texAcross / Math.max(1, c.clientWidth))) * SCALE[level]!
   const w = Math.round(c.clientWidth * px), h = Math.round(c.clientHeight * px)
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; g.viewport(0, 0, w, h) }
-  // «object-fit: cover» с запасом на параллакс: кадр чуть больше окна
-  const ca = w / h, ia = texSize.w / texSize.h
   // бег — медленный наезд вперёд за первые 8 с; дыхание — ещё медленнее, за 25 с
   const age = (ms - born) / 1000
   const zoom = still ? 1 : sc.motion === 'run' ? 1 - Math.min(age / 8, 1) * 0.06 : sc.motion === 'breath' ? 1 - Math.min(age / 25, 1) * 0.05 : 1
@@ -463,7 +468,11 @@ function draw(ms: number) {
   const [fx, fy] = (sc.focus ?? '50% 50%').split(' ').map(v => parseFloat(v) / 100)
   const shift = [(1 - cover[0]!) * ((fx ?? 0.5) - 0.5), (1 - cover[1]!) * ((fy ?? 0.5) - 0.5)]
   const t = ms / 1000
-  cam.x += (cam.tx - cam.x) * 0.05; cam.y += (cam.ty - cam.y) * 0.05
+  // камера догоняет цель по времени, а не по кадрам: при 30 и 60 кадрах в секунду одинаково плавно
+  const dt = Math.min(0.1, lastT ? t - lastT : 0)
+  lastT = t
+  const ease = 1 - Math.exp(-dt * 3)
+  cam.x += (cam.tx - cam.x) * ease; cam.y += (cam.ty - cam.y) * ease
   g.uniform2f(u.cover!, cover[0]!, cover[1]!)
   g.uniform2f(u.shift!, shift[0]!, shift[1]!)
   // камера: бег — покачивание в такт шагам (вбок раз за два шага, вверх-вниз на каждый); дыхание — медленный вдох;
@@ -471,7 +480,11 @@ function draw(ms: number) {
   let bx = Math.sin(t * 0.37) * 0.003, by = Math.sin(t * 0.23) * 0.002
   if (sc.motion === 'run') { bx = Math.sin(t * Math.PI * 2.2) * 0.007; by = Math.abs(Math.sin(t * Math.PI * 4.4)) * 0.009 - 0.0045 }
   else if (sc.motion === 'breath') { bx = Math.sin(t * 0.5) * 0.006; by = Math.sin(t * 1.1) * 0.004 }
-  g.uniform2f(u.cam!, still ? 0 : cam.x + bx, still ? 0 : cam.y + by)
+  const cx = still ? 0 : cam.x + bx, cy = still ? 0 : cam.y + by
+  g.uniform2f(u.cam!, cx, cy)
+  // сдвиг самого далёкого от ближнего — в точках картинки; шаг луча — не больше полутора точек
+  const shiftPx = Math.hypot(cx * texSize.w, cy * texSize.h)
+  g.uniform1f(u.steps!, Math.min(level === 0 ? 24 : 14, Math.max(4, Math.ceil(shiftPx / 1.5))))
   g.uniform1f(u.quality!, level === 0 ? 1 : 0)
   g.uniform2f(u.torch!, props.lx / 100, props.ly / 100)
   g.uniform1f(u.mode!, sc.mode === 'none' ? 0 : sc.mode === 'torch' ? 1 : 2)
@@ -500,9 +513,15 @@ function draw(ms: number) {
   g.drawArrays(g.TRIANGLE_STRIP, 0, 4)
 }
 
+/* 30 кадров в секунду в покое (туман, ветер, листья медленные), 60 — пока двигают мышью, светят фонарём по сторонам
+   или кадр перетекает в новый: видеокарта не работает вхолостую */
+let lastDraw = 0, lastT = 0, busyUntil = 0
 function frame(ms: number) {
   if (dead || !gl || !prog) return
-  measure(ms)
+  const busy = ms < busyUntil || fadeStart >= 0 || !!pending
+  if (texImg && !pending && ms - lastDraw < (busy ? 0 : 1000 / 30 - 4)) { raf = requestAnimationFrame(frame); return }
+  lastDraw = ms
+  measure(ms, busy ? 1000 / 60 : 1000 / 30)
   if (!born) born = ms
   if (texImg) draw(ms)
   // новые картинки готовы: снимок только что нарисованного кадра — и смена
@@ -515,6 +534,7 @@ watch(() => [props.src, props.depth] as const, ([src, depth]) => { if (gl && pro
 /* кому движение мешает (настройка системы «уменьшить движение») — кадр стоит, фонарь светит как обычно */
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 /* камера — за взглядом (gx/gy: курсор над картинкой, иначе середина) или, если его не дали, за лучом фонаря */
+watch(() => [props.lx, props.ly, props.gx, props.gy], () => { busyUntil = performance.now() + 500 })
 watch(() => [props.gx ?? props.lx, props.gy ?? props.ly], ([x, y]) => { if (still) return; cam.tx = ((x ?? 50) / 100 - 0.5) * -0.013; cam.ty = ((y ?? 50) / 100 - 0.5) * -0.007 }, { immediate: true })
 onMounted(init)
 onBeforeUnmount(() => { dead = true; cancelAnimationFrame(raf); gl?.getExtension('WEBGL_lose_context')?.loseContext() })
