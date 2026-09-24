@@ -9,6 +9,7 @@ type Layer = 'ambience' | 'music' | 'sfx' | 'voice'
 const LEVELS: Record<Layer, number> = { ambience: 0.55, music: 0.42, sfx: 0.8, voice: 1 }
 const DUCK: Partial<Record<Layer, number>> = { ambience: 0.3, music: 0.3 }
 const XFADE = 3 // секунд перекрёстного затухания на границе петли
+const MUSIC_XFADE = 1.5 // склейка музыки по точкам петли: там музыка одинаковая, долгая склейка лишь размывает доли
 const MUSIC_FADE = 4 // секунд на смену темы
 
 import { currentCase, currentSetting } from '~/utils/case-store'
@@ -57,6 +58,7 @@ const speaking = ref(false)
 
 /** sig — отпечаток буфера: по нему узнаём тот же трек под другим адресом. Раньше сравнивали длину, но темы разных миров,
     сгенерированные на одну длительность, совпадают до сэмпла — и меню не переключало музыку между Неоном и Туманом */
+interface LoopPoints { a: number; b: number }
 interface Loop { name: string; stop: (fade?: number) => void; setLevel: (v: number) => void; gain: GainNode; world?: string; sig: string }
 
 function signature(buf: AudioBuffer) {
@@ -137,12 +139,25 @@ async function load(url: string, signal?: AbortSignal): Promise<AudioBuffer | nu
   }
   return buffers.get(url)!
 }
+/** точки петли тем: /music/<дело|settings>/loops.json (tools/music-loops.mjs); нет файла — склейка «конец → начало» */
+const loopFiles = new Map<string, Promise<Record<string, LoopPoints>>>()
+async function loopPoints(url: string): Promise<LoopPoints | null> {
+  const m = /^(.*)\/([^/]+)\.mp3$/.exec(url)
+  if (!m) return null
+  const [, dir, name] = m
+  if (!loopFiles.has(dir!)) loopFiles.set(dir!, fetch(`${dir}/loops.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({})))
+  return (await loopFiles.get(dir!)!)[name!] ?? null
+}
 /** тема, которая сейчас качается: сменилась раньше, чем докачалась (заставка → место), — загрузку обрываем */
 let musicLoading: { wanted: string; ctrl: AbortController } | null = null
 let ambGen = 0
 
-/** Гладкая петля: буфер запускается снова за XFADE секунд до конца, оба края — по равномощным кривым. */
-function startLoop(name: string, buffer: AudioBuffer, target: number, dest: GainNode, fadeSec = 2.5, breathing = false): Loop {
+/** Гладкая петля: буфер запускается снова за XFADE секунд до конца, оба края — по равномощным кривым.
+    У музыки есть точки петли (loops.json рядом с темами, tools/music-loops.mjs): тема — законченная пьеса со вступлением
+    и затуханием, и склейка «конец → начало» проваливалась в тишину и обрывалась резкой первой долей («пук», «стык»).
+    Тогда вступление звучит один раз, дальше крутится [a, b] внутри пьесы — там, где музыка звучит одинаково, склейка
+    короткая (MUSIC_XFADE) */
+function startLoop(name: string, buffer: AudioBuffer, target: number, dest: GainNode, fadeSec = 2.5, breathing = false, points?: LoopPoints | null): Loop {
   const c = ensure()!
   const gain = c.createGain()
   gain.gain.value = 0
@@ -174,33 +189,40 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
   if (breathing) breathTimer = setTimeout(breathe, fadeSec * 1000 + 500)
   const sources: AudioBufferSourceNode[] = []
   const dur = buffer.duration
-  const xf = Math.min(XFADE, dur / 3)
-  const period = Math.max(1, dur - xf)
+  // точки петли — только если они внутри буфера и оставляют место под склейку
+  const pts = points && points.a > 0 && points.b > points.a + 10 && points.b + MUSIC_XFADE < dur - 0.05 ? points : null
+  const xf = pts ? MUSIC_XFADE : Math.min(XFADE, dur / 3)
+  /** откуда в буфере играет экземпляр и где начинается его затухание: первый — с начала (вступление), дальше — с a */
+  const from = (first: boolean) => (pts && !first ? pts.a : 0)
+  const until = pts ? pts.b : dur - xf
 
-  const schedule = (planned: number) => {
+  const schedule = (planned: number, first: boolean) => {
     if (!alive) return
     // таймер мог опоздать (вкладка в фоне, ноутбук спал) — тогда стартуем от «сейчас», а не из прошлого
     const at = Math.max(planned, c.currentTime + 0.02)
+    const offset = from(first), len = until - offset
     try {
       const src = c.createBufferSource()
       src.buffer = buffer
       const env = c.createGain()
-      fadeIn(env.gain, at, xf)
-      fadeOut(env.gain, at + dur - xf, xf)
+      // первый экземпляр пьесы с точками — сразу в полную: его вступление и так начинается из тишины
+      if (pts && first) env.gain.setValueAtTime(1, at)
+      else fadeIn(env.gain, at, xf)
+      fadeOut(env.gain, at + len, xf)
       src.connect(env).connect(gain)
-      src.start(at)
-      src.stop(at + dur + 0.05)
+      src.start(at, offset)
+      src.stop(at + len + xf + 0.05)
       sources.push(src)
       src.onended = () => { const i = sources.indexOf(src); if (i >= 0) sources.splice(i, 1) }
     } catch (e) {
       console.warn('петля', name, e)
     }
     // следующий экземпляр — на границе, с перекрытием; цепочка не рвётся даже при ошибке
-    const next = at + period
+    const next = at + Math.max(1, len)
     const wait = Math.max(0, (next - c.currentTime - 0.5) * 1000)
-    setTimeout(() => schedule(next), wait)
+    setTimeout(() => schedule(next, false), wait)
   }
-  schedule(c.currentTime + 0.05)
+  schedule(c.currentTime + 0.05, true)
   gain.gain.linearRampToValueAtTime(target, c.currentTime + fadeSec)
 
   return {
@@ -372,8 +394,10 @@ export function useAudio() {
       if (music?.name === key) return
       // тот же трек под другим адресом (тема мира в меню = заставка истории) — играет дальше, без перезапуска
       if (music && music.sig === signature(buf)) { music.name = key; music.gain.gain.linearRampToValueAtTime(musicLevel, c.currentTime + 2); return }
+      const points = await loopPoints(key)
+      if (musicWanted !== wanted) return
       music?.stop(fade)
-      music = startLoop(key, buf, musicLevel, gains.music!, fade)
+      music = startLoop(key, buf, musicLevel, gains.music!, fade, false, points)
       return
     }
   }
