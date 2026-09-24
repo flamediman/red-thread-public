@@ -53,7 +53,7 @@ uniform float rain; uniform float fogAmt; uniform float other; uniform float fla
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
 uniform sampler2D windTex; uniform float windOn; uniform float windAmt; uniform float leaves; uniform vec2 imgSize;
-uniform float breath; uniform vec2 sun; uniform float sunOn; uniform float indoor;
+uniform float breath; uniform vec2 sun; uniform float sunOn; uniform float indoor; uniform vec3 fogTint;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hAt(vec2 q, float lod) { return textureLod(dep, q, lod).r; }
 vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
@@ -110,7 +110,9 @@ void main() {
         // что стоит ближе корня травинки (бревно, столб), травинку закрывает
         if (dsw > textureLod(dep, ro, 2.0).r + 0.025) continue;
         float ph = hash(c + 6.1) * 6.28 + noise(root * 9.0) * 3.0;
-        float sway = (sin(t * 1.6 + ph) + 0.5 * sin(t * 2.7 + ph * 1.7)) * 0.45 * cs * windAmt * gust;
+        // ветерок есть всегда (трава чуть покачивается и в штиль), порывы и буря — сильнее
+        float breeze = (0.55 + 0.45 * gust) * (0.7 + 0.5 * windAmt);
+        float sway = ((sin(t * 1.6 + ph) + 0.5 * sin(t * 2.7 + ph * 1.7)) * 0.3 + 0.08 * sin(t * 5.3 + ph * 2.3)) * cs * breeze;
         float bend = (hash(c + 4.4) - 0.5) * 0.9 * cs;
         float B = bend + sway;
         float xs = root.x + B * sl * sl;
@@ -149,10 +151,12 @@ void main() {
   // туман по сглаженной глубине: дальнее тонет, туман медленно плывёт; на изнанке — ржавый
   // гроза: тяжёлое небо — кадр и туман темнеют, чтобы вспышке было куда светлеть
   float storm = smoothstep(0.75, 1.0, rain);
-  vec3 fogCol = mix(vec3(0.62, 0.65, 0.66), vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
+  // цвет тумана — с самой картинки (светлый дальний план: розоватая дымка у КПП, голубая в дождь), иначе мой туман
+  // серил нарисованный; на изнанке — ржавый
+  vec3 fogCol = mix(fogTint, vec3(0.42, 0.28, 0.22), other) * mix(1.0, 0.62, storm);
   float drift = fbm(vec2(sv.x * 2.2 + t * 0.035 + (1.0 - ds) * 1.5, sv.y * 1.6 - t * 0.012));
   // картинки уже нарисованы в тумане: свой туман шейдера лёгкий, только оживляет нарисованный
-  float fogF = fogAmt * 0.8 * pow(1.0 - ds, 1.25) * (0.55 + 0.8 * drift);
+  float fogF = fogAmt * 0.4 * pow(1.0 - ds, 1.25) * (0.55 + 0.8 * drift);
   // гладкость для отражений (стекло, металл, кафель, лак, мокрое) — по размытой картинке: светлое и бесцветное.
   // Размытая — чтобы блестели поверхности, а не контуры. Яркость самой точки усиливает нарисованные отражения
   vec3 ab = textureLod(img, o, 3.0).rgb;
@@ -183,7 +187,7 @@ void main() {
       col *= 1.0 + (cl - 0.5) * mix(0.16, 0.3, storm) * skyness;
     }
     col = mix(col, max(col, refl * 0.85), reflAmt);
-    col = mix(col, fogCol, clamp(fogF, 0.0, 0.6));
+    col = mix(col, fogCol, clamp(fogF, 0.0, 0.32));
     // туман клочьями на трёх глубинах: плывёт вбок с разной скоростью; клочок на глубине z виден только перед тем, что
     // дальше него, — ближний предмет его закрывает. Так туман ходит между деревьями, а не лежит плёнкой на картинке
     for (int k = 0; k < 3; k++) {
@@ -194,7 +198,7 @@ void main() {
       vec2 fp = vec2(sv.x * (0.9 + fk * 0.4) + t * (0.02 + 0.014 * fk) * (1.0 + storm), sv.y * (4.2 + fk * 1.6) + fk * 7.0);
       // клочья — редкие и вытянутые вдоль земли, между ними — чисто; у земли гуще
       float wisp = smoothstep(0.58, 0.8, fbm(fp)) * (0.35 + 0.65 * smoothstep(0.25, 0.8, o.y));
-      col = mix(col, fogCol * (1.02 + 0.04 * fk), wisp * vis * fogAmt * (0.16 - fk * 0.03));
+      col = mix(col, fogCol * (1.02 + 0.04 * fk), wisp * vis * fogAmt * (0.11 - fk * 0.02));
     }
     // лучи сквозь туман: самое светлое место кадра (просвет неба, окно — точку находит страница, sun) светит
     // полосами к зрителю; где на пути ближний тёмный предмет (ствол, рама), там тень. Источник — светлое и далёкое
@@ -212,7 +216,8 @@ void main() {
         shaft += far * smoothstep(0.55, 0.85, sl) * decay;
         decay *= 0.9;
       }
-      col += fogCol * shaft * mix(0.018, 0.03, indoor) * fogAmt * (1.0 - storm) * (1.0 - 0.6 * ds);
+      // на и так светлом (небо, дымка) лучи не прибавляют — иначе середина кадра выгорала в белое
+      col += fogCol * shaft * mix(0.012, 0.022, indoor) * fogAmt * (1.0 - storm) * (1.0 - 0.6 * ds) * (1.0 - smoothstep(0.45, 0.8, lum));
     }
   } else {
     // фонарь в руке у героя: источник у камеры, чуть ниже и правее глаз; курсор задаёт, куда смотрит луч (пятно на экране).
@@ -425,6 +430,7 @@ let pending: { img: Img; dep: Img; wind: Img | null; key: string } | null = null
 let windOn = false
 /* точка света для лучей в тумане — самое светлое место картинки (в долях картинки); нет светлого — лучей нет */
 const sunTex = { x: 0.5, y: 0, on: false }
+const fogTint = [0.62, 0.65, 0.66]
 let loadingKey = ''
 let fadeStart = -1
 let shownKey = ''
@@ -459,7 +465,8 @@ function shader(type: number, src: string) {
   if (!gl!.getShaderParameter(s, gl!.COMPILE_STATUS)) throw new Error(gl!.getShaderInfoLog(s) ?? 'shader')
   return s
 }
-/** самое светлое место в верхних трёх четвертях картинки (центр тяжести ярких точек) — туда сходятся лучи в тумане */
+/** самое светлое место в верхних трёх четвертях картинки (центр тяжести ярких точек) — туда сходятся лучи в тумане;
+    заодно цвет тумана — цвет этой светлой дымки */
 function findSun(img: Img) {
   try {
     const cw = 64, ch = 40
@@ -480,6 +487,15 @@ function findSun(img: Img) {
     }
     sunTex.on = max > 0.55 && sw > 0
     if (sunTex.on) { sunTex.x = sx / sw / cw; sunTex.y = sy / sw / ch }
+    // цвет тумана — средний цвет самого светлого (дымка, небо): верхние 15 % по яркости
+    let tr = 0, tg = 0, tb = 0, tn = 0
+    for (let y = 0; y < ch * 0.75; y++) for (let x = 0; x < cw; x++) {
+      const i = (y * cw + x) * 4, l = (d[i]! * 0.299 + d[i + 1]! * 0.587 + d[i + 2]! * 0.114) / 255
+      if (l < max * 0.85) continue
+      tr += d[i]!; tg += d[i + 1]!; tb += d[i + 2]!; tn++
+    }
+    if (tn && max > 0.35) { fogTint[0] = tr / tn / 255 * 0.95; fogTint[1] = tg / tn / 255 * 0.95; fogTint[2] = tb / tn / 255 * 0.95 }
+    else { fogTint[0] = 0.62; fogTint[1] = 0.65; fogTint[2] = 0.66 }
   } catch { sunTex.on = false }
 }
 /** новые картинки: грузим в фоне; кадр сменится в frame(), когда всё готово */
@@ -536,7 +552,7 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'breath', 'sun', 'sunOn', 'indoor']) u[k] = gl.getUniformLocation(prog, k)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'breath', 'sun', 'sunOn', 'indoor', 'fogTint']) u[k] = gl.getUniformLocation(prog, k)
     gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3)
     void request(props.src, props.depth, props.wind)
     raf = requestAnimationFrame(frame)
@@ -584,6 +600,7 @@ function draw(ms: number) {
   // точка лучей — из долей картинки в доли экрана (кадр «дышит», точка — вместе с картинкой)
   g.uniform2f(u.sun!, (sunTex.x - 0.5 - shift[0]!) / cover[0]! + 0.5, (sunTex.y - 0.5 - shift[1]!) / cover[1]! + 0.5)
   g.uniform1f(u.sunOn!, sunTex.on ? 1 : 0)
+  g.uniform3f(u.fogTint!, fogTint[0]!, fogTint[1]!, fogTint[2]!)
   g.uniform1f(u.indoor!, props.outdoor === false ? 1 : 0)
   g.uniform1f(u.windAmt!, props.windy ?? 1)
   g.uniform1f(u.leaves!, windOn && !still ? props.leaves ?? 0 : 0)
