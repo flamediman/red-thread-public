@@ -80,18 +80,12 @@ const fogAmount = computed(() => fogBase.value * (FOG_BY_WEATHER[place.value?.we
 
 /* фонарь следует за курсором или пальцем */
 const torch = reactive({ x: 62, y: 42 })
-/* куда смотрит камера объёмного кадра: за курсором, пока он над картинкой; ушёл курсор (к действиям справа) —
-   камера плавно возвращается в середину, а луч фонаря остаётся, где был. Иначе всё время чтения и выбора
-   кадр стоял бы в крайнем повороте */
-const gaze = reactive({ x: 50, y: 50 })
 function onPointer(e: PointerEvent) {
   const el = e.currentTarget as HTMLElement
   const r = el.getBoundingClientRect()
   torch.x = Math.round(((e.clientX - r.left) / r.width) * 100)
   torch.y = Math.round(((e.clientY - r.top) / r.height) * 100)
-  if (e.pointerType === 'mouse') { gaze.x = torch.x; gaze.y = torch.y }
 }
-function onPointerLeave() { gaze.x = 50; gaze.y = 50 }
 
 /* лента последствий: после перехода старое уходит, новое — со звуком */
 const feedFloor = ref(0)
@@ -536,11 +530,11 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         <div
           class="solo-view" :class="[`solo-view--${darkness}`, { 'solo-view--noart': !artOk, 'solo-view--weak': v.battery < 15, 'solo-view--depth': !!depthSrc }]"
           :style="{ '--lx': `${torch.x}%`, '--ly': `${torch.y}%` }"
-          @pointermove="onPointer" @pointerdown="onPointer" @pointerleave="onPointerLeave" @click="backToPlace"
+          @pointermove="onPointer" @pointerdown="onPointer" @click="backToPlace"
         >
           <!-- объёмный кадр — один на всю игру: места сменяются внутри него перетеканием (SoloDepth) -->
           <Transition name="solo-over">
-            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :gx="gaze.x" :gy="gaze.y" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :outdoor="!!place?.outdoor" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
           </Transition>
           <!-- плоский кадр (крупный план, нет карты глубины): уходящий гаснет, только когда новый нарисован (onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">
