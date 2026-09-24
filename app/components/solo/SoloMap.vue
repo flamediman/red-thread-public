@@ -119,11 +119,19 @@ function nameLines(p: Place) {
 }
 /* подпись умещается в комнату — внутри; иначе под ней */
 const labelInside = (p: Place) => p.h >= 7 && p.w * A.value >= 9
-/* маркерный круг «вы здесь» — чуть неровный, как от руки */
-const marker = (p: Place) => {
-  const r = Math.min(Math.max(p.w * A.value, p.h) * 0.42 + 1.5, 9) * (labelInside(p) ? 1 : 0.8)
-  const x = cx(p), y = cy(p)
-  return `M${x - r},${y} C${x - r * 1.02},${y - r * 0.62} ${x - r * 0.55},${y - r * 1.06} ${x + 0.2},${y - r} C${x + r * 0.6},${y - r * 0.98} ${x + r * 1.04},${y - r * 0.5} ${x + r * 0.98},${y + 0.3} C${x + r * 0.94},${y + r * 0.7} ${x + r * 0.45},${y + r * 1.02} ${x - 0.3},${y + r * 0.96} C${x - r * 0.7},${y + r * 0.9} ${x - r * 1.06},${y + r * 0.45} ${x - r * 1.02},${y - 0.4}`
+/** булавка «вы здесь»: капля остриём вниз, остриё — в (0, 0) */
+const PIN = 'M0,0 C-0.9,-1.4 -2.1,-2.6 -2.1,-4.1 A2.1,2.1 0 1 1 2.1,-4.1 C2.1,-2.6 0.9,-1.4 0,0 Z'
+/* куда воткнуть булавку, чтобы она не легла на название: у улиц название вверху — остриё ниже него; у комнат название
+   по центру, а в правом верхнем углу бывает «?» — булавка внизу слева, подпись справа от неё ниже названия; у мелких
+   мест название под ними — булавка посередине */
+const pinAt = (p: Place) => {
+  const b = box(p), k = K.value, head = 6.4 * k
+  if (!labelInside(p)) return { x: cx(p), y: cy(p) + Math.min(head / 2, b.h / 2) }
+  if (p.outdoor) {
+    const nameBottom = b.y + 3.4 + (nameLines(p).length - 1) * 2.6 * k + 0.8
+    return { x: cx(p), y: Math.min(b.y + b.h - 1, Math.max(cy(p), nameBottom + head + 0.5)) }
+  }
+  return { x: b.x + Math.max(2.6 * k, b.w * 0.2), y: b.y + b.h - 1.2 }
 }
 
 /* значки-пометки: телефон (сохранение), крест (заперто) — в сетке 24×24 */
@@ -225,9 +233,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               <path :d="PHONE" transform="translate(-12,-12)" />
             </g>
           </g>
-          <!-- маркер: где герой сейчас -->
+          <!-- «вы здесь»: булавка остриём в место (у верхнего края — не на названии), под остриём расходится круг,
+               рядом подпись от руки. Кружок вокруг места читался как обычная пометка, а не как «я тут» -->
           <template v-for="p in places" :key="`here-${p.id}`">
-            <path v-if="p.here" class="m-here" :d="marker(p)" />
+            <g v-if="p.here" class="m-pin" :transform="`translate(${pinAt(p).x},${pinAt(p).y}) scale(${K})`">
+              <circle class="m-pin__pulse" r="1.2" />
+              <path class="m-pin__head" :d="PIN" />
+              <circle class="m-pin__dot" cy="-4.1" r="0.8" />
+              <text class="m-pin__word" x="2.8" y="-4.2" transform="rotate(-6)">вы здесь</text>
+            </g>
           </template>
           <!-- заперто, а двери на плане нет — крест у названия -->
           <g v-for="p in lockMarks" :key="`x-${p.id}`" class="m-cross" :transform="`translate(${box(p).x + 2.4},${box(p).y + 2.4}) scale(${K})`">
@@ -238,11 +252,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <path d="M-1.4,-1.4 L1.4,1.4 M1.4,-1.4 L-1.4,1.4" />
           </g>
 
-          <!-- север: тонкая стрелка, как на отпечатанном плане -->
-          <g class="m-compass" :transform="`translate(${W - 5 * K},${9 * K}) scale(${K})`">
-            <path class="m-compass__arrow" d="M0,-4.4 L1.3,1.6 L0,0.7 L-1.3,1.6 Z" />
-            <text class="m-compass__n" text-anchor="middle" y="-5.4">С</text>
-          </g>
           <!-- пометки героя маркером, как на карте в кармане: «?» — загадка не решена, «заперто» — у запертого -->
           <g v-for="p in places.filter(x => x.puzzle)" :key="`q-${p.id}`" class="m-hand" :transform="`translate(${box(p).x + box(p).w - 3},${box(p).y + 3.6}) scale(${K}) rotate(-6)`">
             <path class="m-hand__ring" d="M-2.6,0.2 C-2.7,-1.9 -0.9,-2.9 0.4,-2.7 C2.3,-2.5 2.9,-0.9 2.7,0.6 C2.4,2.3 0.6,2.9 -0.8,2.6 C-2.2,2.2 -2.9,1 -2.5,-0.6" />
@@ -260,7 +269,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </svg>
       </div>
       <p class="solo-map__legend">
-        <span><i class="solo-map__key solo-map__key--here" />вы здесь</span>
+        <span><svg class="solo-map__pin" viewBox="-2.6 -6.8 5.2 7.2" aria-hidden="true"><path :d="PIN" /><circle cy="-4.1" r="0.8" /></svg>вы здесь</span>
         <span><b class="solo-map__key-x">✕</b>заперто</span>
         <span><b class="solo-map__key-phone">☎</b>можно сохраниться</span>
         <span>серое — где ещё не были</span>

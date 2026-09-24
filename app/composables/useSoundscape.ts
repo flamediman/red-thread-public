@@ -14,6 +14,8 @@
    собака воет — через пару секунд с другой стороны отзывается вторая. */
 
 export interface SoundPlace {
+  /** id места: при входе в лес «кто-то рядом» проявляется почти сразу */
+  id?: string
   area: string
   outdoor: boolean
   surface: string
@@ -118,7 +120,7 @@ const LAYERS: Layer[] = [
   { id: 'far', every: [18, 60], skip: 0.2, pool: p => FAR[p.other ? 'other' : p.area] ?? FAR.town!, dist: p => (p.outdoor ? [30, 90] : [12, 60]), volume: 0.6, wall: p => !p.outdoor },
   { id: 'near', every: [8, 26], skip: 0.15, pool: p => NEAR[nearKind(p)]!, dist: p => (p.outdoor ? [8, 20] : [2, 6]), volume: 0.45 },
   // кто-то рядом: на улице, в лесу — раз в минуту-полторы, на открытом — раз в несколько минут
-  { id: 'watch', every: p => (p?.forest ? [40, 100] : [110, 240]), skip: 0.3, when: p => p.outdoor && !p.other && !p.deep, pool: WATCH, dist: [10, 22], volume: 0.45, from: 'flank' },
+  { id: 'watch', every: p => (p?.forest ? [30, 70] : [90, 210]), skip: 0.2, when: p => p.outdoor && !p.other && !p.deep, pool: WATCH, dist: [10, 22], volume: 0.45, from: 'flank' },
   { id: 'above', every: [45, 140], skip: 0.3, when: p => !p.outdoor && p.area !== 'road', pool: () => ABOVE, dist: [4, 9], volume: 0.5, from: 'above', wall: () => true },
   // за спиной — только в темноте; с включённым фонарём реже (свет чуть успокаивает), без света — чаще
   { id: 'behind', every: [90, 240], skip: 0.35, when: p => p.dark && !p.outdoor, pool: () => BEHIND, dist: [1.2, 3], volume: 0.32, from: 'behind', move: 0.5 },
@@ -169,11 +171,11 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
     return az
   }
 
-  function tick(layer: Layer) {
+  function tick(layer: Layer, force = false) {
     const p = opts.place()
     // «кто-то рядом» не звучит сразу после шагов-попутчиков
     const recent = layer.id === 'watch' && Date.now() / 1000 - lastPresence < 25
-    if (p && !recent && opts.active() && !audio.speaking.value && (!layer.when || layer.when(p)) && Math.random() >= layer.skip) {
+    if (p && !recent && opts.active() && !audio.speaking.value && (!layer.when || layer.when(p)) && (force || Math.random() >= layer.skip)) {
       // в темноте с фонарём «за спиной» звучит вдвое реже
       const calm = layer.id === 'behind' && p.lit && Math.random() < 0.5
       const q = calm ? null : pick(layer, p)
@@ -224,6 +226,17 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
       if (alive && opts.active()) void audio.spatial(`step-${surface}`, { az: Math.PI + rnd(-0.5, 0.5), dist: rnd(12, 18), volume: 0.4, rate: rnd(0.88, 0.96) })
     }, rnd(450, 800))
   }
+
+  /* Вошли в лес — «кто-то рядом» в первые 10–22 с, а не когда подойдёт очередь слоя: первое расписание считается при
+     загрузке страницы, когда места ещё нет, и выходило «не лес» — до четырёх минут тишины (25.09, «нет ощущения»).
+     Если только что кто-то был рядом (шаги-попутчики), не торопимся */
+  watch(() => opts.place()?.id, (id, old) => {
+    const p = opts.place()
+    if (!id || id === old || !p?.forest || !p.outdoor || p.other) return
+    const watchLayer = LAYERS.find(l => l.id === 'watch')!
+    const t = timers.get('watch'); if (t) clearTimeout(t)
+    timers.set('watch', setTimeout(() => tick(watchLayer, true), rnd(10, 22) * 1000))
+  })
 
   onMounted(() => { for (const l of LAYERS) schedule(l, true) })
   onBeforeUnmount(() => { alive = false; for (const t of timers.values()) clearTimeout(t); timers.clear() })

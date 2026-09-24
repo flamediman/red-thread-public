@@ -339,10 +339,14 @@ watch([() => place.value?.ambience.join(','), () => place.value?.weather, () => 
     // дождь по ходу сюжета: на улице — в полную, под крышей — по крыше и стёклам, в подвале не слышно; морось в доме не слышна
     const w = place.value?.weather ?? 'fog'
     if (place.value && w !== 'fog' && !place.value.deep) {
-      if (place.value.outdoor) {
-        if (w === 'storm') { names.push('rain-heavy', 'rain-light'); levels['rain-heavy'] = 0.9; levels['rain-light'] = 0.35 }
-        else { names.push('rain-light'); levels['rain-light'] = w === 'rain' ? 0.8 : 0.45 }
-      } else if (w !== 'drizzle') { names.push('rain-roof'); levels['rain-roof'] = w === 'storm' ? 0.75 : 0.5 }
+      /* Дождь при входе в дом не обрывается: та же петля звучит дальше, тише — сквозь стены (и глуше: атмосфера в помещении
+         идёт «за стеклом», setOutdoors). Дерево и окна (ДК, корпуса) — слышно хорошо, в ливень ещё и стучит по крыше;
+         кафель и штукатурка — тише; бетон водозабора — едва; подвал и тоннель — не слышно вовсе */
+      const p = place.value
+      const wall = p.outdoor ? 1 : p.area === 'intake' ? 0.15 : p.surface === 'wood' ? 0.8 : 0.55
+      if (w === 'storm') { names.push('rain-heavy', 'rain-light'); levels['rain-heavy'] = 0.9 * wall; levels['rain-light'] = 0.35 * wall }
+      else { names.push('rain-light'); levels['rain-light'] = (w === 'rain' ? 0.8 : 0.45) * wall }
+      if (!p.outdoor && w !== 'drizzle' && wall >= 0.5) { names.push('rain-roof'); levels['rain-roof'] = (w === 'storm' ? 0.65 : 0.45) * wall / 0.8 }
     }
     if (radio) { names.push('radio-static'); levels['radio-static'] = radio === 2 ? 0.95 : 0.35 }
     if (enc) { names.push('dread-drone'); levels['dread-drone'] = 0.8 }
@@ -486,7 +490,7 @@ const scape = useSoundscape({
   place: () => {
     const p = place.value
     if (!p) return null
-    return { area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, weather: p.weather, deep: p.deep, forest: inForest(p), ambience: p.ambience }
+    return { id: p.id, area: p.area, outdoor: p.outdoor, surface: p.surface, dark: p.dark, lit: p.lit, other: !!v.value?.otherworld, weather: p.weather, deep: p.deep, forest: inForest(p), ambience: p.ambience }
   },
   lightning: strength => strike(strength),
   active: () => {
