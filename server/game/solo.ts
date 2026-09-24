@@ -284,8 +284,9 @@ export class SoloGame {
   }
 
   private showScene(lines?: SoloLine[], music?: string) {
-    if (!lines?.length) return
-    this.live.scene = { seq: ++this.seq, lines, music }
+    const shown = lines?.filter(l => this.ok(l.when))
+    if (!shown?.length) return
+    this.live.scene = { seq: ++this.seq, lines: shown, music }
   }
 
   /** последствия: порядок — предметы и флаги, потом текст и сцена, потом переход, встреча, финал */
@@ -1425,7 +1426,7 @@ export class SoloGame {
       } : null,
       chase: this.chaseView(now),
       dead: this.live.dead,
-      ending: ending ? { id: ending.id, title: ending.title, lines: ending.scene, stats: { minutes: Math.round(r.playMs / 60000), saves: r.saves, deaths: r.deaths, kills: r.kills } } : null,
+      ending: ending ? { id: ending.id, title: ending.title, lines: ending.scene.filter(l => this.ok(l.when)), stats: { minutes: Math.round(r.playMs / 60000), saves: r.saves, deaths: r.deaths, kills: r.kills } } : null,
       saves: this.saveList(),
       canSave: !!p.save && !e && !this.live.chase && !this.live.boss && !this.live.dead
     }
