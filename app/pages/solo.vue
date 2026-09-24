@@ -211,7 +211,9 @@ function clickItem(id: string) {
    Картинка, глубина и трава ложатся в кэш браузера, объёмный кадр при переходе берёт их оттуда; по одному, чтобы не
    отнимать канал у того, что нужно сейчас */
 const preloaded = new Set<string>()
+let preloadGen = 0
 watch(() => v.value?.exits.map(x => x.art ?? '').join(','), async list => {
+  const gen = ++preloadGen
   if (!list || !story.value) return
   const urls: string[] = []
   for (const a of list.split(',')) {
@@ -222,11 +224,19 @@ watch(() => v.value?.exits.map(x => x.art ?? '').join(','), async list => {
     if (v.value?.wind?.includes(a)) urls.push(`/art/${story.value}/w_${a}.jpg`)
     if (v.value?.materials?.includes(a)) urls.push(`/art/${story.value}/g_${a}.png`)
   }
-  for (const a of list.split(',')) if (a && v.value?.depth.includes(a)) urls.push(`/art/${story.value}/${a}.jpg`)
+  // полные картинки (750 КБ) — последними и после звука места; лёгкие копии и глубина — сразу за картинкой места
+  const full = new Set<string>()
+  for (const a of list.split(',')) if (a && v.value?.depth.includes(a)) { urls.push(`/art/${story.value}/${a}.jpg`); full.add(`/art/${story.value}/${a}.jpg`) }
+  // сначала картинка текущего места, потом соседи (backgroundFetch ждёт её); игрок ушёл дальше — заготовки для
+  // прошлого места бросаем (оборванную возьмёт новый список, если она ещё нужна)
   for (const u of urls) {
+    if (gen !== preloadGen) return
     if (preloaded.has(u)) continue
     preloaded.add(u)
-    try { await fetch(u, { priority: 'low' } as RequestInit) } catch { preloaded.delete(u) }
+    // оборвала картинка места (игрок открыл крупный план, вернулся) — ещё раз, когда она загрузится
+    let ok = false
+    for (let k = 0; k < 3 && !ok && gen === preloadGen; k++) ok = await backgroundFetch(u, full.has(u) ? 'sound' : 'art')
+    if (!ok) preloaded.delete(u)
   }
 }, { immediate: true })
 /* картинки вещей грузятся заранее — окно вещей открывается сразу полным */
@@ -438,7 +448,18 @@ watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok], old) =
   if (!ok || !v.value) return
   // уход в тишину и возвращение — медленно, за 8–10 с, чтобы не заметить, когда именно музыка исчезла
   const resting = t === old?.[0] && (lvl === 0 || old?.[1] === 0)
-  void audio.theme(t, lvl, t && FAST.has(t) ? 1.5 : resting ? (lvl === 0 ? 10 : 8) : undefined)
+  void audio.theme(t, lvl, t && FAST.has(t) ? 1.5 : resting ? (lvl === 0 ? 10 : 8) : undefined, !!t && FAST.has(t))
+}, { immediate: true })
+/* боевая тема и погоня — заранее, в кэш браузера (без расшифровки, память не занимают): на слабом интернете первая
+   встреча иначе шла под спокойную тему, пока 1,4 МБ боевой качались. После картинки места и заготовок соседей */
+let battleCached = false
+watch(() => !!(entered.value && v.value?.started && audio.unlocked.value), async on => {
+  if (!on || battleCached || !story.value) return
+  battleCached = true
+  await new Promise(r => setTimeout(r, 3000))
+  for (const t of ['fight', 'chase']) {
+    for (let k = 0; k < 5; k++) if (await backgroundFetch(`/music/${story.value}/${t}.mp3`, 'sound')) break
+  }
 }, { immediate: true })
 
 /* звуки вокруг героя: даль, рядом, этаж сверху, за спиной в темноте, гром в дождь — у каждого слоя свой случайный ритм

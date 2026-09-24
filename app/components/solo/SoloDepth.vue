@@ -539,11 +539,12 @@ async function request(src: string, depth: string, wind?: string) {
     // сначала лёгкая копия кадра (<кадр>.lq.jpg, ~100 КБ): на медленном интернете переход не ждёт полную картинку;
     // полная догружается следом и подменяет лёгкую без перехода (та же картинка, резче)
     const lq = src.replace(/\.jpg$/, '.lq.jpg')
-    const [img, dep, w, m] = await Promise.all([decode(lq).catch(() => decode(src)), decode(depth, true), wind ? decode(wind).catch(() => null) : Promise.resolve(null),
-      mat ? decode(mat, true).catch(() => null) : Promise.resolve(null)])
+    // (artLoad: картинка места — первой в канале, музыка и соседние места ждут её, см. utils/net-queue)
+    const [img, dep, w, m] = await artLoad(Promise.all([decode(lq).catch(() => decode(src)), decode(depth, true), wind ? decode(wind).catch(() => null) : Promise.resolve(null),
+      mat ? decode(mat, true).catch(() => null) : Promise.resolve(null)]))
     if (dead || loadingKey !== key) return
     pending = { img, dep, wind: w, mat: m, key }
-    if (lq !== src) decode(src).then(full => { if (!dead && loadingKey === key) sharper = { img: full, key } }).catch(() => {})
+    if (lq !== src) artLoad(decode(src)).then(full => { if (!dead && loadingKey === key) sharper = { img: full, key } }).catch(() => {})
   } catch { if (!dead && loadingKey === key) emit('fail') }
 }
 function swap(ms: number) {

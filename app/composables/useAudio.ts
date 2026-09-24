@@ -12,6 +12,7 @@ const XFADE = 3 // секунд перекрёстного затухания н
 const MUSIC_FADE = 4 // секунд на смену темы
 
 import { currentCase, currentSetting } from '~/utils/case-store'
+import { afterArt, soundLoad } from '~/utils/net-queue'
 
 let ctx: AudioContext | null = null
 /** какие реплики озвучены (по делу) — чтобы не дёргать сервер за файлами, которых нет */
@@ -121,17 +122,22 @@ const THEME_FALLBACK: Record<string, string[]> = {
   'memory': ['town'], 'confession': ['sanatorium', 'town'], 'fight': ['boss'], 'boss': ['fight'], 'intake': ['otherworld', 'town'], 'gallery': ['otherworld', 'intake']
 }
 
-async function load(url: string): Promise<AudioBuffer | null> {
+async function load(url: string, signal?: AbortSignal): Promise<AudioBuffer | null> {
   const c = ensure()
   if (!c) return null
   if (!buffers.has(url)) {
-    buffers.set(url, fetch(url)
+    const p: Promise<AudioBuffer | null> = fetch(url, signal ? { signal } : undefined)
       .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
       .then(ab => c.decodeAudioData(ab))
-      .catch(() => null))
+      // оборванную загрузку не запоминаем — в следующий раз тема скачается заново
+      .catch(() => { if (signal?.aborted && buffers.get(url) === p) buffers.delete(url); return null })
+    buffers.set(url, p)
   }
   return buffers.get(url)!
 }
+/** тема, которая сейчас качается: сменилась раньше, чем докачалась (заставка → место), — загрузку обрываем */
+let musicLoading: { wanted: string; ctrl: AbortController } | null = null
+let ambGen = 0
 
 /** Гладкая петля: буфер запускается снова за XFADE секунд до конца, оба края — по равномощным кривым. */
 function startLoop(name: string, buffer: AudioBuffer, target: number, dest: GainNode, fadeSec = 2.5, breathing = false): Loop {
@@ -298,14 +304,21 @@ export function useAudio() {
   /** Атмосфера: набор петель, которые должны звучать сейчас. Лишние затухают, новые всплывают. */
   async function ambience(names: string[], levels: Record<string, number> = {}) {
     const c = ensure(); if (!c) return
+    // набор сменился, пока петли этого качались, — дальше грузит новый вызов
+    const gen = ++ambGen
     for (const [name, loop] of loops) if (!names.includes(name)) { loop.stop(); loops.delete(name) }
     for (const name of names) {
       const target = levels[name] ?? 1
       const existing = loops.get(name)
       if (existing && existing.world !== currentSetting.value) { existing.stop(); loops.delete(name) }
       else if (existing) { existing.setLevel(target); continue }
-      const buf = await loadSfx(name)
-      if (!buf || loops.has(name) || !names.includes(name)) continue
+      // новая петля (300 КБ) не отнимает канал у картинки места — ждёт её, но недолго
+      if (!buffers.has(`/sfx/${currentSetting.value}/${name}.m4a`)) await afterArt(3000)
+      if (gen !== ambGen) return
+      if (loops.has(name)) continue
+      const buf = await soundLoad(loadSfx(name))
+      if (gen !== ambGen) return
+      if (!buf || loops.has(name)) continue
       loops.set(name, { ...startLoop(name, buf, target, gains.ambience!, 2.5, true), world: currentSetting.value })
     }
   }
@@ -313,18 +326,28 @@ export function useAudio() {
   /** Музыка: одна тема; смена — перекрёстным затуханием. null — тишина.
       Имя темы ищется в папке активного дела; путь с «/» — файл как есть (музыка меню мира). */
   /** fade — секунд на смену: в бой музыка входит быстрее, чем сменяется тема района */
-  async function theme(name: string | null, level = 1, fade = MUSIC_FADE) {
+  async function theme(name: string | null, level = 1, fade = MUSIC_FADE, urgent = false) {
     const c = ensure(); if (!c) return
     const wanted = name ? (name.startsWith('/') ? name : `/music/${currentCase.value}/${name}.mp3`) : null
     musicWanted = wanted
     musicLevel = level
+    if (musicLoading && musicLoading.wanted !== wanted) { musicLoading.ctrl.abort(); musicLoading = null }
     if (!wanted || !name) { music?.stop(fade); music = null; return }
     // у дела может не быть всех тем: берём ближайшую по настроению из тех, что есть
     // у нового дела музыки может не быть совсем — тогда тема мира из меню, лишь бы не тишина
     const chain = name.startsWith('/') ? [wanted] : [...[name, ...(THEME_FALLBACK[name] ?? [])].map(n => `/music/${currentCase.value}/${n}.mp3`), `/music/settings/${currentSetting.value}.mp3`]
     for (const key of chain) {
       if (music?.name === key) { rampTo(music.gain.gain, level, Math.max(2, fade)); return }
-      const buf = await load(key)
+      // на слабом интернете тема (2 МБ) не отнимает канал у картинки места: ждёт её; до тех пор играет прежняя.
+      // Бой и погоня (urgent) не ждут: под дракой не должна играть спокойная тема
+      let ctrl: AbortController | undefined
+      if (!buffers.has(key)) {
+        if (!urgent) await afterArt(8000)
+        if (musicWanted !== wanted) return
+        if (!buffers.has(key)) { ctrl = new AbortController(); musicLoading = { wanted, ctrl } }
+      }
+      const buf = await soundLoad(load(key, ctrl?.signal))
+      if (ctrl && musicLoading?.ctrl === ctrl) musicLoading = null
       if (musicWanted !== wanted) return
       if (!buf) continue
       if (music?.name === key) return
