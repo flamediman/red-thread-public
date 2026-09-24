@@ -253,11 +253,23 @@ function startLoop(name: string, buffer: AudioBuffer, target: number, dest: Gain
 /** звук мира: /sfx/<мир>/<роль>.m4a, если такого нет — общий /sfx/<роль>.m4a */
 /** у частых звуков боя несколько записей (name-2, name-3, …): подряд одна и та же не идёт */
 const VARIANTS: Record<string, number> = {
-  'solo-hit-land': 3, 'solo-swing': 3, 'solo-hurt': 3, 'solo-dodge': 2, 'solo-shot': 2,
+  'solo-hit-land': 5, 'solo-swing': 3, 'solo-hurt': 3, 'solo-dodge': 2, 'fist-hit': 4, 'fist-swing': 2,
   'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2,
   'thunder-far': 3, 'footsteps-behind': 2, 'whisper-near': 2, 'door-slam-far': 2, 'industrial-clank': 2,
   'glass-break-far': 2, 'twig-snap': 2, 'footsteps-forest': 2
 }
+/* Удары и выстрелы каждый раз немного другие, как в жизни: высота (rate — доля), громкость (db) и окраска (tone —
+   сколько верха пропустить, Гц, случайно между границами: удар то глухой, то звонкий), чуть в стороне (pan). Удары —
+   заметно; выстрел — едва: это одно и то же оружие, одна запись */
+const VARY: Record<string, { rate: number; db: number; tone?: [number, number]; pan?: number }> = {
+  'fist-hit': { rate: 0.1, db: 3, tone: [2500, 12000], pan: 0.15 },
+  'fist-swing': { rate: 0.1, db: 2, pan: 0.2 },
+  'solo-hit-land': { rate: 0.08, db: 3, tone: [3000, 14000], pan: 0.15 },
+  'solo-swing': { rate: 0.1, db: 2, pan: 0.2 },
+  'solo-shot': { rate: 0.025, db: 1.5, tone: [9000, 16000] },
+  'solo-hurt': { rate: 0.05, db: 1.5 }
+}
+const spread = (x: number) => (Math.random() * 2 - 1) * x
 const lastVariant = new Map<string, number>()
 function variant(name: string) {
   const n = VARIANTS[name]
@@ -455,12 +467,21 @@ export function useAudio() {
     const buf = await loadSfx(variant(name))
     if (!buf) return 0
     const o = typeof opts === 'boolean' ? { far: opts } : opts
+    const vr = VARY[name]
     const src = c.createBufferSource()
     src.buffer = buf
-    const g = c.createGain(); g.gain.value = volume
+    if (vr) src.playbackRate.value = 1 + spread(vr.rate)
+    const g = c.createGain(); g.gain.value = volume * (vr ? Math.pow(10, spread(vr.db) / 20) : 1)
     const dest = o.far || FAR_NAMES.has(name) ? farChain(c) : roomChain(c)
     let tail: AudioNode = g
-    if (typeof o.pan === 'number' && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, o.pan)); tail = g.connect(p) }
+    if (vr?.tone) {
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5
+      const [lo, hi] = vr.tone
+      lp.frequency.value = Math.exp(Math.log(lo) + Math.random() * (Math.log(hi) - Math.log(lo)))
+      tail = tail.connect(lp)
+    }
+    const pan = typeof o.pan === 'number' ? o.pan : vr?.pan ? spread(vr.pan) : null
+    if (pan !== null && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); tail = tail.connect(p) }
     src.connect(g); tail.connect(dest)
     src.start()
     return buf.duration

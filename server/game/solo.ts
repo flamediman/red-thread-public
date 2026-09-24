@@ -23,7 +23,7 @@ const BUILD = process.env.BUILD_ID || (existsSync('/app/build-id') ? readFileSyn
 const FEED = 14
 const SAVE_SLOTS = 3
 /* голые руки: слабо и узкое окно — бить ими можно только самых хлипких, остальных лучше обойти */
-const HANDS: NonNullable<SoloItem['weapon']> = { damage: 6, accuracy: 0.4 }
+const HANDS: NonNullable<SoloItem['weapon']> = { damage: 6, accuracy: 0.4, sfx: { swing: 'fist-swing', hit: 'fist-hit' } }
 /** запас на окно удара: нажатие чуть раньше или позже края всё ещё засчитывается */
 const ZONE_TOL = 130
 /** насколько часы клиента могут разойтись с серверными, чтобы верить его времени нажатия */
@@ -966,7 +966,7 @@ export class SoloGame {
     const now = Date.now()
     const rel = (typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now) - e.startedAt
     const inZone = (z: [number, number] | null) => !!z && rel >= z[0] - ZONE_TOL && rel <= z[1] + ZONE_TOL
-    const hit = (dmg: number, loud: boolean) => {
+    const hit = (dmg: number, loud: boolean, sfx: { land: string; miss: string }) => {
       const zone = e.hit.find(inZone)
       if (zone) {
         e.hp -= dmg
@@ -976,7 +976,7 @@ export class SoloGame {
           this.endEncounter(m.text.die, [m.sfx.die])
           return
         }
-        const landed = loud ? 'solo-shot' : 'solo-hit-land'
+        const landed = sfx.land
         // точный удар — в самую середину окна (или выстрел) — оглушает: раунд без ответа, окна шире
         const mid = (zone[0] + zone[1]) / 2, half = Math.max(1, (zone[1] - zone[0]) / 2)
         const perfect = loud || Math.abs(rel - mid) <= half * 0.3
@@ -986,7 +986,7 @@ export class SoloGame {
         else this.nextRound(m, m.text.hit, [landed, m.sfx.hurt], 0)
       } else {
         e.streak = 0
-        this.say('', [loud ? 'solo-shot' : 'solo-swing'])
+        this.say('', [sfx.miss])
         this.strike(m, `${m.text.miss} ${m.text.strike ?? ''}`.trim(), `${m.text.miss} ${m.text.attack}`, [m.sfx.attack], m.damage)
       }
     }
@@ -994,19 +994,20 @@ export class SoloGame {
       case 'finish': {
         if (!((e.stun ?? 0) > 0 && e.hp <= m.hp * 0.35)) return
         r.killed.push(s.id); r.kills++
-        this.endEncounter(m.text.finish ?? `Вы бьёте, пока оно не перестаёт шевелиться. ${m.text.die}`, ['solo-hit-land', m.sfx.die])
+        this.endEncounter(m.text.finish ?? `Вы бьёте, пока оно не перестаёт шевелиться. ${m.text.die}`, [this.meleeSfx().hit, m.sfx.die])
         break
       }
       case 'fight': {
-        const melee = this.melee()?.weapon ?? HANDS
-        hit(melee.damage, false)
+        const melee = this.melee()?.weapon ?? HANDS, ms = this.meleeSfx()
+        hit(melee.damage, false, { land: ms.hit, miss: ms.swing })
         break
       }
       case 'shoot': {
         const gun = [...Object.keys(r.items)].map(i => this.ITEM.get(i)).find(i => i?.weapon?.usesAmmo && this.has(i.id))
         if (!gun || r.ammo <= 0) return
         r.ammo--
-        hit(gun.weapon!.damage, true)
+        const shot = this.shotSfx(gun)
+        hit(gun.weapon!.damage, true, { land: shot, miss: shot })
         break
       }
       case 'flee': {
@@ -1051,6 +1052,12 @@ export class SoloGame {
   }
 
   /** чем бить вблизи: то, что в руках, если это не ствол; иначе любое оружие ближнего боя из карманов */
+  /** звуки того, чем бьёт герой: у оружия могут быть свои (weapon.sfx), руки — кулаками, иначе — труба */
+  private meleeSfx() {
+    const w = this.melee()?.weapon ?? HANDS
+    return { swing: w.sfx?.swing ?? 'solo-swing', hit: w.sfx?.hit ?? 'solo-hit-land' }
+  }
+  private shotSfx(gun: SoloItem | null | undefined) { return gun?.weapon?.sfx?.shot ?? 'solo-shot' }
   private melee(): SoloItem | null {
     const r = this.run!
     const held = r.weapon ? this.ITEM.get(r.weapon) : null
@@ -1173,7 +1180,7 @@ export class SoloGame {
     const t = typeof at === 'number' && Math.abs(at - now) <= AT_DRIFT ? at : now
     const want = p.mirror ? OPPOSITE[p.key] : p.key
     p.result = key === want && t >= p.from - ZONE_TOL && t <= p.to + ZONE_TOL ? 'hit' : 'miss'
-    this.say('', [p.result === 'hit' ? (b.kind === 'defend' ? 'solo-dodge' : 'solo-swing') : 'solo-wrong'])
+    this.say('', [p.result === 'hit' ? (b.kind === 'defend' ? 'solo-dodge' : this.meleeSfx().swing) : 'solo-wrong'])
     if (b.prompts.every(x => x.result)) this.bossResolve()
     this.changed()
   }
@@ -1222,7 +1229,7 @@ export class SoloGame {
       } else {
         b.last = null
         b.text = spec.text.parry ?? 'Удары уходят в пустоту. Он даже не замечает.'
-        this.say('', ['solo-swing'])
+        this.say('', [this.meleeSfx().swing])
       }
       b.open = false
       b.kind = 'defend'
@@ -1261,7 +1268,7 @@ export class SoloGame {
     r.ammo--
     b.hp -= gun.weapon!.damage
     b.last = 'hit'
-    this.say('', ['solo-shot', spec.sfx.hurt])
+    this.say('', [this.shotSfx(gun), spec.sfx.hurt])
     if (this.bossDown(spec)) return this.changed()
     const next = this.bossPhase(spec, b.hp)
     b.text = next.idx !== b.phase && next.text ? next.text : 'Выстрел бьёт ему в грудь огнём. Он шатается — и идёт снова.'

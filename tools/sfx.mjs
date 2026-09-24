@@ -119,12 +119,21 @@ const PACKS = {
     // вариации частых звуков боя (22.09.2026): одна и та же запись на каждый удар надоедает
     'solo-hit-land-2': ['A steel pipe landing on a heavy wet body: a thick crunching thud with a wet slap, no ring, close, no music', 0.9],
     'solo-hit-land-3': ['A heavy pipe blow glancing off something hard under wet cloth: a sharp crack and a short metallic buzz of the pipe, close, no music', 0.9],
+    // 25.09: ещё два удара трубой и свои звуки голых рук (у оружия — sfx в данных; по умолчанию труба — solo-*,
+    // руки — fist-*); «без голоса» — чтобы не было кряхтения. В игре каждый удар ещё и чуть другой (VARY в useAudio)
+    'solo-hit-land-4': ['A steel water pipe striking a heavy wet body: a dull thud with a brief low metallic ring of the pipe, close, no voice, no music', 0.9],
+    'solo-hit-land-5': ['A metal pipe blow landing on a shoulder: a hard crack and a short buzzing vibration of the pipe in the hand, close, no voice, no music', 0.9],
+    'fist-hit': ['A hard bare-knuckle punch landing on a heavy wet body in a thick coat: a dull meaty thud, close, dry, no voice, no music', 0.8],
+    'fist-hit-2': ['A bare fist punch smacking into wet cold skin: a short flat slap with a thud underneath, close, dry, no voice, no music', 0.7],
+    'fist-hit-3': ['A punch glancing off a bony shoulder: a sharp knuckle knock and a scuff of wet cloth, close, dry, no voice, no music', 0.7],
+    'fist-hit-4': ['A heavy desperate punch sinking into something soft and wet, a deep muffled thump, close, dry, no voice, no music', 0.8],
+    'fist-swing': ['A fast bare-handed punch missing its target: a short whoosh of a canvas jacket sleeve through the air, close, no music', 0.6],
+    'fist-swing-2': ['A wild swinging punch through empty air, a quick cloth whoosh, close, no voice, no music', 0.6],
     'solo-swing-2': ['A fast swing of a heavy iron bar cutting the air, low whoosh with a faint whistle, close, no music', 0.8],
     'solo-swing-3': ['A short desperate swing of a metal pipe through fog, a whoosh and a boot scraping on wet asphalt, close, no music', 0.9],
     'solo-hurt-2': ['A hard hit to a man\'s body: a deep thud, a grunt cut short into a sharp exhale, boots scraping on wet concrete; no groan, no retching, close, no music', 1.3],
     'solo-hurt-3': ['A blow knocking the wind out of a man: dull impact, a wheezing breath through teeth, a stumble and a hand slapping a wet wall; no voice, close, no music', 1.3],
     'solo-dodge-2': ['A man ducking sideways: a quick scuff of boots on wet ground, cloth rustle and a heavy object whooshing past close to the ear, no music', 1.4],
-    'solo-shot-2': ['A single flare pistol shot: a hollow pop, a hissing fizz of the flare and a dull echo in fog, no music', 2],
     'thud-cloth-2': ['A pipe hitting a small body in wet clothes: a soft heavy thud and the dull clank of a dented bugle, close, no music', 1.2],
     'wet-hurt-2': ['A blow into a body of wet mud: a deep sucking splat and dripping, close, no music', 1.2],
     'counselor-hurt-2': ['A pipe hitting a tall thin body: a hard thud, starched cloth tearing slightly, a whistle giving one strangled chirp, close, no music', 1.2],
@@ -248,7 +257,7 @@ const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-f
   'footsteps-above': -6, 'furniture-drag': -6, 'door-slam-far': -3, 'door-slam-far-2': -3, 'child-laugh-far': -8, 'music-box-far': -6, 'phone-ring-far': -6, 'dog-howl-far': -7, 'metal-sheet-far': -6, 'swing-creak': -6, 'crow-far': -8,
   'knock-three': -4, 'wall-scratch': -6, 'radio-voice-far': -7, 'siren-rise': -4, 'chain-drag': -4, 'industrial-clank': -3, 'industrial-clank-2': -4, 'metal-scream': -5, 'drip-metal': -7,
   'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2, 'projector-run': -3,
-  'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'solo-shot-2': 6, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
+  'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hit-land-4': 2, 'solo-hit-land-5': 2, 'fist-hit': 2, 'fist-hit-2': 2, 'fist-hit-3': 2, 'fist-hit-4': 2, 'fist-swing': -2, 'fist-swing-2': -2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
   'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'glass-break-far': -4, 'glass-break-far-2': -4, 'twig-snap': -4, 'twig-snap-2': -4, 'footsteps-forest': -5, 'footsteps-forest-2': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-glass': -6, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {

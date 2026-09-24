@@ -227,7 +227,9 @@ export interface SoloItem {
   amount?: number
   /** оружие: accuracy — ширина окон удара (0…1), zones — сколько окон за раунд (по умолчанию 1), tempo — замедление
       времени раунда (1.3 — раунд на треть длиннее); usesAmmo — стреляет патронами */
-  weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean; zones?: number; tempo?: number }
+  /** sfx — свои звуки оружия (удар мимо, попадание, выстрел); без них: оружие ближнего боя — solo-swing/solo-hit-land
+      (труба), голые руки — fist-swing/fist-hit, огнестрел — solo-shot */
+  weapon?: { damage: number; accuracy: number; usesAmmo?: boolean; loud?: boolean; zones?: number; tempo?: number; sfx?: { swing?: string; hit?: string; shot?: string } }
   /** соединить с другим предметом */
   combine?: { with: string; result: string; text: string }[]
   /** осмотреть внимательнее: в первый раз — эффект (на обороте надпись, внутри что-то), потом — after */
