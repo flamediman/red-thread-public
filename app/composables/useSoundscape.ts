@@ -80,7 +80,8 @@ const NEAR: Record<string, Cue[]> = {
   water: [c('water-surge', 30, { w: 2 }), c('drip-one', 20), c('drip-metal', 30), c('creak-floor', 50)],
   machine: [c('pipe-knock', 30, { w: 2 }), c('drip-metal', 25), c('metal-groan', 60), c('water-surge', 50)],
   other: [c('metal-groan', 35, { w: 2 }), c('drip-metal', 25), c('pipe-knock', 40), c('industrial-clank', 90)],
-  open: [c('gust', 20, { w: 2 }), c('leaf-scrape', 30), c('branch-far', 60)]
+  // (листья по асфальту убраны: генератор делает их шипением на 7–13 кГц — «шуршание», а не листва)
+  open: [c('gust', 20, { w: 2 }), c('branch-far', 60)]
 }
 const ABOVE: Cue[] = [c('footsteps-above', 150, { w: 2 }), c('furniture-drag', 200), c('knock-three', 300), c('door-slam-far', 90)]
 const BEHIND: Cue[] = [c('footsteps-behind', 180, { w: 2 }), c('breath-behind-2', 300), c('whisper-near', 200), c('wall-scratch', 240), c('knock-three', 300)]

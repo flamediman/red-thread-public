@@ -187,15 +187,16 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   path { fill: none; stroke: var(--ecg); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   &__base { top: 0; width: 100%; height: 100%; opacity: 0.16; }
   /* окно в пятую часть ширины едет слева направо, линия в нём — навстречу и стоит на месте; края окна растушёваны,
-     голова пульса ярче хвоста. Поля сверху и снизу — под свечение */
-  &__win { position: absolute; left: 0; top: -6px; bottom: -6px; width: 20%; overflow: hidden; will-change: transform;
-    mask-image: linear-gradient(90deg, transparent, #000 55%, #000 82%, transparent); animation: ecg-win var(--beat, 2.2s) linear infinite; }
-  &__lit { top: 6px; height: calc(100% - 12px); width: 500%; filter: drop-shadow(0 0 3px var(--ecg)); will-change: transform; animation: ecg-lit var(--beat, 2.2s) linear infinite; }
-  &--hurt { --ecg: var(--tuman-warn); --beat: 1.4s; }
-  &--bad { --ecg: var(--tuman-red); --beat: 0.75s; span { animation: low-pulse 0.75s ease-in-out infinite; } }
+     голова пульса ярче хвоста. Поля сверху и снизу — под свечение. Движение — из страницы, в такт объёмного кадра.
+     Свечение — размытый штрих внутри самого svg (рисуется один раз вместе с линией): css drop-shadow на едущей линии
+     пересчитывался каждый кадр (замер: ~10 % ядра на одну кардиограмму) */
+  &__win { position: absolute; left: 0; top: -6px; bottom: -6px; width: 20%; overflow: hidden; will-change: transform; transform: translateX(-100%);
+    mask-image: linear-gradient(90deg, transparent, #000 55%, #000 82%, transparent); }
+  &__lit { top: 6px; height: calc(100% - 12px); width: 500%; will-change: transform; }
+  path.solo-ecg__glow { stroke-width: 3; opacity: 0.9; }
+  &--hurt { --ecg: var(--tuman-warn); }
+  &--bad { --ecg: var(--tuman-red); span { animation: low-pulse 0.75s ease-in-out infinite; } }
 }
-@keyframes ecg-win { from { transform: translateX(-100%); } to { transform: translateX(500%); } }
-@keyframes ecg-lit { from { transform: translateX(20%); } to { transform: translateX(-100%); } }
 .solo-light { flex: none; display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.5rem; border-radius: 7px; color: var(--paper-faint);
   &.on { color: #efe2b0; } }
 @media (hover: hover) { .solo-light:hover { background: rgba(230, 227, 218, 0.06); } .solo-view__back:hover { background: rgba(6, 7, 7, 0.9); color: var(--paper); } }

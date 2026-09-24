@@ -199,7 +199,9 @@ const PACKS = {
     'qte-tick': ['A single short soft wooden tick, like a pencil tapped once on a table, dry, close, no music', 0.5],
     'flaregun-load': ['A break-action flare pistol opened with a metallic click, a cardboard cartridge pushed in, snapped shut, close, no music', 1.5],
     'loudspeaker-hum': ['A dead old horn loudspeaker on a wooden pole in an empty pioneer camp: faint steady electric hum with occasional soft crackle and a barely audible distant garbled voice, quiet, no music, seamless ambience loop', 12, true],
-    'pines': ['Tall pine trees slowly creaking and swaying in a light wind in a foggy forest, occasional wood creak, soft needle rustle, no birds, no music, seamless ambience loop', 14, true],
+    // 25.09: прежняя петля (14 с, «шорох хвои») на 80 % была выше 6 кГц и с яркими вспышками — слышалась шуршанием,
+    // повторяющимся на одних и тех же местах; теперь 22 с мягкого шума крон, середина спектра (центр ~0,9 кГц)
+    'pines': ['Calm wind blowing through a pine forest, heard from the forest floor: a soft wide airy wash of the treetops, like distant sea surf, slowly rising and falling, warm and mid-range, no hiss, no close leaves, no crackles, no birds, no music, seamless ambience loop', 22, true],
     'announce-far': ['A distant loudspeaker announcement echoing across a lake in fog, muffled unintelligible woman voice, crackling, very far away, then silence, no music', 5],
     'branch-far': ['A dry branch cracking somewhere far away in a foggy pine forest, then silence, no music', 2],
     // ближний слой: случайные звуки рядом с героем раз в 10–25 с, по типу места
@@ -209,7 +211,6 @@ const PACKS = {
     'glass-tinkle': ['A small shard of broken glass pushed by a shoe on a tiled floor, a light tinkle, close, quiet room, no music', 1.2],
     'pipe-knock': ['An old water heating pipe in a wall knocking twice with a dull metallic clank, then a faint hiss, quiet building, no music', 1.5],
     'gust': ['A single gust of wind rising through pine branches and dying away, soft rustle and a hollow whoosh, outdoors in fog, no music', 3],
-    'leaf-scrape': ['Dry leaves and a sheet of newspaper scraping across wet asphalt in a light gust, then still, close, no music', 2],
     'water-surge': ['One larger lake wave slapping against wooden pier posts and receding with dripping, close, calm night, no music', 2.5],
     'metal-groan': ['A long low groan of rusted iron structure under strain in a flooded abandoned building, deep resonant, slowly fading, horror ambience, no music', 3],
     'solo-hurt': ['A heavy blow landing on a man\'s body: one dull deep thud, a short sharp hiss of breath through clenched teeth, one stumbling boot step on wet ground; no groan, no voice, no retching, close, no music', 1.3],
@@ -236,7 +237,7 @@ const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-f
   'knock-three': -4, 'wall-scratch': -6, 'radio-voice-far': -7, 'siren-rise': -4, 'chain-drag': -4, 'industrial-clank': -3, 'industrial-clank-2': -4, 'metal-scream': -5, 'drip-metal': -7,
   'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2, 'projector-run': -3,
   'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'solo-shot-2': 6, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
-  'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'leaf-scrape': -8, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
+  'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']

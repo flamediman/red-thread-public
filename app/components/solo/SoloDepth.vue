@@ -3,8 +3,8 @@
    кадр только медленно «дышит» наплывом (поворот камеры по карте глубины из одной картинки давал изгибы или картон).
    Объём даёт свет и воздух, посчитанные по карте глубины z_<кадр>.jpg (светлое — ближе): туман в несколько слоёв
    плывёт между ближним и дальним, фонарь ложится по стенам и полу, лампы светят лучами в тумане, мокрое и вода
-   отражают, дождь, пыль и листья летят на разной глубине и прячутся за предметами, по небу идут облака, ветки и
-   трава качаются (маска ветра w_), вода рябит. Всё — один проход по экрану.
+   отражают, дождь и пыль летят на разной глубине и прячутся за предметами, листья пролетают на переднем плане,
+   по небу идут облака, трава колышется своими травинками (маска w_). Всё — один проход по экрану.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
 const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; mat?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean; grade?: [number, number, number] }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
@@ -89,6 +89,7 @@ void main() {
   // с нарисованной травой. Вдали травинки мельче, по три яруса глубины; растут из своей точки картинки. Кроны не
   // трогаем: свои веточки поверх нарисованных читались чужими
   if (windOn > 0.5) {
+    vec3 under = albedo;
     float dsw = textureLod(dep, o, 3.0).r;
     vec2 P = sv;
     float aa = fwidth(P.x);
@@ -117,7 +118,10 @@ void main() {
         // ветерок есть всегда (трава чуть покачивается и в штиль), порывы и буря — сильнее
         float breeze = (0.55 + 0.45 * gust) * (0.7 + 0.5 * windAmt);
         float sway = ((sin(t * 1.6 + ph) + 0.5 * sin(t * 2.7 + ph * 1.7)) * 0.3 + 0.08 * sin(t * 5.3 + ph * 2.3)) * cs * breeze;
-        float bend = (hash(c + 4.4) - 0.5) * 0.9 * cs;
+        // наклон: каждая травинка клонится в свою сторону, чуть больше — по ветру; строго вверх не растёт ни одна
+        // (ровные свечки читались чужими)
+        float hb = hash(c + 4.4);
+        float bend = (hb < 0.5 ? -1.0 : 1.0) * (0.35 + 0.65 * fract(hb * 13.7)) * 0.8 * cs + 0.12 * cs;
         float B = bend + sway;
         float xs = root.x + B * sl * sl;
         // расстояние до оси травинки — поперёк неё (у наклонной части горизонтальное давало лесенку); тоньше точки —
@@ -129,7 +133,12 @@ void main() {
         float a = clamp((we - dd) / aa + 0.5, 0.0, 1.0) * min(1.0, w / (aa * 0.5))
           * smoothstep(0.0, aa / Hh + 0.02, sl) * (1.0 - smoothstep(0.9, 1.0, sl));
         if (a < 0.01) continue;
-        vec3 bc = textureLod(img, ro, 1.0).rgb * (0.7 + 0.55 * sl) * (0.85 + 0.3 * hash(c + 5.5));
+        // цвет — между цветом у корня и тем, что под травинкой; светлее фона — не больше чем на седьмую часть (травинка
+        // со светлого пятна у корня горела на тёмной траве), темнее — можно: так и выглядит силуэт травы. Над краем
+        // газона (стена, бордюр) — прозрачнее
+        vec3 bc = mix(under, textureLod(img, ro, 1.0).rgb, 0.45) * (0.84 + 0.28 * sl) * (0.9 + 0.2 * hash(c + 5.5));
+        bc = clamp(bc, under * 0.62, under * 1.15 + 0.01);
+        a *= 0.65 + 0.35 * smoothstep(0.1, 0.5, gmask.x);
         albedo = mix(albedo, bc, a * 0.85 * band);
       }
     }
@@ -334,8 +343,9 @@ void main() {
   col += (mode < 0.5 ? vec3(0.06) : vec3(1.0, 0.9, 0.72) * cone * 0.9) * motes * moteAmt;
   // листья: в кадрах с растительностью под открытым небом изредка пролетают по ветру. У каждого листа свой путь: влетает
   // сверху-слева, сносится ветром, покачивается и кувыркается (поворачивается ребром — становится узким, изнанка бледнее).
-  // Лист берёзы или осины: шире у черешка, острый кончик, светлее с одного бока, тёмная прожилка и край; дальние мельче
-  // и тонут в тумане; ближний предмет лист закрывает
+  // Лист берёзы или осины: шире у черешка, острый кончик, светлее с одного бока, тёмная прожилка и край.
+  // Все листья — на переднем плане, поверх всего: глубина — размером и скоростью (крупный ближе, летит быстрее,
+  // самый ближний чуть не в фокусе). Прятать их за предметы по карте глубины не стали — лист то и дело пропадал
   // (путь листа одинаков для всего экрана — его считает страница раз в кадр, leafP/leafQ; здесь — только сам лист)
   if (leaves > 0.01) {
     for (int k = 0; k < 7; k++) {
@@ -343,15 +353,15 @@ void main() {
       vec2 pos = leafP[k].xy;
       float sz = leafP[k].z, z = leafP[k].w;
       vec2 dv = (o - pos) * vec2(imgSize.x / imgSize.y, 1.0);
-      if (dot(dv, dv) > sz * sz * 2.5 || z < d + 0.03) continue;
+      if (dot(dv, dv) > sz * sz * 2.5) continue;
       float ang = leafQ[k].x, spin = leafQ[k].y, h13 = leafQ[k].z, h2 = leafQ[k].w;
       vec2 rr = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * dv;
-      float flip = cos(spin), wsc = max(0.14, abs(flip));
+      float flip = cos(spin), wsc = max(0.22, abs(flip));
       vec2 lp = rr / vec2(sz, sz * 0.62 * wsc);
       // ширина по длине листа: у черешка (x < 0) шире, к кончику сходится остро
       float prof = (1.0 - lp.x * lp.x) * (1.0 - 0.35 * lp.x);
       float inside = prof - abs(lp.y);
-      float aa = 1.6 / (view.y * sz * 0.62 * wsc);
+      float aa = 1.6 / (view.y * sz * 0.62 * wsc) * (1.0 + 2.2 * smoothstep(0.75, 1.0, z));
       float leaf = smoothstep(0.0, aa, inside) * step(abs(lp.x), 1.0);
       float stem = smoothstep(0.1 + aa, 0.0, abs(lp.y)) * step(-1.3, lp.x) * step(lp.x, -0.9);
       // цвет: жёлтая берёза, рыжая осина, бурый сухой; изнанка бледнее и серее
@@ -364,8 +374,8 @@ void main() {
       lc *= 0.78 + 0.22 * smoothstep(0.0, 0.25, inside);
       lc = mix(lc, vec3(0.3, 0.22, 0.12), stem * (1.0 - leaf));
       float a = max(leaf, stem * 0.9);
-      lc = mode < 0.5 ? mix(lc * mix(1.0, 0.62, storm), fogCol, (1.0 - z) * 0.95 + fogAmt * 0.1) : lc * (0.06 + 1.3 * cone);
-      col = mix(col, lc, a * mix(0.75, 0.95, z));
+      lc = mode < 0.5 ? mix(lc * mix(1.0, 0.62, storm), fogCol, (1.0 - z) * 0.3 + fogAmt * 0.05) : lc * (0.06 + 1.3 * cone);
+      col = mix(col, lc, a * mix(0.85, 0.95, z));
     }
   }
   // Дождь. Пять слоёв струй от ближнего к дальнему: ближние редкие, крупные и размытые (не в фокусе), длиннее —
@@ -591,13 +601,15 @@ const leafP = new Float32Array(28), leafQ = new Float32Array(28)
 function leafPaths(g: WebGL2RenderingContext, t: number, amount: number) {
   const n = Math.min(7, Math.floor(2 + 2.5 * amount)), wind = props.windy ?? 1
   for (let k = 0; k < n; k++) {
-    const P = 9 + 7 * hash(k, 1.3), cyc = Math.floor((t + k * 3.7) / P), age = (t + k * 3.7) - cyc * P
+    const P = 7 + 6 * hash(k, 1.3), cyc = Math.floor((t + k * 3.7) / P), age = (t + k * 3.7) - cyc * P
     const h1 = hash(k + 0.17, cyc + 0.17), h2 = hash(k + 3.1, cyc + 3.1), h3 = hash(k + 7.7, cyc + 7.7)
-    const z = 0.55 + 0.4 * h3
-    // старт выше и левее кадра: часть листьев пролетает мимо, не каждый цикл на экране есть лист
-    const sx = h1 * 1.6 - 0.7, sy = -0.1 - 0.35 * h2, zs = 0.6 + 0.4 * z
-    const vx = (0.07 + 0.08 * h2) * (0.6 + 0.6 * wind) * zs, vy = (0.055 + 0.05 * h1) * zs
-    leafP.set([sx + vx * age + 0.035 * Math.sin(age * 1.6 + h1 * 6), sy + vy * age + 0.02 * Math.sin(age * 2.7 + h2 * 5), (0.006 + 0.008 * z) * (0.8 + 0.4 * h2), z], k * 4)
+    // близость 0…1: крупный лист — у самых глаз и летит быстрее
+    const z = h3, sz = (0.008 + 0.02 * z * z) * (0.85 + 0.3 * h2)
+    // старт над кадром; падает так, чтобы пересечь кадр до конца своего цикла (медленный раньше исчезал посреди экрана)
+    const sx = h1 * 1.5 - 0.55, sy = -0.06 - 2 * sz - 0.12 * h2
+    const vy = (1.25 + 4 * sz) / P * (1 + 0.35 * z)
+    const vx = (0.05 + 0.08 * h2) * (0.6 + 0.6 * wind) * (0.7 + 0.6 * z)
+    leafP.set([sx + vx * age + 0.035 * Math.sin(age * 1.6 + h1 * 6), sy + vy * age + 0.02 * Math.sin(age * 2.7 + h2 * 5), sz, z], k * 4)
     leafQ.set([age * (0.5 + h3) + h1 * 6.28, age * (1.6 + 2.2 * h1) + h2 * 6, h3 * h1, h2], k * 4)
   }
   g.uniform4fv(u.leafP!, leafP); g.uniform4fv(u.leafQ!, leafQ); g.uniform1i(u.leafN!, n)
@@ -718,7 +730,7 @@ function frame(ms: number) {
   lastDraw = ms
   measure(ms, busy ? 1000 / 60 : 1000 / 30)
   if (!born) born = ms
-  if (texImg) draw(ms)
+  if (texImg) { draw(ms); frameTick(ms) }
   // новые картинки готовы: снимок только что нарисованного кадра — и смена
   if (pending) { swap(ms); draw(ms) }
   else if (sharper && sharper.key === shownKey) {

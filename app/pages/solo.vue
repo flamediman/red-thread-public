@@ -9,6 +9,21 @@ useHead({ title: 'Туман — Красная нить', htmlAttrs: { 'data-se
 const route = useRoute()
 /** линия кардиограммы в строке состояния: два удара на ширину */
 const ECG = 'M0 22 H40 L46 22 L50 6 L55 36 L60 22 H100 H140 L146 22 L150 6 L155 36 L160 22 H200'
+/* пульс: окно в пятую часть ширины едет слева направо (−100 % → 500 % своей ширины), линия в нём — навстречу
+   (20 % → −100 % своей), и стоит на месте. В такт объёмного кадра; быстрее, когда ранен */
+const ecgWin = ref<HTMLElement | null>(null)
+const ecgLit = ref<SVGSVGElement | null>(null)
+let stopEcg: (() => void) | null = null
+onMounted(() => {
+  stopEcg = onFrame((ms) => {
+    if (!ecgWin.value || !ecgLit.value) return
+    const key = healthState.value.key, beat = key === 'bad' ? 750 : key === 'hurt' ? 1400 : 2200
+    const p = (ms % beat) / beat
+    ecgWin.value.style.transform = `translateX(${(-100 + 600 * p).toFixed(2)}%)`
+    ecgLit.value.style.transform = `translateX(${(20 - 120 * p).toFixed(2)}%)`
+  })
+})
+onBeforeUnmount(() => stopEcg?.())
 const storyId = typeof route.query.story === 'string' ? route.query.story : undefined
 const { view, connected, error, clockOffset, send, transferCode, adoptError, transfer, adopt } = useSolo(storyId)
 /* перенос партии между устройствами: у партии один код на год */
@@ -639,11 +654,11 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           <!-- пульс, фонарь и приёмник — одной строкой, как в играх -->
           <div class="solo-status__row">
             <div class="solo-ecg" :class="`solo-ecg--${healthState.key}`" :title="healthState.label">
-              <!-- пульс бежит окном по неподвижной линии: окно и линия в нём двигаются навстречу (только transform —
-                   анимацию ведёт видеокарта; штрих по stroke-dashoffset перерисовывался основным потоком каждый кадр) -->
+              <!-- пульс бежит окном по неподвижной линии: окно и линия в нём двигаются навстречу (только transform, в такт
+                   объёмного кадра — см. utils/frame-clock; штрих по stroke-dashoffset перерисовывался каждый кадр) -->
               <i class="solo-ecg__trace" aria-hidden="true">
                 <svg class="solo-ecg__base" viewBox="0 0 200 40" preserveAspectRatio="none"><path :d="ECG" /></svg>
-                <i class="solo-ecg__win"><svg class="solo-ecg__lit" viewBox="0 0 200 40" preserveAspectRatio="none"><path :d="ECG" /></svg></i>
+                <i ref="ecgWin" class="solo-ecg__win"><svg ref="ecgLit" class="solo-ecg__lit" viewBox="0 0 200 40" preserveAspectRatio="none"><defs><filter id="ecg-glow" x="-5%" y="-60%" width="110%" height="220%"><feGaussianBlur stdDeviation="1.8" /></filter></defs><path class="solo-ecg__glow" filter="url(#ecg-glow)" :d="ECG" /><path :d="ECG" /></svg></i>
               </i>
               <span>{{ healthState.label }}</span>
             </div>
@@ -659,6 +674,17 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           </div>
           <div v-if="v.weapon || v.ammo" class="solo-weapon"><SoloIcon :name="v.inventory.find(i => i.equipped)?.icon ?? 'weapon'" />{{ v.weapon ?? 'без оружия' }}<b v-if="v.ammo" class="tabnum"> · патронов {{ v.ammo }}</b></div>
         </div>
+
+        <!-- вещи — сразу под меню и состоянием: к ним тянутся чаще всего -->
+        <section class="solo-block solo-block--bag">
+          <button type="button" class="solo-bagbtn" :class="{ on: bagOpen }" title="Вещи (I)" @click="bagOpen = true">
+            <span class="solo-bagbtn__top"><span class="solo-label">Вещи</span><b class="tabnum">{{ v.inventory.length }}</b></span>
+            <span class="solo-bagbtn__icons">
+              <SoloIcon v-for="it in v.inventory.slice(0, 8)" :key="it.id" :name="it.icon" :class="{ equipped: it.equipped }" />
+            </span>
+          </button>
+          <p v-if="mode?.kind === 'use'" class="solo-bagbtn__mode">Применить «{{ mode.name }}» — выберите, к чему. <button type="button" class="solo-link" @click="mode = null; picked = null">Отмена</button></p>
+        </section>
 
         <p v-if="mode" class="solo-mode">
           {{ mode.kind === 'use' ? `Применить «${mode.name}» — к чему?` : `Соединить «${mode.name}» — с чем?` }}
@@ -683,15 +709,6 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
           ><SoloIcon :name="x.locked ? 'lock' : 'step'" />{{ x.label }}</button>
         </section>
 
-        <section class="solo-block solo-block--bag">
-          <button type="button" class="solo-bagbtn" :class="{ on: bagOpen }" title="Вещи (I)" @click="bagOpen = true">
-            <span class="solo-bagbtn__top"><span class="solo-label">Вещи</span><b class="tabnum">{{ v.inventory.length }}</b></span>
-            <span class="solo-bagbtn__icons">
-              <SoloIcon v-for="it in v.inventory.slice(0, 8)" :key="it.id" :name="it.icon" :class="{ equipped: it.equipped }" />
-            </span>
-          </button>
-          <p v-if="mode?.kind === 'use'" class="solo-bagbtn__mode">Применить «{{ mode.name }}» — выберите, к чему. <button type="button" class="solo-link" @click="mode = null; picked = null">Отмена</button></p>
-        </section>
       </aside>
 
       <!-- ── панели ── -->

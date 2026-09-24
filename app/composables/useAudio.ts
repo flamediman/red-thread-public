@@ -243,9 +243,13 @@ function variant(name: string) {
   return k === 1 ? name : `${name}-${k}`
 }
 
+/* Звуки браузер держит сутки (routeRules /sfx): у перегенерированного звука — новая версия в адресе, иначе игрок
+   ещё день слышит старый. Поднять номер, когда звук переделан */
+const SFX_REV: Record<string, number> = { pines: 2 }
+const sfxUrl = (name: string, world = true) => `/sfx/${world ? `${currentSetting.value}/` : ''}${name}.m4a${SFX_REV[name] ? `?v=${SFX_REV[name]}` : ''}`
 async function loadSfx(name: string): Promise<AudioBuffer | null> {
   if (name.includes('.')) return load(`/sfx/${name}`)
-  return (await load(`/sfx/${currentSetting.value}/${name}.m4a`)) ?? load(`/sfx/${name}.m4a`)
+  return (await load(sfxUrl(name))) ?? load(sfxUrl(name, false))
 }
 
 function rampTo(p: AudioParam, value: number, seconds: number) {
@@ -313,7 +317,7 @@ export function useAudio() {
       if (existing && existing.world !== currentSetting.value) { existing.stop(); loops.delete(name) }
       else if (existing) { existing.setLevel(target); continue }
       // новая петля (300 КБ) не отнимает канал у картинки места — ждёт её, но недолго
-      if (!buffers.has(`/sfx/${currentSetting.value}/${name}.m4a`)) await afterArt(3000)
+      if (!buffers.has(sfxUrl(name))) await afterArt(3000)
       if (gen !== ambGen) return
       if (loops.has(name)) continue
       const buf = await soundLoad(loadSfx(name))
