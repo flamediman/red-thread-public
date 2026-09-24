@@ -379,8 +379,10 @@ export interface SoloStory {
   /** источники света, нарисованные в кадре (лампа, фонарь): в темноте светятся сами и освещают пятно вокруг; фонарь
       героя высвечивает остальное. Имя картинки → лампы в процентах кадра */
   lights?: Record<string, SoloLight[]>
-  /** кадры с маской растительности w_<кадр>.jpg: трава и деревья качаются на ветру (tools/wind-masks.mjs) */
+  /** кадры с маской травы w_<кадр>.jpg: поверх картинки растут травинки и колышутся на ветру (tools/grass-masks.mjs) */
   wind?: string[]
+  /** кадры с картой поверхностей g_<кадр>.png: стекло, гладкий пол, осколки — отражают фонарь и лампы (tools/materials.mjs) */
+  materials?: string[]
   /** погода по ходу сюжета: действует последнее подходящее правило; без правил — туман */
   weather?: SoloWeatherRule[]
   /** кадры, у которых есть карта глубины z_<кадр>.jpg: рисуются объёмом (2,5D) */
@@ -416,6 +418,7 @@ export interface SoloView {
   artFocus: Record<string, string>
   lights: Record<string, SoloLight[]>
   wind: string[]
+  materials: string[]
   /** кадры с картой глубины */
   depth: string[]
   /** нет партии — только меню */
@@ -424,7 +427,7 @@ export interface SoloView {
     id: string; area: string; name: string; art: string; text: string[]
     dark: boolean; lit: boolean; outdoor: boolean; save: string | null; hide: string | null; ambience: string[]; surface: string; weather: SoloWeather; deep: boolean
   } | null
-  exits: { to: string; label: string; locked: string | null; known: boolean }[]
+  exits: { to: string; label: string; locked: string | null; known: boolean; art?: string }[]
   hotspots: { id: string; name: string; kind: 'look' | 'puzzle' | 'talk'; done: boolean }[]
   inventory: { id: string; name: string; description: string; kind: SoloItemKind; icon: string; art: string; count: number; equipped: boolean; usable: boolean; examinable: boolean }[]
   /** read — записку уже открывали в журнале; значок «Записки» считает непрочитанные */

@@ -30,7 +30,9 @@ const saveOpen = ref(false)
 const bagOpen = ref(false)
 const mapOpen = ref(false)
 const notesOpen = ref(false)
-watch(mapOpen, on => { if (on) void audio.sfx('map-unfold', 0.55) })
+/* окна со звуком: карта разворачивается и складывается, сумка расстёгивается и застёгивается */
+watch(mapOpen, on => { void audio.sfx(on ? 'map-open' : 'map-close', 0.55) })
+watch(bagOpen, on => { void audio.sfx(on ? 'bag-open' : 'bag-close', 0.55) })
 watch(notesOpen, on => { if (on) void audio.sfx('paper', 0.45) })
 
 async function enter(action: 'continue' | 'new' | { load: number }) {
@@ -67,6 +69,7 @@ const depthFail = ref(false)
 const depthSrc = computed(() => artSrc.value && v.value?.depth.includes(shownArt.value) && !depthFail.value ? `/art/${story.value}/z_${shownArt.value}.jpg` : '')
 /* ветер: маска растительности кадра; сила — по погоде (в грозу деревья гнёт сильнее) */
 const windSrc = computed(() => (artSrc.value && v.value?.wind?.includes(shownArt.value) ? `/art/${story.value}/w_${shownArt.value}.jpg` : undefined))
+const matSrc = computed(() => (artSrc.value && v.value?.materials?.includes(shownArt.value) ? `/art/${story.value}/g_${shownArt.value}.png` : undefined))
 const WINDY: Record<string, number> = { fog: 0.6, drizzle: 0.8, rain: 1.1, storm: 1.9 }
 const windy = computed(() => WINDY[place.value?.weather ?? 'fog'] ?? 0.6)
 watch(artSrc, () => { depthFail.value = false })
@@ -202,6 +205,26 @@ function clickItem(id: string) {
   mode.value = null
   picked.value = picked.value === id ? null : id
 }
+/* кадры соседних мест (куда ведут выходы) грузятся заранее, пока игрок читает: переход в новое место — без ожидания.
+   Картинка, глубина и трава ложатся в кэш браузера, объёмный кадр при переходе берёт их оттуда; по одному, чтобы не
+   отнимать канал у того, что нужно сейчас */
+const preloaded = new Set<string>()
+watch(() => v.value?.exits.map(x => x.art ?? '').join(','), async list => {
+  if (!list || !story.value) return
+  const urls: string[] = []
+  for (const a of list.split(',')) {
+    if (!a) continue
+    urls.push(`/art/${story.value}/${a}.jpg`)
+    if (v.value?.depth.includes(a)) urls.push(`/art/${story.value}/z_${a}.jpg`)
+    if (v.value?.wind?.includes(a)) urls.push(`/art/${story.value}/w_${a}.jpg`)
+    if (v.value?.materials?.includes(a)) urls.push(`/art/${story.value}/g_${a}.png`)
+  }
+  for (const u of urls) {
+    if (preloaded.has(u)) continue
+    preloaded.add(u)
+    try { await fetch(u, { priority: 'low' } as RequestInit) } catch { preloaded.delete(u) }
+  }
+}, { immediate: true })
 /* картинки вещей грузятся заранее — окно вещей открывается сразу полным */
 watch(() => v.value?.inventory.map(i => i.art).join(','), arts => {
   if (!arts || !story.value) return
@@ -302,6 +325,16 @@ watch([() => place.value?.outdoor, () => audio.unlocked.value], ([outdoor]) => a
 watch([() => place.value?.surface, () => place.value?.outdoor, () => audio.unlocked.value], ([surface, outdoor, ok]) => {
   if (!ok) return
   audio.setRoom(outdoor ? 0.07 : surface === 'water' ? 0.5 : surface === 'tile' ? 0.36 : 0.16)
+}, { immediate: true })
+/* пространство места для звуков вокруг: лес и улица, деревянная комната, кафель, машинный зал, вода, тоннель — у каждого
+   своё эхо; звук вокруг героя идёт через него, поэтому звучит изнутри места, а не поверх */
+watch([() => place.value?.id, () => audio.unlocked.value], () => {
+  const p = place.value
+  if (!p || !audio.unlocked.value) return
+  const kind = p.outdoor ? (p.area === 'road' || p.area === 'camp' ? 'forest' : 'outdoor')
+    : p.deep ? (p.surface === 'water' ? 'tunnel' : 'water')
+      : p.surface === 'water' ? 'water' : p.surface === 'tile' ? 'tile' : p.area === 'intake' ? 'machine' : 'wood'
+  audio.setSpace(kind)
 }, { immediate: true })
 
 /* Смена кадра без провала в темноту. Новый кадр проявляется сам: объёмный — после первой отрисовки (у телефона на это
@@ -534,7 +567,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         >
           <!-- объёмный кадр — один на всю игру: места сменяются внутри него перетеканием (SoloDepth) -->
           <Transition name="solo-over">
-            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :outdoor="!!place?.outdoor" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
+            <SoloDepth v-if="depthSrc" class="solo-view__art" :src="artSrc" :depth="depthSrc" :mode="darkness" :lx="torch.x" :ly="torch.y" :outdoor="!!place?.outdoor" :power="torchPower" :beam="torchBeam" :focus="v.artFocus[shownArt]" :rain="rainAmount" :flash="flash" :lights="v.lights?.[shownArt]" :surface="place?.surface" :wind="windSrc" :mat="matSrc" :windy="windy" :leaves="place?.outdoor ? (place.weather === 'storm' ? 1.6 : 1) : 0" :fog="fogAmount" :other="v.otherworld" @fail="depthFail = true" @ready="frameReady++" />
           </Transition>
           <!-- плоский кадр (крупный план, нет карты глубины): уходящий гаснет, только когда новый нарисован (onCutLeave) -->
           <Transition :css="false" @enter="onCutEnter" @leave="onCutLeave">

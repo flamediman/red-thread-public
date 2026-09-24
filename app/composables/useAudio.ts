@@ -27,10 +27,22 @@ let ambFilter: BiquadFilterNode | null = null
 /** «далеко»: вход цепочки низких частот и эха — так звучит всё, что где-то за озером или в другом конце здания */
 let farInput: GainNode | null = null
 /** «комната»: короткое эхо для одиночных звуков, доля эха — по покрытию места (кафель гулкий, улица сухая) */
-let room: { input: GainNode; wet: GainNode } | null = null
+let room: { input: GainNode; wet: GainNode; conv: ConvolverNode } | null = null
 /** звуки, которые по смыслу всегда далеко: идут через эту цепочку, откуда бы их ни попросили */
 const FAR_NAMES = new Set(['bugle-far-cut', 'bugle-far-full', 'whisper-far', 'siren-bugle', 'oarlocks', 'announce-far', 'branch-far'])
 let ambRoom: GainNode | null = null
+/** «пространство» места: общее эхо для звуков вокруг героя — две свёртки, между ними плавный переход при смене места */
+let space: { input: GainNode; a: { conv: ConvolverNode; g: GainNode }; b: { conv: ConvolverNode; g: GainNode }; front: 'a' | 'b'; kind: string } | null = null
+/** пространства: длина хвоста, спад, яркость (кафель звонкий, дерево глухое), ранние отражения (стены рядом), доля эха */
+const SPACES: Record<string, { sec: number; decay: number; bright: number; early: number; wet: number }> = {
+  outdoor: { sec: 1.6, decay: 4, bright: 0.3, early: 0, wet: 0.5 },
+  forest: { sec: 2.2, decay: 3.4, bright: 0.28, early: 0.12, wet: 0.6 },
+  wood: { sec: 1, decay: 3.2, bright: 0.45, early: 0.55, wet: 0.7 },
+  tile: { sec: 2.3, decay: 2.3, bright: 0.85, early: 0.8, wet: 1 },
+  machine: { sec: 2.8, decay: 2.2, bright: 0.6, early: 0.7, wet: 1 },
+  water: { sec: 3.2, decay: 2, bright: 0.55, early: 0.7, wet: 1.1 },
+  tunnel: { sec: 3.8, decay: 1.8, bright: 0.6, early: 0.9, wet: 1.2 }
+}
 const buffers = new Map<string, Promise<AudioBuffer | null>>()
 const unlocked = ref(false)
 const muted = ref(false)
@@ -389,34 +401,95 @@ export function useAudio() {
   }
 
   /** Звук в пространстве вокруг героя. az — откуда: 0 — впереди, ±π/2 — справа/слева, π — за спиной; up — выше (этаж над головой).
-      dist — насколько далеко, в шагах: дальнее глуше (срез верха) и идёт через «далеко» с долгим эхом, ближнее — через «комнату».
-      Направление даёт HRTF: в наушниках звук за спиной слышен за спиной, а не просто «посередине».
-      Высота тона каждый раз чуть другая (±7 %) — один и тот же скрип не звучит одинаково дважды */
-  async function spatial(name: string, o: { az: number; dist?: number; up?: number; volume?: number; rate?: number }): Promise<number> {
+      dist — насколько далеко, в шагах. Звук вписан в место: прямой сигнал и эхо пространства (setSpace) смешиваются по
+      расстоянию — рядом почти сухо и ярко, вдали почти одно эхо, глухое (воздух съедает верх), и приходит с запаздыванием.
+      wall — звук за стеной или перекрытием: прямой глухой и тихий, слышен больше через эхо здания. move — источник смещается
+      по ходу звука (шаги проходят мимо), в радианах. Направление — HRTF; высота тона каждый раз чуть другая (±7 %) */
+  async function spatial(name: string, o: { az: number; dist?: number; up?: number; volume?: number; rate?: number; wall?: boolean; move?: number }): Promise<number> {
     const c = ensure(); if (!c) return 0
     const buf = await loadSfx(variant(name))
     if (!buf) return 0
-    const dist = o.dist ?? 3
+    const d = FAR_NAMES.has(name) ? Math.max(o.dist ?? 3, 30) : o.dist ?? 3
     const src = c.createBufferSource()
     src.buffer = buf
     src.playbackRate.value = o.rate ?? 0.93 + Math.random() * 0.14
+    const dur = buf.duration / src.playbackRate.value
     const g = c.createGain(); g.gain.value = o.volume ?? 0.6
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5
-    lp.frequency.value = Math.max(700, 17000 / (1 + dist * 0.3))
-    let tail: AudioNode = lp
+    const air = c.createBiquadFilter(); air.type = 'lowpass'; air.Q.value = 0.5
+    air.frequency.value = o.wall ? 480 : Math.max(900, 18000 / (1 + d * 0.12))
+    src.connect(g).connect(air)
+    // прямой: запаздывает на путь звука, тише с расстоянием
+    const delay = c.createDelay(0.5); delay.delayTime.value = Math.min(0.3, d / 343)
+    const direct = c.createGain(); direct.gain.value = Math.min(1, Math.max(0.05, 3.5 / (d + 2.5))) * (o.wall ? 0.4 : 1)
+    air.connect(delay)
+    let tail: AudioNode = delay
     if (c.createPanner) {
       const p = c.createPanner()
       p.panningModel = 'HRTF'
-      // громкость по расстоянию считаем сами (volume), панорама только задаёт направление
       p.rolloffFactor = 0
-      const x = Math.sin(o.az), z = -Math.cos(o.az), y = o.up ?? 0
-      if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z } else p.setPosition(x, y, z)
-      tail = lp.connect(p)
+      const r = Math.min(8, 1 + d * 0.3), y = o.up ?? 0
+      const at = (az: number) => [Math.sin(az) * r, y, -Math.cos(az) * r] as const
+      const [x0, y0, z0] = at(o.az)
+      if (p.positionX) {
+        p.positionX.value = x0; p.positionY.value = y0; p.positionZ.value = z0
+        if (o.move) { const [x1, , z1] = at(o.az + o.move); const t1 = c.currentTime + dur; p.positionX.linearRampToValueAtTime(x1, t1); p.positionZ.linearRampToValueAtTime(z1, t1) }
+      } else p.setPosition(x0, y0, z0)
+      tail = delay.connect(p)
     }
-    src.connect(g).connect(lp)
-    tail.connect(dist >= 15 || FAR_NAMES.has(name) ? farChain(c) : roomChain(c))
+    tail.connect(direct).connect(gains.sfx!)
+    // эхо места: чем дальше и чем глуше (за стеной), тем больше звука приходит отражённым
+    const send = c.createGain()
+    send.gain.value = Math.min(0.95, 0.12 + d / 35) * (o.wall ? 1.4 : 1)
+    air.connect(send).connect(spaceChain(c))
     src.start()
-    return buf.duration / src.playbackRate.value
+    return dur
+  }
+
+  /** общее эхо для spatial: вход → две свёртки (текущее пространство и прошлое, пока затухает) */
+  function spaceChain(c: AudioContext) {
+    if (space) return space.input
+    const input = c.createGain()
+    const mk = () => { const conv = c.createConvolver(); const g2 = c.createGain(); g2.gain.value = 0; input.connect(conv).connect(g2).connect(gains.sfx!); return { conv, g: g2 } }
+    space = { input, a: mk(), b: mk(), front: 'a', kind: '' }
+    return input
+  }
+  /** Эхо пространства: шумовой хвост с ранними отражениями; верх гаснет быстрее низа (как в настоящем зале) */
+  function spaceImpulse(c: AudioContext, sp: { sec: number; decay: number; bright: number; early: number }) {
+    const rate = c.sampleRate, len = Math.floor(rate * sp.sec)
+    const buf = c.createBuffer(2, len, rate)
+    for (let ch = 0; ch < 2; ch++) {
+      const dd = buf.getChannelData(ch)
+      let lp = 0
+      for (let i = 0; i < len; i++) {
+        const t = i / len
+        const k = 0.04 + sp.bright * 0.9 * (1 - t) ** 1.5
+        lp += k * ((Math.random() * 2 - 1) - lp)
+        // нарастание 5 мс — хвост не щёлкает
+        dd[i] = lp * Math.pow(1 - t, sp.decay) * Math.min(1, i / (rate * 0.005))
+      }
+      for (let r = 0; r < 7 && sp.early > 0; r++) {
+        const at = Math.floor(rate * (0.006 + r * 0.009 + Math.random() * 0.006))
+        if (at < len) dd[at] = (dd[at] ?? 0) + (Math.random() < 0.5 ? -1 : 1) * sp.early * 0.9 * (1 - r / 8)
+      }
+    }
+    return buf
+  }
+  /** место сменилось: новое эхо проявляется за 1,5 с, старое гаснет (хвосты не обрываются). kind — из SPACES */
+  function setSpace(kind: string) {
+    const c = ensure(); if (!c) return
+    spaceChain(c)
+    const sp = SPACES[kind] ?? SPACES.wood!
+    if (space!.kind === kind) return
+    space!.kind = kind
+    const next = space!.front === 'a' ? space!.b : space!.a, prev = space!.front === 'a' ? space!.a : space!.b
+    next.conv.buffer = spaceImpulse(c, sp)
+    const now = c.currentTime
+    next.g.gain.cancelScheduledValues(now); next.g.gain.setTargetAtTime(sp.wet, now, 0.5)
+    prev.g.gain.cancelScheduledValues(now); prev.g.gain.setTargetAtTime(0, now, 0.5)
+    space!.front = space!.front === 'a' ? 'b' : 'a'
+    // короткое эхо одиночных звуков (sfx) — того же характера
+    roomChain(c)
+    room!.conv.buffer = spaceImpulse(c, { ...sp, sec: Math.min(sp.sec, 1.8) })
   }
 
   function roomChain(c: AudioContext) {
@@ -426,7 +499,7 @@ export function useAudio() {
     const wet = c.createGain(); wet.gain.value = 0.1
     input.connect(gains.sfx!)
     input.connect(conv).connect(wet).connect(gains.sfx!)
-    room = { input, wet }
+    room = { input, wet, conv }
     return input
   }
 
@@ -510,5 +583,5 @@ export function useAudio() {
     music?.stop(MUSIC_FADE); music = null; musicWanted = null
   }
 
-  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, ambience, theme, stinger, tone, melody, sfx, spatial, voice, stopVoice, stopAll, preload: load }
+  return { unlocked, muted, voiceOn, speaking, unlock, setMuted, setVoiceOn, setPaused, setOutdoors, setRoom, setSpace, ambience, theme, stinger, tone, melody, sfx, spatial, voice, stopVoice, stopAll, preload: load }
 }

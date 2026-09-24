@@ -67,8 +67,10 @@ const hide = (e: Event) => { (e.target as HTMLImageElement).style.visibility = '
             <div class="solo-inv__big">
               <img :key="current.art" :src="`/art/${story}/${current.art}.jpg`" alt="" @error="hide">
             </div>
-            <h3>{{ current.name }}<b v-if="current.count > 1" class="tabnum"> ×{{ current.count }}</b></h3>
-            <p>{{ current.description }}</p>
+            <div class="solo-inv__desc">
+              <h3>{{ current.name }}<b v-if="current.count > 1" class="tabnum"> ×{{ current.count }}</b></h3>
+              <p>{{ current.description }}</p>
+            </div>
             <div v-if="combining" class="solo-inv__actions">
               <button type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="emit('cancel')">Не соединять</button>
             </div>

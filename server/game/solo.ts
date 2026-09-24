@@ -276,6 +276,12 @@ export class SoloGame {
     this.feed = [...this.feed, { seq: ++this.seq, text: text ?? '', sfx, voice, ...extra }].slice(-FEED)
   }
   private artOf(item: SoloItem) { return item.art ?? `i_${item.id}` }
+  /** кадр места: изнанка, иначе версия под нынешнюю погоду (место меняется, когда в него возвращаешься), иначе обычный */
+  private placeArt(p: SoloPlace) {
+    const wart = p.weatherArt?.[this.weather()]
+    const oart = `o_${p.art ?? p.id}`
+    return this.run?.otherworld && p.other && artExists(this.info.id, oart) ? oart : wart && artExists(this.info.id, wart) ? wart : `l_${p.art ?? p.id}`
+  }
 
   private showScene(lines?: SoloLine[], music?: string) {
     if (!lines?.length) return
@@ -1330,17 +1336,14 @@ export class SoloGame {
   view(): SoloView {
     const r = this.run
     const empty: SoloView = {
-      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, lights: this.S.lights ?? {}, wind: this.S.wind ?? [], depth: this.S.depth ?? [], started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
+      build: BUILD, info: this.info, speakers: Object.fromEntries(this.S.npcs.map(n => [n.id, n.name])), artFocus: this.S.artFocus ?? {}, lights: this.S.lights ?? {}, wind: this.S.wind ?? [], materials: this.S.materials ?? [], depth: this.S.depth ?? [], started: false, place: null, exits: [], hotspots: [], inventory: [], notes: [], health: 100, battery: 0, light: false,
       ammo: 0, radio: 0, radioOn: true, otherworld: false, weapon: null, map: { areas: this.S.areas, places: [], links: [] }, feed: [], scene: null, encounter: null, boss: null, chase: null, puzzle: null,
       dialogue: null, dead: false, ending: null, saves: this.saveList(), canSave: false
     }
     if (!r) return empty
     const p = this.place()
     const lit = !p.dark || r.light
-    // кадр: изнанка, иначе версия под нынешнюю погоду (место меняется, когда в него возвращаешься), иначе обычный
-    const wart = p.weatherArt?.[this.weather()]
-    const oart = `o_${p.art ?? p.id}`
-    const art = r.otherworld && p.other && artExists(this.info.id, oart) ? oart : wart && artExists(this.info.id, wart) ? wart : `l_${p.art ?? p.id}`
+    const art = this.placeArt(p)
     const texts = p.text.filter(t => this.ok(t.when)).map(t => t.text)
     if (p.dark && !r.light) texts.push('Темно. Без света здесь ничего не разглядеть.')
     const now = Date.now()
@@ -1360,6 +1363,8 @@ export class SoloGame {
       place: { id: p.id, area: p.area, name: p.name, art, text: texts, dark: !!p.dark, lit, outdoor: !!p.outdoor, save: p.save ?? null, hide: p.hide ?? null, ambience: (r.otherworld && p.otherAmbience) || p.ambience || [], surface: p.surface ?? 'asphalt', weather: this.weather(), deep: !!p.deep },
       exits: p.exits.filter(x => this.ok(x.when)).map(x => ({
         to: x.to, label: x.label,
+        // кадр места за выходом — страница грузит его заранее, пока игрок читает здесь
+        art: this.PLACE.get(x.to) ? this.placeArt(this.PLACE.get(x.to)!) : undefined,
         locked: x.lock && !this.exitOpen(p.id, x) && !(x.lock.item && this.has(x.lock.item)) && !(x.lock.flag && this.flag(x.lock.flag)) ? x.lock.text : null,
         known: visited.has(x.to)
       })),

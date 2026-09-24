@@ -64,6 +64,11 @@ const PACKS = {
   },
   // «Туман»: одиночная игра. Никакой музыки в звуках — только тишина, сырость, далёкий горн и то, что в тумане
   tuman: {
+    // окна: вещи и карта
+    'bag-open': ['Opening a worn canvas shoulder bag: a buckle unclasped, rough fabric flap lifted, small items shift inside, close microphone, quiet room, no music', 1.2],
+    'bag-close': ['Closing a worn canvas shoulder bag: fabric flap dropped, buckle fastened with a small metal click, close microphone, no music', 1],
+    'map-open': ['Unfolding an old paper map: stiff creased paper opened with a crisp rustle, close microphone, quiet room, no music', 1.3],
+    'map-close': ['Folding an old paper map back along its creases: a few quick paper rustles and a soft pat, close microphone, no music', 1.1],
     // петли атмосферы
     'fog-wind': ['Steady low moaning wind blowing through an abandoned foggy village and pine trees, hollow airy whoosh, occasional creak of a wooden pole, clearly audible, no birds, no music, seamless ambience loop', 14, true],
     'water-lap': ['Gentle lake water lapping against concrete steps and wooden pier posts in thick fog, slow irregular small waves, quiet, close, no music, seamless ambience', 12, true],

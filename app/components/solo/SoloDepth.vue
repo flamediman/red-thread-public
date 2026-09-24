@@ -6,7 +6,7 @@
    отражают, дождь, пыль и листья летят на разной глубине и прячутся за предметами, по небу идут облака, ветки и
    трава качаются (маска ветра w_), вода рябит. Всё — один проход по экрану.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; mat?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -53,7 +53,7 @@ uniform float rain; uniform float fogAmt; uniform float other; uniform float fla
 uniform vec4 lamp[4]; uniform vec3 lampCol[4]; uniform int lampN; uniform float quality;
 uniform sampler2D prev; uniform float fade; uniform vec2 view; uniform float glossy; uniform float wet;
 uniform sampler2D windTex; uniform float windOn; uniform float windAmt; uniform float leaves; uniform vec2 imgSize;
-uniform float breath; uniform vec2 sun; uniform float sunOn; uniform float indoor; uniform vec3 fogTint;
+uniform float breath; uniform vec2 sun; uniform float sunOn; uniform float indoor; uniform vec3 fogTint; uniform sampler2D matTex; uniform float matOn;
 float depthAt(vec2 q) { return textureLod(dep, q, 0.0).r; }
 float hAt(vec2 q, float lod) { return textureLod(dep, q, lod).r; }
 vec2 toTex(vec2 s) { return shift + (s - 0.5) * cover + 0.5; }
@@ -130,6 +130,8 @@ void main() {
       }
     }
   }
+  // поверхности (g_): красное — стекло, зелёное — гладкий пол, синее — осколки
+  vec3 mt = matOn > 0.5 ? textureLod(matTex, o, 0.0).rgb : vec3(0.0);
   // резкая глубина — для того, что прячется за предметами (дождь, пыль, листья)
   float d = hAt(o, 0.0);
   // Туман, свет, затенение углов считаются по сглаженной глубине (уровни мип-карты): резкий край глубины никогда не
@@ -249,6 +251,29 @@ void main() {
     float ambient = (0.04 + 0.06 * ds) * ao;
     vec3 warm = vec3(1.0, 0.9, 0.72);
     col = albedo * (ambient + warm * lit) + warm * (spec + glint);
+    // Поверхности. Фонарь у глаз, поэтому гладкое отражает его там, куда смотрит луч.
+    // Стекло: пятно блика в центре луча и тонкая косая полоса через него, как на стекле витрины; сквозь стекло
+    // освещённое чуть холоднее и светлее
+    vec2 d2 = sc - torch * vec2(1.6, 1.0);
+    if (mt.r > 0.02) {
+      // блик — маленький и яркий, полоса — тонкая; на и так светлом стекле слабее (не выгорает в белое)
+      float hot = exp(-dot(d2, d2) / (radius * radius * 0.012));
+      float line = exp(-pow(dot(d2, vec2(0.87, -0.5)) / 0.012, 2.0)) * exp(-dot(d2, d2) / (radius * radius * 0.18));
+      col += vec3(0.93, 0.96, 1.0) * mt.r * power * flicker * cone * (hot * 0.35 + line * 0.18) * (1.0 - 0.6 * lum);
+      col = mix(col, col * 1.06 + vec3(0.01, 0.015, 0.022) * cone, mt.r * 0.4);
+    }
+    // гладкий пол: световая дорожка — отражение луча, вытянутое к зрителю
+    if (mt.g > 0.02) {
+      float lane = exp(-pow(d2.x / (radius * 0.2), 2.0)) * exp(-pow((d2.y - radius * 0.3) / (radius * 0.8), 2.0));
+      col += warm * mt.g * lane * power * flicker * 0.18 * (1.0 - 0.5 * lum);
+    }
+    // осколки: каждый блестит под своим углом — вспыхивает, когда луч проходит через «его» положение, и гаснет
+    if (mt.b > 0.05) {
+      vec2 cid = floor(o * 960.0 * vec2(1.0, imgSize.y / imgSize.x));
+      float h = hash(cid), h2 = hash(cid + 1.7);
+      float tw = pow(max(0.0, sin(dot(torch, vec2(31.0 + 40.0 * h, 23.0 + 50.0 * h2)) + h * 6.28)), 12.0);
+      col += vec3(1.0, 0.97, 0.9) * smoothstep(0.25, 0.8, mt.b) * tw * cone * power * 2.2;
+    }
     // мокрый пол и вода в луче отражают освещённое над ними
     col = mix(col, max(col, refl * (ambient + warm * lit * 0.8)), reflAmt * cone);
     // туман и пыль видны только в луче: объёмный конус
@@ -271,6 +296,7 @@ void main() {
     col += albedo * lampCol[k] * pool * 1.6 * fl;
     // отражения лампы: отблеск на гладком рядом и световая дорожка на полу под лампой (на мокром и кафеле — ярче)
     col += lampCol[k] * gloss * pow(lum, 2.0) * pool * 1.3 * fl;
+    col += lampCol[k] * mt.r * pool * 0.5 * fl;
     float streak = exp(-pow(dv.x / (r * 0.16), 2.0)) * smoothstep(lp.y, lp.y + 0.03, o.y) * exp(-(o.y - lp.y) / (r * 2.2));
     col += lampCol[k] * streak * floorness * (0.25 + 0.75 * gloss) * (0.5 + 0.8 * rain) * 0.55 * fl;
     col = mix(col, albedo * 1.15 + lampCol[k] * 0.12, clamp(core * fl, 0.0, 1.0));
@@ -419,15 +445,15 @@ let dead = false
 const texSize = { w: 1, h: 1 }
 let prog: WebGLProgram | null = null
 const u: Record<string, WebGLUniformLocation | null> = {}
-let texImg: WebGLTexture | null = null, texDep: WebGLTexture | null = null, texPrev: WebGLTexture | null = null, texWind: WebGLTexture | null = null
+let texImg: WebGLTexture | null = null, texDep: WebGLTexture | null = null, texPrev: WebGLTexture | null = null, texWind: WebGLTexture | null = null, texMat: WebGLTexture | null = null
 /* Холст один на всю игру: при смене места новые картинки грузятся в фоне, а старый кадр рисуется как был — со своей
    темнотой, погодой и лампами (applied). Готово — последний кадр запоминается в текстуру, и шейдер за FADE мс
    перетекает из него в новый. Холст и шейдер не пересоздаются, два тяжёлых холста разом не рисуются */
 type Scene = Pick<typeof props, 'mode' | 'weak' | 'focus' | 'rain' | 'fog' | 'other' | 'lights' | 'motion' | 'surface'>
 const snapshot = (): Scene => ({ mode: props.mode, weak: props.weak, focus: props.focus, rain: props.rain, fog: props.fog, other: props.other, lights: props.lights, motion: props.motion, surface: props.surface })
 let applied: Scene = snapshot()
-let pending: { img: Img; dep: Img; wind: Img | null; key: string } | null = null
-let windOn = false
+let pending: { img: Img; dep: Img; wind: Img | null; mat: Img | null; key: string } | null = null
+let windOn = false, matOn = false
 /* точка света для лучей в тумане — самое светлое место картинки (в долях картинки); нет светлого — лучей нет */
 const sunTex = { x: 0.5, y: 0, on: false }
 const fogTint = [0.62, 0.65, 0.66]
@@ -439,8 +465,8 @@ const FADE = 900
 async function decode(url: string, raw = false): Promise<Img> {
   // декодирование вне основного потока — смена кадра не подтормаживает; карта глубины — без цветовой коррекции
   if (typeof createImageBitmap === 'function') {
-    // с перепроверкой: кадр могли перерисовать под тем же именем
-    const r = await fetch(url, { cache: 'no-cache' })
+    // из кэша, если соседнее место уже загружено заранее (сервер всё равно сверяет по ETag — кадр могли перерисовать)
+    const r = await fetch(url)
     if (!r.ok) throw new Error(String(r.status))
     return createImageBitmap(await r.blob(), raw ? { colorSpaceConversion: 'none', premultiplyAlpha: 'none' } : {})
   }
@@ -503,9 +529,11 @@ async function request(src: string, depth: string, wind?: string) {
   const key = `${src}|${depth}`
   loadingKey = key
   try {
-    const [img, dep, w] = await Promise.all([decode(src), decode(depth, true), wind ? decode(wind).catch(() => null) : Promise.resolve(null)])
+    const mat = props.mat
+    const [img, dep, w, m] = await Promise.all([decode(src), decode(depth, true), wind ? decode(wind).catch(() => null) : Promise.resolve(null),
+      mat ? decode(mat, true).catch(() => null) : Promise.resolve(null)])
     if (dead || loadingKey !== key) return
-    pending = { img, dep, wind: w, key }
+    pending = { img, dep, wind: w, mat: m, key }
   } catch { if (!dead && loadingKey === key) emit('fail') }
 }
 function swap(ms: number) {
@@ -524,6 +552,8 @@ function swap(ms: number) {
   texDep = upload(1, p.dep, true, texDep)
   windOn = !!p.wind
   if (p.wind) texWind = upload(3, p.wind, false, texWind)
+  matOn = !!p.mat
+  if (p.mat) texMat = upload(4, p.mat, false, texMat)
   findSun(p.img)
   // шаг выборок глубины — по карте глубины (она не шире 1600), выборка картинки — по её размеру
   g.uniform2f(u.texel!, 3 / p.dep.width, 3 / p.dep.height)
@@ -552,8 +582,8 @@ async function init() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
     const loc = gl.getAttribLocation(prog, 'p')
     gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
-    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'breath', 'sun', 'sunOn', 'indoor', 'fogTint']) u[k] = gl.getUniformLocation(prog, k)
-    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3)
+    for (const k of ['img', 'dep', 'prev', 'fade', 'view', 'cover', 'shift', 'torch', 'mode', 't', 'power', 'beamR', 'texel', 'rain', 'fogAmt', 'other', 'flash', 'lamp', 'lampCol', 'lampN', 'quality', 'glossy', 'wet', 'windTex', 'windOn', 'windAmt', 'leaves', 'imgSize', 'breath', 'sun', 'sunOn', 'indoor', 'fogTint', 'matTex', 'matOn']) u[k] = gl.getUniformLocation(prog, k)
+    gl.uniform1i(u.img!, 0); gl.uniform1i(u.dep!, 1); gl.uniform1i(u.prev!, 2); gl.uniform1i(u.windTex!, 3); gl.uniform1i(u.matTex!, 4)
     void request(props.src, props.depth, props.wind)
     raf = requestAnimationFrame(frame)
   } catch { emit('fail') }
@@ -597,6 +627,7 @@ function draw(ms: number) {
   g.uniform1f(u.other!, sc.other ? 1 : 0)
   g.uniform1f(u.glossy!, GLOSS[sc.surface ?? ''] ?? 0.4)
   g.uniform1f(u.windOn!, windOn && !still ? 1 : 0)
+  g.uniform1f(u.matOn!, matOn ? 1 : 0)
   // точка лучей — из долей картинки в доли экрана (кадр «дышит», точка — вместе с картинкой)
   g.uniform2f(u.sun!, (sunTex.x - 0.5 - shift[0]!) / cover[0]! + 0.5, (sunTex.y - 0.5 - shift[1]!) / cover[1]! + 0.5)
   g.uniform1f(u.sunOn!, sunTex.on ? 1 : 0)

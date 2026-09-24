@@ -48,6 +48,10 @@ interface Layer {
   volume: number
   /** откуда: вокруг, за спиной или сверху */
   from?: 'around' | 'behind' | 'above'
+  /** за стеной или перекрытием: глухо, через эхо здания */
+  wall?: (p: SoundPlace) => boolean
+  /** источник смещается по ходу звука (шаги проходят мимо), в радианах; знак — случайный */
+  move?: number
 }
 
 const RARE = 300
@@ -91,11 +95,12 @@ function nearKind(p: SoundPlace) {
 }
 
 const LAYERS: Layer[] = [
-  { id: 'far', every: [18, 60], skip: 0.2, pool: p => FAR[p.other ? 'other' : p.area] ?? FAR.town!, dist: [25, 60], volume: 0.6 },
+  // даль: в помещении — за стенами (глухо, через эхо здания), на улице — через туман
+  { id: 'far', every: [18, 60], skip: 0.2, pool: p => FAR[p.other ? 'other' : p.area] ?? FAR.town!, dist: [12, 60], volume: 0.6, wall: p => !p.outdoor },
   { id: 'near', every: [8, 26], skip: 0.15, pool: p => NEAR[nearKind(p)]!, dist: [2, 6], volume: 0.45 },
-  { id: 'above', every: [45, 140], skip: 0.3, when: p => !p.outdoor && p.area !== 'road', pool: () => ABOVE, dist: [5, 9], volume: 0.45, from: 'above' },
+  { id: 'above', every: [45, 140], skip: 0.3, when: p => !p.outdoor && p.area !== 'road', pool: () => ABOVE, dist: [4, 9], volume: 0.5, from: 'above', wall: () => true },
   // за спиной — только в темноте; с включённым фонарём реже (свет чуть успокаивает), без света — чаще
-  { id: 'behind', every: [90, 240], skip: 0.35, when: p => p.dark && !p.outdoor, pool: () => BEHIND, dist: [1.2, 3], volume: 0.32, from: 'behind' },
+  { id: 'behind', every: [90, 240], skip: 0.35, when: p => p.dark && !p.outdoor, pool: () => BEHIND, dist: [1.2, 3], volume: 0.32, from: 'behind', move: 0.5 },
   { id: 'sky', every: p => (p?.weather === 'storm' ? [22, 60] : [90, 200]), skip: 0.1, when: p => (p.weather === 'rain' || p.weather === 'storm') && !p.deep, pool: () => SKY, dist: [40, 80], volume: 0.85 }
 ]
 
@@ -120,9 +125,24 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
     return pool[pool.length - 1]!
   }
 
-  function play(layer: Layer, q: Cue, az: number, dist: number) {
+  function play(layer: Layer, q: Cue, az: number, dist: number, p?: SoundPlace | null) {
     const up = layer.from === 'above' ? 1.2 : 0
-    void audio.spatial(q.name, { az, dist, up, volume: layer.volume * (q.vol ?? 1) })
+    const move = layer.move ? layer.move * (Math.random() < 0.5 ? -1 : 1) : 0
+    void audio.spatial(q.name, { az, dist, up, volume: layer.volume * (q.vol ?? 1), wall: !!(p && layer.wall?.(p)), move })
+  }
+  /** направление без повторов: один и тот же звук не приходит оттуда же, откуда в прошлый раз (минимум 70° в сторону);
+      стороны чаще, чем прямо впереди, — на колонках спереди и сзади звучит одинаково */
+  const lastAz = new Map<string, number>()
+  function pickAz(name: string) {
+    let az = 0
+    for (let k = 0; k < 8; k++) {
+      const side = Math.random() < 0.5 ? -1 : 1
+      az = side * (Math.PI * (0.18 + 0.64 * Math.random()))
+      const prev = lastAz.get(name)
+      if (prev === undefined || Math.abs(Math.atan2(Math.sin(az - prev), Math.cos(az - prev))) > 1.2) break
+    }
+    lastAz.set(name, az)
+    return az
   }
 
   function tick(layer: Layer) {
@@ -134,7 +154,7 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
       if (q) {
         lastAt.set(q.name, Date.now() / 1000)
         lastInLayer.set(layer.id, q.name)
-        const az = layer.from === 'behind' ? Math.PI + rnd(-0.6, 0.6) : layer.from === 'above' ? rnd(-1.2, 1.2) : rnd(-Math.PI, Math.PI)
+        const az = layer.from === 'behind' ? Math.PI + rnd(-0.6, 0.6) : layer.from === 'above' ? rnd(-1.2, 1.2) : pickAz(q.name)
         const dist = rnd(...layer.dist)
         if (layer.id === 'sky' && p.weather === 'storm') {
           // гроза: сначала молния, раскат — следом, тем позже, чем дальше; близкий удар громче и звонче
@@ -142,10 +162,10 @@ export function useSoundscape(opts: { place: () => SoundPlace | null; active: ()
           const d = near ? rnd(8, 20) : rnd(25, 70)
           opts.lightning?.(near ? 1 : rnd(0.35, 0.7))
           setTimeout(() => { if (alive) void audio.spatial(q.name, { az, dist: d, volume: layer.volume * (near ? 1.25 : 0.9) }) }, (d / 20) * 1000 + rnd(200, 600))
-        } else play(layer, q, az, dist)
+        } else play(layer, q, az, dist, p)
         if (q.answer && Math.random() < q.answer) {
           const az2 = az + Math.PI * rnd(0.6, 1.4)
-          setTimeout(() => { if (alive && opts.active()) play(layer, q, az2, dist * rnd(0.6, 1.1)) }, rnd(2000, 6000))
+          setTimeout(() => { if (alive && opts.active()) play(layer, q, az2, dist * rnd(0.6, 1.1), opts.place()) }, rnd(2000, 6000))
         }
       }
     }
