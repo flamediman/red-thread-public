@@ -110,8 +110,11 @@ function findLoop(file) {
     if (c < best.c) best = { c, a, b }
   }
   if (!best.b) return null
-  for (let a = best.a - 4; a <= best.a + 4; a++) for (let b = best.b - 4; b <= best.b + 4; b++) {
-    if (a < aMin || b > bMax) continue
+  // окно уточнения — вокруг грубой пары, неподвижное: раньше границы брались от текущей лучшей пары, и окно «ползло»
+  // за ней — a уезжала за aMax, петля выходила короче minLen (chase-2: 9 с вместо 30)
+  const a0 = best.a, b0 = best.b
+  for (let a = a0 - 4; a <= a0 + 4; a++) for (let b = b0 - 4; b <= b0 + 4; b++) {
+    if (a < aMin || a > aMax || b > bMax || b - a < minLen) continue
     const c = cost(F, a, b, after, before)
     if (c < best.c) best = { c, a, b }
   }
