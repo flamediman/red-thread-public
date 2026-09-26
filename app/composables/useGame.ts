@@ -225,8 +225,16 @@ export function useGame(as: 'host' | 'player' = 'player') {
   role = as
 
   onMounted(open)
+  /* Уход со страницы экрана (в «Туман») закрывает сокет без переподключения. Раньше он оставался жить: состояние меню
+     продолжало приходить и переключало текущее дело и мир (setCurrentCase/setCurrentSetting) — в «Тумане» при ближайшей
+     смене темы вместо его музыки играла тема меню «Неона» (26.09.2026, «заиграла тема неона, пока я в загадке») */
   onBeforeUnmount(() => {
     if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = null
+    const s = socket
+    socket = null
+    if (s) { s.onclose = null; s.onerror = null; try { s.close() } catch { /* уже закрыт */ } }
+    connected.value = false
   })
 
   return {
