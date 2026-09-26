@@ -113,7 +113,7 @@ function ensure(): AudioContext | null {
 /** если у дела нет темы — чем её заменить (по порядку) */
 const THEME_FALLBACK: Record<string, string[]> = {
   // «Туман»: боевые темы по очереди; нет файла — прежняя тема боя или погони
-  'fight-dread': ['fight'], 'fight-rust': ['fight'], 'fight-heavy': ['fight', 'boss'], 'chase-2': ['chase'], 'chase-3': ['chase'],
+  'fight-bows': ['fight'], 'fight-scrape': ['fight'], 'fight-groan': ['fight', 'boss'], 'chase-strings': ['chase'], 'chase-hunt': ['chase'],
   'prologue': ['lobby'],
   'night-late': ['night-early', 'lobby'],
   'night-dawn': ['night-late', 'night-early', 'lobby'],
@@ -259,7 +259,7 @@ const VARIANTS: Record<string, number> = {
   'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2,
   'thunder-far': 3, 'footsteps-behind': 2, 'whisper-near': 2, 'door-slam-far': 2, 'industrial-clank': 2,
   'glass-break-far': 2, 'twig-snap': 2, 'footsteps-forest': 2,
-  'enc-sting': 3, 'bugler-wheeze': 2, 'wet-gurgle': 2
+  'enc-sting': 3, 'bugler-wheeze': 2, 'wet-gurgle': 2, 'paper-slash': 2
 }
 /* Удары и выстрелы каждый раз немного другие, как в жизни: высота (rate — доля), громкость (db) и окраска (tone —
    сколько верха пропустить, Гц, случайно между границами: удар то глухой, то звонкий), чуть в стороне (pan). Удары —
@@ -286,7 +286,7 @@ function variant(name: string) {
 
 /* Звуки браузер держит сутки (routeRules /sfx): у перегенерированного звука — новая версия в адресе, иначе игрок
    ещё день слышит старый. Поднять номер, когда звук переделан */
-const SFX_REV: Record<string, number> = { 'pines': 2, 'step-tile': 2, 'step-grass': 2, 'solo-shot': 2 }
+const SFX_REV: Record<string, number> = { 'pines': 2, 'step-tile': 2, 'step-grass': 2, 'solo-shot': 2, 'counselor-hurt-2': 2, 'counselor-hurt': 2, 'enc-sting-3': 2, 'enc-sting': 2, 'fist-hit-2': 2, 'fist-hit-3': 2, 'fist-hit-4': 2, 'fist-hit': 2, 'fist-swing': 2, 'helmet-clang-2': 2, 'hook-hit': 2, 'hose-whip-2': 2, 'hose-whip': 2, 'shotgun-shot': 2, 'solo-dodge-2': 2, 'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hit-land-4': 2, 'solo-hit-land-5': 2, 'solo-hit-land': 2, 'solo-hurt-2': 2, 'solo-hurt-3': 2, 'solo-hurt': 2, 'solo-swing-2': 2, 'solo-swing': 2, 'thud-cloth-2': 2, 'wet-grab-2': 2, 'wet-grab': 2, 'wet-hurt-2': 2, 'wet-hurt': 2, 'whistle-blast-2': 2 }
 const sfxUrl = (name: string, world = true) => `/sfx/${world ? `${currentSetting.value}/` : ''}${name}.m4a${SFX_REV[name] ? `?v=${SFX_REV[name]}` : ''}`
 async function loadSfx(name: string): Promise<AudioBuffer | null> {
   if (name.includes('.')) return load(`/sfx/${name}`)
@@ -466,7 +466,14 @@ export function useAudio() {
   /** Одиночный эффект. Возвращает длительность, чтобы экран мог подождать. */
   /** Одиночный звук. far — сыграть «издалека»: глухо, с долгим эхом и тише (звуки из FAR_NAMES — всегда так);
       pan — откуда, −1 слева … 1 справа. Остальное идёт через «комнату» — короткое эхо по покрытию места */
+  /** name@мс — звук с задержкой: сервер так разводит во времени то, что случилось разом (удар — и через миг падение) */
   async function sfx(name: string, volume = 1, opts: boolean | { far?: boolean; pan?: number } = false): Promise<number> {
+    const at = name.indexOf('@')
+    if (at > 0) {
+      const ms = Number(name.slice(at + 1))
+      name = name.slice(0, at)
+      if (ms > 0) await new Promise(r => setTimeout(r, ms))
+    }
     const c = ensure(); if (!c) return 0
     const buf = await loadSfx(variant(name))
     if (!buf) return 0

@@ -454,7 +454,7 @@ const themeName = computed<string | null>(() => {
   if (s.dialogue?.music) return s.dialogue.music
   // босс — своя музыка; любая встреча с существом — боевая тема (спокойная тема района под дракой не звучит)
   if (s.boss) return 'boss'
-  if (s.encounter) return HEAVY.has(s.encounter.monster) ? 'fight-heavy' : battle.fight
+  if (s.encounter) return HEAVY.has(s.encounter.monster) ? 'fight-groan' : battle.fight
   const pid = place.value?.id ?? ''
   const area = place.value?.area
   const has = (id: string) => s.notes.some(n => n.id === id)
@@ -475,8 +475,8 @@ const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper', 'diver'])
    battle — что зазвучит в этой (или ближайшей) встрече и погоне; сменяется, когда встреча кончилась, и следующая сразу
    качается в кэш. Файла нет — useAudio берёт прежнюю fight/chase (THEME_FALLBACK) */
 /* прежняя «fight» (сдержанная виолончель) — только запасной вариант; прежняя погоня осталась в очереди */
-const FIGHTS = ['fight-dread', 'fight-rust']
-const CHASES = ['chase-2', 'chase-3', 'chase']
+const FIGHTS = ['fight-bows', 'fight-scrape']
+const CHASES = ['chase-strings', 'chase-hunt', 'chase']
 const battle = reactive({ fight: FIGHTS[Math.floor(Math.random() * FIGHTS.length)]!, chase: CHASES[Math.floor(Math.random() * 2)]! })
 const nextOf = (list: string[], cur: string) => { const rest = list.filter(x => x !== cur); return rest[Math.floor(Math.random() * rest.length)]! }
 watch(() => !!v.value?.encounter, (on, was) => { if (!on && was) { battle.fight = nextOf(FIGHTS, battle.fight); void cacheTheme(battle.fight) } })
@@ -495,7 +495,7 @@ const themeLevel = computed(() => {
 })
 // пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
 // бой и погоня начинаются резко — музыка входит за полторы секунды, а не за четыре
-const FAST = new Set(['boss', 'fight', 'chase', ...FIGHTS, 'fight-heavy', ...CHASES])
+const FAST = new Set(['boss', 'fight', 'chase', ...FIGHTS, 'fight-groan', ...CHASES])
 watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok], old) => {
   if (!ok || !v.value) return
   // уход в тишину и возвращение — медленно, за 8–10 с, чтобы не заметить, когда именно музыка исчезла
@@ -513,7 +513,7 @@ watch(() => !!(entered.value && v.value?.started && audio.unlocked.value), async
   battleCached = true
   await new Promise(r => setTimeout(r, 3000))
   // по одной, следующие по очереди — те, что зазвучат в ближайшей встрече и погоне
-  for (const t of [battle.fight, battle.chase, 'fight-heavy']) await cacheTheme(t)
+  for (const t of [battle.fight, battle.chase, 'fight-groan']) await cacheTheme(t)
 }, { immediate: true })
 
 /* Бродячее подходит (approach): приёмник уже шипит, атмосфера проседает, шаги и голос приходят с одной стороны и всё

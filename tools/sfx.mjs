@@ -2,7 +2,7 @@
 //   node tools/sfx.mjs noir [--only a,b] [--force]
 // Роли одинаковые во всех мирах (движок и сценарии просят «phone-ring», «drawer», «suspense-01»…),
 // а звучат по-своему: в нуаре — дисковый телефон и оркестр, в неоне — синтетика и глитчи.
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 
@@ -257,7 +257,12 @@ const PACKS = {
     'chase-run': ['A man sprinting in panic: fast heavy footsteps on wet ground and ragged panting breath, continuous, close microphone, no music, no words', 8, true],
     'heartbeat-fast': ['Fast pounding human heartbeat heard from inside the head, muffled deep thumps about 140 beats per minute, steady, no music', 6, true],
     'chase-cut': ['A fast whoosh of a man rushing past wet branches, a cloth flap and a sharp gasp, close, no music', 1.2],
-    'chase-escape': ['A man slams a heavy wooden door, leans on it and slides down, gasping for air, ragged breaths slowly calming, close, no music', 4]
+    'chase-escape': ['A man slams a heavy wooden door, leans on it and slides down, gasping for air, ragged breaths slowly calming, close, no music', 4],
+    // 26.09: два удара трубой были тонкими (почти без низа), атака письмоносца — просто шелест бумаги с нарастанием в секунду
+    'solo-hit-land-3': ['A heavy steel pipe smashing into a soaked heavy body in a wet coat: a deep meaty crunch with a low body thump and a short dull ring of the pipe, close, powerful, no voice, no music', 0.9],
+    'solo-hit-land-5': ['A brutal blow of an iron pipe against something wet and heavy: a thick low thud, a crack like breaking cartilage, a water spatter, close, no voice, no music', 0.9],
+    'paper-slash': ['A swarm of paper envelopes slicing past a face like a flock of birds: a fast violent flutter of dozens of stiff paper sheets with sharp slicing paper cuts right at the start, close, no voice, no music', 1.2],
+    'paper-slash-2': ['A sudden burst of paper blades: sharp whipping swishes of stiff envelopes cutting through the air and slapping skin, close, fast and aggressive, no voice, no music', 1.2]
   }
 }
 
@@ -280,7 +285,7 @@ const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-f
   'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hit-land-4': 2, 'solo-hit-land-5': 2, 'fist-hit': 2, 'fist-hit-2': 2, 'fist-hit-3': 2, 'fist-hit-4': 2, 'fist-swing': -2, 'fist-swing-2': -2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
   'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'glass-break-far': -4, 'glass-break-far-2': -4, 'twig-snap': -4, 'twig-snap-2': -4, 'footsteps-forest': -5, 'footsteps-forest-2': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
   'enc-sting': 5, 'enc-sting-2': 5, 'enc-sting-3': 5, 'static-burst': 1, 'bugler-wheeze': -1, 'bugler-wheeze-2': -1, 'wet-gurgle': 0, 'wet-gurgle-2': 0, 'creature-die': 2, 'hide-breath': -3,
-  'chase-run': 9, 'heartbeat-fast': 8, 'chase-cut': -1, 'chase-escape': -1,
+  'chase-run': 9, 'heartbeat-fast': 8, 'chase-cut': -1, 'chase-escape': -1, 'paper-slash': 3, 'paper-slash-2': 3,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-glass': -6, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']
@@ -296,6 +301,59 @@ function normalize(file, loop) {
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', file, '-af', `volume=${gain.toFixed(1)}dB,alimiter=limit=0.89:level=false`, '-c:a', 'aac', '-b:a', '160k', tmp])
   execFileSync('mv', [tmp, file])
   console.log(`  ≈ ${file.split('/').pop()}: ${mean.toFixed(1)} → ${target} дБ`)
+}
+
+/* Боевые звуки — в миг действия и без хрипа (26.09.2026, «выстрелы и удары местами не убедительны»). Замер показал:
+   у «герою больно» звук начинался через 0,76 с после удара, у багра главный удар — через 0,8 с, у замаха — 0,2 с тишины;
+   а пики после сжатия в AAC доходили до +5,7 дБ (запас громкости ACCENT) — на выходе хрипело.
+   tidy: у ударов и выстрелов главный удар — в первые 60 мс, у взмахов — без тишины в начале; пик — не выше −1,5 дБ */
+const IMPACT = /^(solo-hit-land|fist-hit|solo-hurt|hook-hit|thud-cloth|helmet-clang|wet-hurt|counselor-hurt|wet-grab|shotgun-shot|solo-shot|bugle-blast|whistle-blast|paper-slash|creature-die)/
+const WHOOSH = /^(solo-swing|fist-swing|solo-dodge|hose-whip|chase-cut|enc-sting|static-burst)/
+const PEAK_DB = -1.5
+function mono(file) {
+  const b = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-ac', '1', '-ar', '44100', '-f', 'f32le', '-'], { maxBuffer: 1 << 28 })
+  return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4)
+}
+function peakDb(file) { const x = mono(file); let p = 0; for (const v of x) p = Math.max(p, Math.abs(v)); return 20 * Math.log10(p + 1e-12) }
+function tidy(file) {
+  const name = file.split('/').pop().replace(/\.m4a$/, '')
+  const impact = IMPACT.test(name), whoosh = WHOOSH.test(name)
+  const x = mono(file)
+  let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v))
+  let on = 0; while (on < x.length && Math.abs(x[on]) < peak * 0.1) on++
+  let hi = on; while (hi < x.length && Math.abs(x[hi]) < peak * 0.5) hi++
+  const sec = i => i / 44100
+  const cut = impact ? Math.max(0, Math.max(sec(on), sec(hi) - 0.06) - 0.005) : whoosh ? Math.max(0, sec(on) - 0.01) : sec(on) > 0.08 ? sec(on) - 0.02 : 0
+  const pk0 = 20 * Math.log10(peak + 1e-12)
+  if (cut <= 0.015 && pk0 <= PEAK_DB) return
+  // каждая попытка — от исходника (повторное сжатие копит искажения), лимитер до сжатия, затем мерим декодированное
+  const tmp = file.replace(/\.m4a$/, '.tidy.m4a'), orig = file.replace(/\.m4a$/, '.orig.m4a')
+  execFileSync('cp', [file, orig])
+  let gain = 0, pk = pk0
+  for (let k = 0; k < 4; k++) {
+    const af = [...(cut > 0.015 ? ['afade=t=in:d=0.004'] : []), ...(gain ? [`volume=${gain.toFixed(2)}dB`] : []), 'alimiter=limit=0.8:attack=0.5:release=40:level=false']
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...(cut > 0.015 ? ['-ss', cut.toFixed(3)] : []), '-i', orig, '-af', af.join(','), '-c:a', 'aac', '-b:a', '192k', tmp])
+    pk = peakDb(tmp)
+    if (pk <= PEAK_DB) break
+    gain += PEAK_DB - pk - 0.5
+  }
+  execFileSync('mv', [tmp, file])
+  unlinkSync(orig)
+  const notes = []
+  if (cut > 0.015) notes.push(`срезано ${Math.round(cut * 1000)} мс в начале`)
+  notes.push(`пик ${pk0.toFixed(1)} → ${pk.toFixed(1)} дБ`)
+  if (notes.length) console.log(`  ~ ${name}: ${notes.join(', ')}`)
+}
+
+if (args.includes('--tidy')) {
+  // все файлы мира на диске (и варианты name-2, name-3), не только те, что в пакете
+  for (const f of readdirSync(OUT).filter(n => n.endsWith('.m4a')).sort()) {
+    const name = f.replace(/\.m4a$/, '')
+    if (only && !only.has(name) && !only.has(name.replace(/-\d$/, ''))) continue
+    if (!only && !IMPACT.test(name) && !WHOOSH.test(name)) continue
+    tidy(resolve(OUT, f))
+  }
+  process.exit(0)
 }
 
 if (args.includes('--normalize')) {
@@ -332,6 +390,7 @@ for (const [name, [text, seconds, loop]] of Object.entries(pack)) {
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', tmp, '-c:a', 'aac', '-b:a', '160k', file])
   unlinkSync(tmp)
   normalize(file, loop)
+  if (!loop) tidy(file)
   console.log(`  ✓ ${name} (${seconds} с)`)
 }
 console.log('кредитов после:', await credits())

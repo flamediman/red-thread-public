@@ -1151,7 +1151,9 @@ export class SoloGame {
         e.streak = (e.streak ?? 0) + 1
         if (e.hp <= 0) {
           this.killed(s.id)
-          this.endEncounter(m.text.die, [m.sfx.die], 'killed')
+          // слышно, чем убили (выстрел, удар), и через миг — как оно падает; раньше звучала только смерть, и выстрел
+          // с одного попадания пропадал
+          this.endEncounter(m.text.die, [sfx.land, `${m.sfx.die}@250`], 'killed')
           return
         }
         const landed = sfx.land
@@ -1172,7 +1174,7 @@ export class SoloGame {
       case 'finish': {
         if (!((e.stun ?? 0) > 0 && e.hp <= m.hp * 0.35)) return
         this.killed(s.id)
-        this.endEncounter(m.text.finish ?? `Вы бьёте, пока оно не перестаёт шевелиться. ${m.text.die}`, [this.meleeSfx().hit, m.sfx.die], 'killed')
+        this.endEncounter(m.text.finish ?? `Вы бьёте, пока оно не перестаёт шевелиться. ${m.text.die}`, [this.meleeSfx().hit, `${m.sfx.die}@250`], 'killed')
         break
       }
       case 'fight': {
@@ -1271,7 +1273,8 @@ export class SoloGame {
   private fire(g: SoloItem) { const r = this.run!; r.loaded = { ...(r.loaded ?? {}), [g.id]: Math.max(0, this.loadedOf(g) - 1) } }
   /** вне боя: дозарядить все стволы (со звуком, если это после боя) */
   private topUp(sound: boolean) {
-    for (const g of this.guns()) if (this.reloadGun(g) > 0 && sound) this.say('', [g.weapon?.sfx?.equip ?? 'flaregun-load'])
+    // перезарядка после боя — не в миг последнего выстрела, а когда всё стихло (звук с задержкой: «имя@мс»)
+    for (const g of this.guns()) if (this.reloadGun(g) > 0 && sound) this.say('', [`${g.weapon?.sfx?.equip ?? 'flaregun-load'}@1600`])
   }
   /** старые сохранения (до перезарядки): всё было в запасе — зарядить стволы молча */
   private migrateLoaded() { if (this.run && !this.run.loaded) { this.run.loaded = {}; this.topUp(false) } }
