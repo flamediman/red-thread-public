@@ -48,6 +48,9 @@ function resolveOverlays() {
       const spec = S.chases!.find(c => c.id === v.chase!.id)!
       const step = spec.steps[v.chase.step]!
       if (!chases.includes(spec.id)) chases.push(spec.id)
+      // «Бегите!» — бот не ждёт вступления: часы шага уже идут
+      const c = (g as any).live.chase
+      if (c.startedAt > Date.now()) { c.startedAt = Date.now() - 10; c.deadline = c.startedAt + spec.windowMs }
       g.handle({ type: 'run', index: step.options.findIndex(o => o.right) })
       continue
     }

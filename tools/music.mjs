@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url'
 import { musicDir, loadMusicSet } from './paths.mjs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const env = Object.fromEntries(readFileSync(resolve(root, '.env'), 'utf8').split('\n').filter(l => l.includes('=') && !l.startsWith('#')).map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
-const KEY = env.ELEVENLABS_API_KEY
+// ключ из окружения (временный, разовый) — главнее ключа из .env
+const KEY = process.env.ELEVENLABS_API_KEY || env.ELEVENLABS_API_KEY
 const CASE = process.env.CASE || 'meridian'
 const args = process.argv.slice(2)
 const only = args.includes('--only') ? new Set(args[args.indexOf('--only') + 1].split(',')) : null

@@ -361,7 +361,58 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     &:disabled { opacity: 0.3; } }
 }
 @media (hover: hover) { .solo-enc__opt:not(:disabled):hover { background: rgba(60, 20, 16, 0.85); box-shadow: inset 0 0 0 1px rgba(224, 122, 107, 0.7); } }
-@keyframes enc-in { from { opacity: 0; filter: brightness(3); } }
+/* встреча и погоня врезаются резко: мир обрывается в черноту, дальше — своё вступление */
+@keyframes enc-in { from { opacity: 0; } }
+
+/* вступление встречи: чернота (--dark) → удар (--hit): вспышка, кадр дёргается и оседает, имя крупно; панель ждёт.
+   Кадр кончает анимацию в обычном масштабе — когда вступление снимается, ничего не прыгает */
+.solo-enc__stage { position: absolute; inset: 0; z-index: 0; transform-origin: 50% 42%; }
+.solo-enc--dark .solo-enc__stage { opacity: 0; }
+.solo-enc--hit .solo-enc__stage { animation: enc-reveal 1.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.solo-enc--hit.solo-enc--first .solo-enc__stage { animation-duration: 2.4s; }
+@keyframes enc-reveal {
+  0% { opacity: 0.3; transform: scale(1.18); }
+  3% { opacity: 1; transform: scale(1.17) translate(-1.4%, 0.9%) rotate(-0.6deg); }
+  7% { transform: scale(1.15) translate(1.6%, -1%) rotate(0.5deg); }
+  11% { transform: scale(1.13) translate(-0.9%, 0.6%) rotate(-0.3deg); }
+  16% { transform: scale(1.11) translate(0.4%, -0.3%); }
+  100% { opacity: 1; transform: none; } }
+.solo-enc__title { position: absolute; z-index: 6; left: 50%; top: 38%; transform: translate(-50%, -50%); margin: 0; pointer-events: none; white-space: nowrap;
+  font-family: var(--font-display); font-weight: 700; font-size: clamp(2rem, 1rem + 4.5vw, 4.6rem); --ls: 0.26em; letter-spacing: var(--ls); text-transform: uppercase; color: #efe0da;
+  text-shadow: 0 0 42px rgba(170, 24, 12, 0.85), 0 4px 30px rgba(0, 0, 0, 0.95); animation: enc-name 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.solo-enc--first .solo-enc__title { font-size: clamp(2.4rem, 1rem + 6vw, 6rem); animation-duration: 2.2s; }
+@keyframes enc-name { 0% { opacity: 0; letter-spacing: calc(var(--ls) * 2.6); } 25% { opacity: 1; } 100% { opacity: 1; letter-spacing: var(--ls); } }
+.enc-title-leave-active { transition: opacity 0.5s ease; } .enc-title-leave-to { opacity: 0; }
+.solo-enc__panel { transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.solo-enc__panel--wait { opacity: 0; transform: translateY(1.2rem); pointer-events: none; }
+.solo-enc__flash--appear { background: #fff; animation: flash-appear 0.7s ease-out; }
+@keyframes flash-appear { 0% { opacity: 0.9; } 10% { opacity: 0.2; background: #b0180c; } 24% { opacity: 0.5; background: #b0180c; } 100% { opacity: 0; background: #b0180c; } }
+/* развязка встречи: кадр досматривается пару секунд; текст — на плотной подложке снизу */
+.solo-after { position: fixed; inset: 0; z-index: 55; display: grid; align-items: end; justify-items: center; overflow: hidden; background: #050505; cursor: pointer;
+  &__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(0.45) contrast(1.2) brightness(0.8); transform-origin: 50% 60%; }
+  &__veil { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(ellipse at 50% 40%, transparent 20%, rgba(5, 5, 5, 0.75) 70%, #050505 100%), linear-gradient(0deg, #050505 0%, transparent 55%); }
+  &__body { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 0.6rem; width: min(46rem, 100%); padding: clamp(1.2rem, 4vw, 2.6rem); animation: after-text 0.6s 0.25s ease-out both; }
+  &__text { font-family: var(--font-story); font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.35rem); line-height: 1.55; color: var(--paper); text-shadow: 0 2px 16px rgba(0, 0, 0, 0.9); }
+  /* упокоено: вспышка, существо выцветает и оседает в темноту. Сдвиги кадра — с запасом по масштабу: край картинки не открывается */
+  &--killed .solo-after__art { animation: after-die 2.8s cubic-bezier(0.3, 0.6, 0.3, 1) both; }
+  /* ушли: кадр рывком уходит в сторону и гаснет */
+  &--fled .solo-after__art { animation: after-flee 0.9s cubic-bezier(0.5, 0, 0.8, 0.4) both; }
+  /* спрятались: темнота смыкается, существо проходит мимо */
+  &--hid .solo-after__art { animation: after-pass 3.2s ease-in-out both; }
+  &--hid::before { content: ''; position: absolute; z-index: 1; left: 50%; top: 45%; width: 140vmax; height: 140vmax; margin: -70vmax 0 0 -70vmax; pointer-events: none;
+    background: radial-gradient(circle, transparent 0%, transparent 18%, rgba(5, 5, 5, 0.9) 30%, #050505 45%); animation: after-close 3.2s ease-in-out both; }
+  /* оторвались: последний кадр погони медленно гаснет */
+  &--escaped .solo-after__art { animation: after-fade 3s ease-out both; } }
+/* встреча сменяется развязкой без просвета (появляется сразу), развязка уходит в место плавно */
+.after-leave-active { transition: opacity 0.6s ease; } .after-leave-to { opacity: 0; }
+@keyframes after-text { from { opacity: 0; transform: translateY(0.8rem); } }
+@keyframes after-die { 0% { filter: saturate(0.45) contrast(1.2) brightness(1.8); } 8% { filter: saturate(0.3) contrast(1.2) brightness(0.9); transform: none; }
+  100% { filter: saturate(0) contrast(1.1) brightness(0.12); transform: translateY(6%) scale(1.13); } }
+@keyframes after-flee { 0% { transform: none; opacity: 1; } 100% { transform: translateX(-11%) scale(1.26) rotate(-1.2deg); opacity: 0; } }
+@keyframes after-pass { 0% { transform: none; filter: saturate(0.45) contrast(1.2) brightness(0.8); } 100% { transform: translateX(8%) scale(1.18); filter: saturate(0.2) contrast(1.2) brightness(0.25); } }
+@keyframes after-close { 0% { transform: scale(3); } 55% { transform: scale(1); } 100% { transform: scale(1.12); } }
+@keyframes after-fade { 0% { filter: saturate(0.5) contrast(1.25) brightness(0.8); } 100% { filter: saturate(0.3) contrast(1.2) brightness(0.1); transform: scale(1.05); } }
+@media (max-width: 640px) { .solo-enc__title, .solo-enc--first .solo-enc__title { top: 30%; --ls: 0.12em; font-size: clamp(1.8rem, 1rem + 4vw, 2.6rem); } }
 .solo-ctl { display: inline-flex; align-items: center; gap: 0.4em; padding: 0.45rem 0.8rem; border-radius: 999px; font-family: var(--font-ui); font-size: 0.78rem; font-weight: 600; color: var(--paper-2);
   background: rgba(8, 10, 10, 0.55); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.22); transition: background-color 0.15s ease, color 0.15s ease;
   svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -450,7 +501,20 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
 
 @media (max-width: 640px) { .solo-enc { --qte: 4.4rem; } .solo-boss__arena { inset: 0 0 46% 0; } .solo-enc__arena { inset: 0 0 52% 0; } }
 /* погоня: жёлтый свет фонаря за спиной разгорается, пока тает время; кадр трясётся на бегу */
-.solo-enc--chase .solo-enc__art { animation: chase-run 0.55s ease-in-out infinite; filter: saturate(0.5) contrast(1.25) brightness(0.7); }
+.solo-enc--chase .solo-enc__art { filter: saturate(0.5) contrast(1.25) brightness(0.7); }
+/* бег: весь кадр ходит в такт шагам (только transform — холст не перерисовывается ради тряски); чем меньше времени, тем
+   краснее края; варианты влетают по одному */
+.solo-chase__bob { position: absolute; inset: -3%; animation: chase-bob 0.37s ease-in-out infinite alternate; }
+@keyframes chase-bob { 0% { transform: translate(-0.7%, 0.5%) rotate(-0.35deg); } 50% { transform: translate(0, -0.6%) rotate(0deg); } 100% { transform: translate(0.7%, 0.5%) rotate(0.35deg); } }
+.solo-chase__danger { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: calc(var(--danger, 0) * 0.9);
+  background: radial-gradient(ellipse 75% 70% at 50% 45%, transparent 45%, rgba(150, 12, 6, 0.55) 80%, rgba(90, 4, 2, 0.9) 100%); animation: danger-pulse 0.8s ease-in-out infinite; }
+@keyframes danger-pulse { 50% { opacity: calc(var(--danger, 0) * 0.55); } }
+.solo-chase__call { color: #f0c8bd; }
+.solo-chase__opt { animation: chase-opt 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+@keyframes chase-opt { from { opacity: 0; transform: translateX(-0.8rem); } }
+/* текст во встрече, погоне и у босса сменяется за доли секунды: окна там — секунды, пауза без текста съедала их */
+.quick-text-enter-active, .quick-text-leave-active { transition: opacity 0.1s ease; } .quick-text-enter-from, .quick-text-leave-to { opacity: 0; }
+.chase-cut-enter-active { transition: opacity 0.18s ease-out; } .chase-cut-leave-active { transition: opacity 0.18s ease-in 0.1s; } .chase-cut-enter-from, .chase-cut-leave-to { opacity: 0; }
 .solo-chase__lamp { position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: var(--glow, 0.3); mix-blend-mode: screen;
   background: radial-gradient(ellipse 60% 55% at 50% 38%, rgba(236, 188, 96, 0.55) 0%, rgba(200, 140, 60, 0.18) 45%, transparent 75%);
   animation: lamp-sway 1.8s ease-in-out infinite; }
@@ -460,7 +524,6 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   i.now { background: #d0493a; animation: static-bar 0.5s steps(2) infinite; } }
 /* испробованный неверный поворот гаснет и подписывается */
 .solo-enc__opt--tried { opacity: 0.35 !important; text-decoration: line-through; small { margin-left: auto; font-size: 0.72rem; font-weight: 600; color: #e07a6b; text-decoration: none; } }
-@keyframes chase-run { 0%, 100% { transform: scale(1.08) translate(0, 0); } 25% { transform: scale(1.08) translate(-0.6%, 0.5%); } 50% { transform: scale(1.08) translate(0, -0.3%); } 75% { transform: scale(1.08) translate(0.6%, 0.5%); } }
 @keyframes lamp-sway { 0%, 100% { transform: translateX(-3%); } 50% { transform: translateX(3%); } }
 @keyframes enc-breathe { 0%, 100% { transform: scale(1.04); } 50% { transform: scale(1.09) translateY(-0.5%); } }
 

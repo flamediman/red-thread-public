@@ -285,7 +285,30 @@ export interface SoloMonster {
   /** strike — замах перед ударом (виден, пока идёт уворот); dodge — удар прошёл мимо; stagger — оглушено точным ударом;
       recover — приходит в себя; daze — герой оглушён его ударом; guard/press/circle — как оно ведёт себя в раунде
       (прикрывается после ваших попаданий, торопится, когда вы слабы, кружит и выжидает) */
-  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; combo?: string; finish?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string }
+  text: { appear: string; attack: string; hit: string; miss: string; die: string; hide: string; flee: string; fleeFail: string; hideFail?: string; strike?: string; dodge?: string; combo?: string; finish?: string; stagger?: string; recover?: string; daze?: string; guard?: string; press?: string; circle?: string
+    /** бродячее (SoloRoam): roam — как оно выходит где придётся (appear написан под своё место); pass — прошло мимо, не заметив.
+        Несколько вариантов — каждый раз любой, чтобы встречи на улицах не читались одной фразой */
+    roam?: string[]; pass?: string[] }
+}
+
+/** Бродячие существа — как на улицах Silent Hill: выходят не в заданном месте, а где придётся. При переходе в место района
+    (и если долго стоять на месте) бросается шанс; чем дольше было тихо, тем он выше. Сначала шипит приёмник и слышно,
+    как оно подходит, — есть секунды уйти; дальше оно выходит или проходит мимо. После любой встречи — передышка */
+export interface SoloRoam {
+  area: string
+  /** кто бродит; повтор id — больше вес */
+  monsters: string[]
+  when?: SoloCond
+  /** шанс при входе на улице и в помещении (по умолчанию — 40 % от уличного) */
+  chance: number
+  indoor?: number
+  /** только эти места района / кроме этих (у телефона сохранения — никогда) */
+  places?: string[]
+  except?: string[]
+  /** доля подходов, когда существо выходит (остальные проходят мимо); по умолчанию 0,7 */
+  emerge?: number
+  /** передышка после встречи, мс игрового времени (по умолчанию 2 минуты) */
+  cooldownMs?: number
 }
 
 /** Босс: серии быстрых нажатий. На экране одна за другой вспыхивают точки со стрелкой: на компьютере — нажать эту
@@ -325,6 +348,8 @@ export interface SoloChase {
   sfx: { near: string; hit: string; run: string }
   /** что происходит, если игрок медлит */
   late: string
+  /** у преследователя фонарь: свет за спиной разгорается, пока тает время */
+  lamp?: boolean
   /** art у шага — своя картинка (x_<погоня>_<шаг>); без неё — картинка погони m_<art> */
   steps: { text: string; art?: string; options: { label: string; right?: boolean; text?: string }[] }[]
   success: SoloEffect
@@ -381,6 +406,8 @@ export interface SoloStory {
   monsters: SoloMonster[]
   bosses?: SoloBoss[]
   spawns: SoloSpawn[]
+  /** бродячие существа по районам */
+  roam?: SoloRoam[]
   chases?: SoloChase[]
   npcs: SoloNpc[]
   dialogues: SoloDialogue[]
@@ -480,7 +507,16 @@ export interface SoloView {
     grapple: { deadline: number; presses: number; need: number } | null
     /** как существо ведёт себя в этом раунде */
     mode: 'normal' | 'guard' | 'press' | 'circle'
+    /** первая встреча с таким существом: вступление длиннее, имя крупно. Вступление идёт, пока часы не дошли до startedAt */
+    first: boolean
+    /** бродячее: вышло не в своём месте */
+    roam: boolean
   } | null
+  /** что-то подходит (бродячее существо): откуда слышно (az — радианы, 0 — впереди), когда будет здесь, его звук.
+      Страница проигрывает шаги и голос всё ближе; ушли раньше — не дошло */
+  approach: { monster: string; az: number; at: number; sfx: string } | null
+  /** чем кончилась встреча или погоня — страница досматривает её развязку (смерть существа, побег, укрытие); at — когда */
+  after: { kind: 'killed' | 'fled' | 'hid' | 'escaped'; monster: string; name: string; art: string; text: string; at: number } | null
   puzzle: { hotspot: string; puzzle: SoloPublicPuzzle } | null
   boss: {
     id: string; name: string; art: string; hp: number; maxHp: number; round: number; text: string
@@ -503,6 +539,8 @@ export interface SoloView {
   chase: {
     id: string; name: string; art: string; base: string; step: number; total: number; text: string
     startedAt: number; deadline: number; serverNow: number
+    /** кадры всех шагов (страница грузит их заранее — смена шага без ожидания), звук преследователя за спиной, несёт ли он фонарь */
+    arts: string[]; sfx: string; lamp: boolean
     options: { index: number; label: string; tried: boolean }[]
   } | null
   dialogue: { id: string; npc: string; name: string; lines: SoloLine[]; choices: { index: number; text: string }[]; music?: string } | null

@@ -177,6 +177,23 @@ for (const s of S.spawns) {
   if (s.boss && s.stays) warn(`${w}: босс с stays — будет возвращаться после каждого побега`)
   cond(s.when, w)
 }
+/* бродячие: район, существа, места; тексты без привязки к месту — иначе выходит из тумана посреди комнаты */
+for (const [i, r] of (S.roam ?? []).entries()) {
+  const w = `бродячие ${r.area}#${i + 1}`
+  if (!has('area', r.area)) err(`${w}: нет района ${r.area}`)
+  for (const m of r.monsters) {
+    const mon = S.monsters.find(x => x.id === m)
+    if (!mon) err(`${w}: нет существа ${m}`)
+    else if (!mon.text.roam?.length) warn(`${w}: у существа ${m} нет text.roam — выйдет с текстом своего места`)
+  }
+  for (const pl of [...(r.places ?? []), ...(r.except ?? [])]) {
+    const place = S.places.find(x => x.id === pl)
+    if (!place) err(`${w}: нет места ${pl}`)
+    else if (place.area !== r.area) err(`${w}: место ${pl} в другом районе (${place.area})`)
+  }
+  if (r.chance <= 0 || r.chance > 0.6) warn(`${w}: шанс ${r.chance} — вне 0…0,6`)
+  cond(r.when, w)
+}
 for (const n of S.npcs) { artUsed.set(`n_${n.id}`, `персонаж ${n.id}`); if (!n.voiceId) warn(`персонаж ${n.id}: нет голоса — реплики прочитает рассказчик`) }
 for (const c of S.chases ?? []) {
   const w = `погоня ${c.id}`
@@ -185,6 +202,10 @@ for (const c of S.chases ?? []) {
   effect(c.success, `${w} конец`)
   if (c.windowMs < 5000) warn(`${w}: на выбор ${c.windowMs / 1000} с — мало, чтобы прочитать шаг и варианты`)
   c.steps.forEach((st, i) => {
+    // у шага свой кадр: art или x_<погоня>_<шаг> (движок берёт его сам); без него вся погоня — одна картинка существа
+    const stepArt = st.art ?? `x_${c.id}_${i + 1}`
+    if (st.art || existsSync(resolve(caseDir(S.id), 'art', `${stepArt}.jpg`))) artUsed.set(stepArt, `${w} шаг ${i + 1}`)
+    else warn(`${w}: у шага ${i + 1} нет своего кадра (${stepArt}.jpg) — на экране будет одна картинка существа`)
     if (st.options.filter(o => o.right).length !== 1) err(`${w}: на шаге ${i + 1} должен быть ровно один верный путь`)
     if (st.text.length > (c.windowMs >= 7500 ? 160 : 130)) warn(`${w}: шаг ${i + 1} — ${st.text.length} знаков, за окно не прочитать`)
   })

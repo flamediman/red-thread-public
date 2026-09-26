@@ -8,7 +8,8 @@ import { execFileSync, spawnSync } from 'node:child_process'
 
 const root = resolve(import.meta.dirname, '..')
 const env = Object.fromEntries(readFileSync(resolve(root, '.env'), 'utf8').split('\n').filter(l => l.includes('=') && !l.startsWith('#')).map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
-const KEY = env.ELEVENLABS_API_KEY
+// ключ из окружения (временный, разовый) — главнее ключа из .env
+const KEY = process.env.ELEVENLABS_API_KEY || env.ELEVENLABS_API_KEY
 const world = process.argv[2]
 const args = process.argv.slice(3)
 const only = args.includes('--only') ? new Set(args[args.indexOf('--only') + 1].split(',')) : null
@@ -240,7 +241,23 @@ const PACKS = {
     'solo-hurt': ['A heavy blow landing on a man\'s body: one dull deep thud, a short sharp hiss of breath through clenched teeth, one stumbling boot step on wet ground; no groan, no voice, no retching, close, no music', 1.3],
     'solo-hit-land': ['A metal pipe connecting hard with something wet and heavy: a deep crunching thud with a short ring of the pipe, close, no music', 0.9],
     'solo-dodge': ['A man quickly sidestepping a blow: a sharp intake of breath, a fast cloth whoosh and one heavy step on wet ground, then a heavy object whistling past and hitting nothing, close, no music', 1.5],
-    'other-pulse': ['Very slow deep sub-bass pulse like the heartbeat of a huge flooded building, one soft thump every few seconds with a faint metallic resonance, oppressive, no melody, no drums, seamless ambience loop', 12, true]
+    'other-pulse': ['Very slow deep sub-bass pulse like the heartbeat of a huge flooded building, one soft thump every few seconds with a faint metallic resonance, oppressive, no melody, no drums, seamless ambience loop', 12, true],
+    // встреча (25.09.2026, «звуки не пугают, непонятно, что монстр появился»): удар-появление, всплеск приёмника, дыхание существ
+    'enc-sting': ['Sudden psychological horror stinger: a violent dissonant screech of bowed rusty metal and detuned strings over a deep sub-bass impact, then a ringing metallic decay into silence, industrial horror, no melody, no voices', 2.5],
+    'enc-sting-2': ['Horror jump scare hit: a heavy distorted low boom with a burst of harsh radio static and a scraping metal shriek on top, fading into a low hum, industrial horror, no melody, no voices', 2.5],
+    'enc-sting-3': ['Horror reveal stinger: a sharp reversed swell rushing in and slamming into a deep thud with a rusty metal clang, followed by an unsettling high whine that fades out, no melody, no voices', 2.5],
+    'static-burst': ['A small pocket transistor radio suddenly bursting into loud harsh analog static with a warbling distorted squeal, then crackling down, close, no voice, no music', 2],
+    'bugler-wheeze': ['A small child breathing heavily through a soaked cloth wrapped tightly around the head: wet muffled wheezing inhales and exhales, sick and unnatural, close, no words, no music', 3.5],
+    'bugler-wheeze-2': ['Muffled wet wheezing of a child whose face is wrapped in a wet cloth: one long rattling inhale and a choked exhale through the fabric, a faint tap of a brass bugle, close, no words, no music', 3],
+    'wet-gurgle': ['A drowned body breathing: water gurgling and bubbling in a throat, a slow heavy wet exhale with dripping water, close, horror, no words, no music', 3],
+    'wet-gurgle-2': ['A heavy waterlogged body shifting: slosh of water pouring from soaked clothes, a deep bubbling groan through water, dripping, close, no words, no music', 3],
+    'creature-die': ['An inhuman creature dying: a long distorted exhale dropping in pitch, a wet heavy collapse onto concrete, then a low reversed rumble fading to silence, horror, no music', 3],
+    'hide-breath': ['A man hiding and holding his breath: a trembling slow exhale through the nose, his own heartbeat thudding in his ears, faint fabric rustle, extremely close and quiet, no music', 4],
+    // погоня: бег с одышкой и сердце — петлями под погоню, рывок на смене шага, «оторвались» в конце
+    'chase-run': ['A man sprinting in panic: fast heavy footsteps on wet ground and ragged panting breath, continuous, close microphone, no music, no words', 8, true],
+    'heartbeat-fast': ['Fast pounding human heartbeat heard from inside the head, muffled deep thumps about 140 beats per minute, steady, no music', 6, true],
+    'chase-cut': ['A fast whoosh of a man rushing past wet branches, a cloth flap and a sharp gasp, close, no music', 1.2],
+    'chase-escape': ['A man slams a heavy wooden door, leans on it and slides down, gasping for air, ragged breaths slowly calming, close, no music', 4]
   }
 }
 
@@ -262,6 +279,8 @@ const ACCENT = { 'hook-hit': 5, 'whistle-blast': 6, 'door-bang': 4, 'bugle-far-f
   'helmet-clang': 3, 'hose-whip': 4, 'diver-breath': -2, 'valve-wheel': -2, 'projector-run': -3,
   'solo-hit-land-2': 2, 'solo-hit-land-3': 2, 'solo-hit-land-4': 2, 'solo-hit-land-5': 2, 'fist-hit': 2, 'fist-hit-2': 2, 'fist-hit-3': 2, 'fist-hit-4': 2, 'fist-swing': -2, 'fist-swing-2': -2, 'solo-hurt-2': 3, 'solo-hurt-3': 3, 'solo-dodge-2': -2, 'bugle-blast-2': 6, 'wet-grab-2': 5, 'whistle-blast-2': 6, 'helmet-clang-2': 3, 'hose-whip-2': 4,
   'solo-dodge': -2, 'solo-hurt': 3, 'solo-hit-land': 2, 'creak-floor': -8, 'drip-one': -8, 'wind-window': -6, 'glass-tinkle': -10, 'pipe-knock': -7, 'gust': -5, 'glass-break-far': -4, 'glass-break-far-2': -4, 'twig-snap': -4, 'twig-snap-2': -4, 'footsteps-forest': -5, 'footsteps-forest-2': -5, 'water-surge': -5, 'metal-groan': -6, 'other-pulse': -2,
+  'enc-sting': 5, 'enc-sting-2': 5, 'enc-sting-3': 5, 'static-burst': 1, 'bugler-wheeze': -1, 'bugler-wheeze-2': -1, 'wet-gurgle': 0, 'wet-gurgle-2': 0, 'creature-die': 2, 'hide-breath': -3,
+  'chase-run': 9, 'heartbeat-fast': 8, 'chase-cut': -1, 'chase-escape': -1,
   'bugle-blast': 6, 'wet-grab': 5, 'solo-shot': 6, 'water-splash': 3, 'bugle-near': 2, 'whisper-far': -8, 'flashlight-on': -7, 'flashlight-off': -7, 'battery-in': -5, 'paper': -4, 'solo-hide': -3, 'step-asphalt': -3, 'step-wood': -3, 'step-tile': -3, 'step-glass': -6, 'step-water': -3, 'step-grass': -3 }
 function normalize(file, loop) {
   const base = LEVEL[world]?.[loop ? 'loop' : 'shot']

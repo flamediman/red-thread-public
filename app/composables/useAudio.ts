@@ -112,6 +112,8 @@ function ensure(): AudioContext | null {
 
 /** если у дела нет темы — чем её заменить (по порядку) */
 const THEME_FALLBACK: Record<string, string[]> = {
+  // «Туман»: боевые темы по очереди; нет файла — прежняя тема боя или погони
+  'fight-dread': ['fight'], 'fight-rust': ['fight'], 'fight-heavy': ['fight', 'boss'], 'chase-2': ['chase'], 'chase-3': ['chase'],
   'prologue': ['lobby'],
   'night-late': ['night-early', 'lobby'],
   'night-dawn': ['night-late', 'night-early', 'lobby'],
@@ -256,7 +258,8 @@ const VARIANTS: Record<string, number> = {
   'solo-hit-land': 5, 'solo-swing': 3, 'solo-hurt': 3, 'solo-dodge': 2, 'fist-hit': 4, 'fist-swing': 2,
   'thud-cloth': 2, 'wet-hurt': 2, 'counselor-hurt': 2, 'helmet-clang': 2, 'bugle-blast': 2, 'wet-grab': 2, 'whistle-blast': 2, 'hose-whip': 2,
   'thunder-far': 3, 'footsteps-behind': 2, 'whisper-near': 2, 'door-slam-far': 2, 'industrial-clank': 2,
-  'glass-break-far': 2, 'twig-snap': 2, 'footsteps-forest': 2
+  'glass-break-far': 2, 'twig-snap': 2, 'footsteps-forest': 2,
+  'enc-sting': 3, 'bugler-wheeze': 2, 'wet-gurgle': 2
 }
 /* Удары и выстрелы каждый раз немного другие, как в жизни: высота (rate — доля), громкость (db) и окраска (tone —
    сколько верха пропустить, Гц, случайно между границами: удар то глухой, то звонкий), чуть в стороне (pan). Удары —

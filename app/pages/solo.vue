@@ -113,8 +113,18 @@ let lastPlayed = -1
 let lastPlace = ''
 let lastHealth = 100
 const hurtFlash = ref(0)
+/* развязка встречи или погони (SoloAfter): показывается, только если эта страница видела саму встречу — после перезагрузки
+   её не досматривают */
+const afterShow = ref<NonNullable<SoloView['after']> | null>(null)
+let afterSeen = 0
 watch(view, (nv, ov) => {
   if (!nv) return
+  const a = nv.after
+  if (a && a.at > afterSeen) {
+    afterSeen = a.at
+    if (ov && (ov.encounter || ov.chase) && !nv.encounter && !nv.chase && !nv.boss && !nv.dead && entered.value) afterShow.value = a
+  }
+  if (nv.encounter || nv.chase || nv.boss || nv.dead) afterShow.value = null
   const maxSeq = nv.feed.at(-1)?.seq ?? 0
   const prevMax = ov?.feed.at(-1)?.seq ?? 0
   if (lastPlayed < 0) { lastPlayed = maxSeq; feedFloor.value = Math.max(0, maxSeq - 3); lastPlace = nv.place?.id ?? ''; lastHealth = nv.health; return }
@@ -300,9 +310,11 @@ const notesFocus = ref<string | null>(null)
 function readNote(id: string) { send({ type: 'noteRead', id }) }
 function openNote(id: string) { nextFound(); notesFocus.value = id; notesOpen.value = true }
 watch(notesOpen, on => { if (!on) notesFocus.value = null })
-const overlay = computed<'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'boss' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
+const overlay = computed<'after' | 'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'boss' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
   const s = v.value
   if (!s?.started || !entered.value) return null
+  // сначала досмотреть, чем кончилась встреча, — потом сцена, находка или концовка, которые она вызвала
+  if (afterShow.value && !s.dead) return 'after'
   if (s.scene) return 'scene'
   if (s.ending) return endingPlayed.value === s.ending.id ? 'ending' : 'ending-scene'
   if (s.dead) return 'dead'
@@ -328,8 +340,8 @@ const relay = (m: SoloClientMessage) => send(m)
 /* ── звук: атмосфера места, радио, сердце, дрожь встречи ── */
 /** петли, которые в ленте места должны быть тише остальных (часы в кабинете — не громче гула) */
 const AMB_LEVEL: Record<string, number> = { 'clock-tick-slow': 0.3, 'loudspeaker-hum': 0.7, pines: 0.8, 'fog-drip': 0.8, 'other-pulse': 0.7, 'rain-light': 0.75, 'rain-heavy': 0.85, 'rain-roof': 0.55 }
-watch([() => place.value?.ambience.join(','), () => place.value?.weather, () => v.value?.radio, () => !!(v.value?.encounter || v.value?.chase || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending],
-  ([, , radio, enc, low, inGame, ok, ended]) => {
+watch([() => place.value?.ambience.join(','), () => place.value?.weather, () => v.value?.radio, () => !!(v.value?.encounter || v.value?.boss), () => (v.value?.health ?? 100) <= 30, entered, () => audio.unlocked.value, () => !!v.value?.ending, () => !!v.value?.chase],
+  ([, , radio, enc, low, inGame, ok, ended, chasing]) => {
     if (!ok) return
     if (!inGame || !v.value?.started || ended) { audio.ambience(['fog-wind'], { 'fog-wind': 0.5 }); return }
     const names = [...(place.value?.ambience ?? [])]
@@ -350,7 +362,9 @@ watch([() => place.value?.ambience.join(','), () => place.value?.weather, () => 
     }
     if (radio) { names.push('radio-static'); levels['radio-static'] = radio === 2 ? 0.95 : 0.35 }
     if (enc) { names.push('dread-drone'); levels['dread-drone'] = 0.8 }
-    if (low) { names.push('heartbeat'); levels.heartbeat = 0.7 }
+    // погоня: свой бег с одышкой и сердце, которое колотится в ушах
+    if (chasing) { names.push('chase-run', 'heartbeat-fast'); levels['chase-run'] = 0.95; levels['heartbeat-fast'] = 0.7 }
+    else if (low) { names.push('heartbeat'); levels.heartbeat = 0.7 }
     audio.ambience(names, levels)
   }, { immediate: true })
 watch([() => place.value?.outdoor, () => audio.unlocked.value], ([outdoor]) => audio.setOutdoors(!!outdoor), { immediate: true })
@@ -428,13 +442,13 @@ const themeName = computed<string | null>(() => {
   if (!entered.value || !s.started) return 'title'
   if (s.ending) return s.ending.id
   if (s.dead) return null
-  if (s.chase) return 'chase'
+  if (s.chase) return battle.chase
   // сцена или разговор со своей темой — воспоминание, признание
   if (s.scene?.music) return s.scene.music
   if (s.dialogue?.music) return s.dialogue.music
   // босс — своя музыка; любая встреча с существом — боевая тема (спокойная тема района под дракой не звучит)
   if (s.boss) return 'boss'
-  if (s.encounter) return 'fight'
+  if (s.encounter) return HEAVY.has(s.encounter.monster) ? 'fight-heavy' : battle.fight
   const pid = place.value?.id ?? ''
   const area = place.value?.area
   const has = (id: string) => s.notes.some(n => n.id === id)
@@ -449,8 +463,18 @@ const themeName = computed<string | null>(() => {
 })
 /** места у воды, где вместо темы района — озеро */
 const LAKE = new Set(['quay', 'camp_boathouse', 'bridge', 'camp_pier', 'shore', 'intake_out'])
-/** тяжёлые существа: боевая тема в полную (у остальных — чуть тише) */
-const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper'])
+/** тяжёлые существа: своя тяжёлая боевая тема в полную (у остальных — чуть тише) */
+const HEAVY = new Set(['wet', 'counselor', 'squad', 'sleeper', 'diver'])
+/* Темы боя и погони идут по очереди (26.09.2026, «больше страшного»): у каждой встречи своя, подряд одна не повторяется.
+   battle — что зазвучит в этой (или ближайшей) встрече и погоне; сменяется, когда встреча кончилась, и следующая сразу
+   качается в кэш. Файла нет — useAudio берёт прежнюю fight/chase (THEME_FALLBACK) */
+/* прежняя «fight» (сдержанная виолончель) — только запасной вариант; прежняя погоня осталась в очереди */
+const FIGHTS = ['fight-dread', 'fight-rust']
+const CHASES = ['chase-2', 'chase-3', 'chase']
+const battle = reactive({ fight: FIGHTS[Math.floor(Math.random() * FIGHTS.length)]!, chase: CHASES[Math.floor(Math.random() * 2)]! })
+const nextOf = (list: string[], cur: string) => { const rest = list.filter(x => x !== cur); return rest[Math.floor(Math.random() * rest.length)]! }
+watch(() => !!v.value?.encounter, (on, was) => { if (!on && was) { battle.fight = nextOf(FIGHTS, battle.fight); void cacheTheme(battle.fight) } })
+watch(() => !!v.value?.chase, (on, was) => { if (!on && was) { battle.chase = nextOf(CHASES, battle.chase); void cacheTheme(battle.chase) } })
 const themeLevel = computed(() => {
   const s = v.value
   if (!s || !entered.value || !s.started || s.ending || s.chase) return 1
@@ -465,7 +489,7 @@ const themeLevel = computed(() => {
 })
 // пока история грузится, играет то, что было в меню: у мира и заставки истории одна тема, она не должна обрываться
 // бой и погоня начинаются резко — музыка входит за полторы секунды, а не за четыре
-const FAST = new Set(['boss', 'fight', 'chase'])
+const FAST = new Set(['boss', 'fight', 'chase', ...FIGHTS, 'fight-heavy', ...CHASES])
 watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok], old) => {
   if (!ok || !v.value) return
   // уход в тишину и возвращение — медленно, за 8–10 с, чтобы не заметить, когда именно музыка исчезла
@@ -475,14 +499,45 @@ watch([themeName, themeLevel, () => audio.unlocked.value], ([t, lvl, ok], old) =
 /* боевая тема и погоня — заранее, в кэш браузера (без расшифровки, память не занимают): на слабом интернете первая
    встреча иначе шла под спокойную тему, пока 1,4 МБ боевой качались. После картинки места и заготовок соседей */
 let battleCached = false
+async function cacheTheme(t: string) {
+  for (let k = 0; k < 5; k++) if (await backgroundFetch(`/music/${story.value}/${t}.mp3`, 'sound')) return
+}
 watch(() => !!(entered.value && v.value?.started && audio.unlocked.value), async on => {
   if (!on || battleCached || !story.value) return
   battleCached = true
   await new Promise(r => setTimeout(r, 3000))
-  for (const t of ['fight', 'chase']) {
-    for (let k = 0; k < 5; k++) if (await backgroundFetch(`/music/${story.value}/${t}.mp3`, 'sound')) break
-  }
+  // по одной, следующие по очереди — те, что зазвучат в ближайшей встрече и погоне
+  for (const t of [battle.fight, battle.chase, 'fight-heavy']) await cacheTheme(t)
 }, { immediate: true })
+
+/* Бродячее подходит (approach): приёмник уже шипит, атмосфера проседает, шаги и голос приходят с одной стороны и всё
+   ближе — есть секунды уйти. Не вышло (прошло мимо) — шаги уходят вбок и дальше */
+let approachTimers: number[] = []
+let lastApproach: NonNullable<SoloView['approach']> | null = null
+let approachPlace = ''
+watch(() => { const a = v.value?.approach; return a ? `${a.monster}|${a.at}` : '' }, () => {
+  approachTimers.forEach(t => clearTimeout(t)); approachTimers = []
+  const a = v.value?.approach ?? null
+  const prev = lastApproach
+  lastApproach = a
+  if (!audio.unlocked.value) return
+  if (a) {
+    approachPlace = place.value?.id ?? ''
+    const cv = creatureVoice(a.monster)
+    const total = Math.max(1500, a.at - (Date.now() + clockOffset.value))
+    audio.hush(total / 1000)
+    for (let t = 300, k = 0; t < total - 300; t += 1100 + Math.random() * 600, k++) {
+      const f = t / total
+      const name = k % 3 === 2 ? cv.near[Math.floor(k / 3) % cv.near.length]! : cv.steps
+      const az = a.az + (Math.random() - 0.5) * 0.35
+      approachTimers.push(window.setTimeout(() => void audio.spatial(name, { az, dist: 22 - 17 * f, volume: 0.35 + 0.4 * f }), t))
+    }
+  } else if (prev && !v.value?.encounter && place.value?.id === approachPlace) {
+    const cv = creatureVoice(prev.monster)
+    for (let i = 0; i < 3; i++) approachTimers.push(window.setTimeout(() => void audio.spatial(cv.steps, { az: prev.az + 0.6 + i * 0.5, dist: 6 + i * 6, volume: 0.45 - i * 0.1, move: 0.4 }), 400 + i * 1300))
+  }
+})
+onBeforeUnmount(() => approachTimers.forEach(t => clearTimeout(t)))
 
 /* звуки вокруг героя: даль, рядом, этаж сверху, за спиной в темноте, гром в дождь — у каждого слоя свой случайный ритм
    (useSoundscape). Звучат, пока герой просто идёт; записки и карта их не глушат — читать под шаги сверху страшнее */
@@ -753,11 +808,12 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
       </div>
 
       <!-- ── поверх всего ── -->
+      <Transition name="after"><SoloAfter v-if="overlay === 'after' && afterShow" :key="afterShow.at" :after="afterShow" :story="story" :focus="v.artFocus" @done="afterShow = null" /></Transition>
       <SoloScene v-if="overlay === 'scene' && v.scene" :key="v.scene.seq" :lines="v.scene.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="sceneDone" />
       <SoloScene v-else-if="overlay === 'ending-scene' && v.ending" :key="`end-${v.ending.id}`" :lines="v.ending.lines" :story="story" :hero="v.info.hero" :speakers="speakers" :focus="v.artFocus" :fallback="artOk ? artSrc : null" @done="endingPlayed = v.ending!.id" />
-      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :depth="v.depth" :wind="v.wind" :offset="clockOffset" @send="relay" />
+      <SoloChase v-else-if="overlay === 'chase' && v.chase" :chase="v.chase" :story="story" :focus="v.artFocus" :depth="v.depth" :wind="v.wind" :offset="clockOffset" :health="v.health" @send="relay" />
       <SoloBoss v-else-if="overlay === 'boss' && v.boss" :boss="v.boss" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" @send="relay" />
-      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" :light="v.light" :health="v.health" @send="relay" />
+      <SoloEncounter v-else-if="overlay === 'encounter' && v.encounter" :enc="v.encounter" :story="story" :focus="v.artFocus" :depth="v.depth" :offset="clockOffset" :light="v.light" :health="v.health" :radio="hasRadio && v.radioOn" @send="relay" />
       <SoloDialogue v-else-if="overlay === 'dialogue' && v.dialogue" :data="v.dialogue" :story="story" :hero="v.info.hero" @send="relay" />
       <SoloPuzzle v-else-if="overlay === 'puzzle' && v.puzzle" :data="v.puzzle" :story="story" :last-fail="puzzleFail" :paused="notesOpen" @send="relay" @notes="notesOpen = true" />
       <SoloFound v-else-if="overlay === 'found' && found[0]" :key="`${found.length}-${found[0].item?.id ?? found[0].note?.id}`" :item="found[0].item" :note="found[0].note" :story="story" :more="found.length - 1" @done="nextFound" @read="openNote" />

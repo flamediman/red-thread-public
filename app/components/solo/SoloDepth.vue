@@ -6,7 +6,7 @@
    отражают, дождь и пыль летят на разной глубине и прячутся за предметами, листья пролетают на переднем плане,
    по небу идут облака, трава колышется своими травинками (маска w_). Всё — один проход по экрану.
    Не вышло (нет WebGL, не загрузилось) — событие fail, страница вернёт обычную картинку. */
-const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; mat?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean; grade?: [number, number, number] }>()
+const props = defineProps<{ src: string; depth: string; mode: 'none' | 'torch' | 'black'; lx: number; ly: number; weak?: boolean; focus?: string; rain?: number; fog?: number; other?: boolean; flash?: number; lights?: { x: number; y: number; r?: number; color?: string; flicker?: boolean }[]; motion?: 'calm' | 'run' | 'breath'; surface?: string; wind?: string; mat?: string; windy?: number; leaves?: number; power?: number; beam?: number; outdoor?: boolean; grade?: [number, number, number]; fadeMs?: number }>()
 const emit = defineEmits<{ fail: []; ready: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 /* кадр проявляется, когда нарисован первый раз: без чёрной вспышки на переходе */
@@ -672,7 +672,8 @@ function draw(ms: number) {
   const age = (ms - born) / 1000
   let zoom = 1 - (still ? 0 : 0.0075 * (1 - Math.cos((t * 2 * Math.PI) / 32)))
   let bx = still ? 0 : Math.sin((t * 2 * Math.PI) / 47) * 0.004, by = still ? 0 : Math.sin((t * 2 * Math.PI) / 39) * 0.003
-  if (!still && sc.motion === 'run') { zoom = 1 - Math.min(age / 8, 1) * 0.06; bx = Math.sin(t * Math.PI * 2.2) * 0.005; by = Math.abs(Math.sin(t * Math.PI * 4.4)) * 0.007 - 0.0035 }
+  // бег: наезд вперёд за шаг погони и тряска в такт шагам — шаг ~2,7 в секунду, голова ходит вверх-вниз и в стороны
+  if (!still && sc.motion === 'run') { zoom = 1 - Math.min(age / 7, 1) * 0.08; bx = Math.sin(t * Math.PI * 2.7) * 0.009; by = Math.abs(Math.sin(t * Math.PI * 5.4)) * 0.013 - 0.0065 }
   else if (!still && sc.motion === 'breath') { zoom = 1 - Math.min(age / 25, 1) * 0.05; bx = Math.sin(t * 0.5) * 0.004; by = Math.sin(t * 1.1) * 0.003 }
   const cover = ca > ia ? [0.97 * zoom, 0.97 * zoom * ia / ca] : [0.97 * zoom * ca / ia, 0.97 * zoom]
   const [fx, fy] = (sc.focus ?? '50% 50%').split(' ').map(v => parseFloat(v) / 100)
@@ -709,7 +710,7 @@ function draw(ms: number) {
   // тон — как у слоя .solo-tint: ржавый на изнанке (класс .solo--other у страницы; встречи его не передают)
   const tn = c.closest('.solo--other') ? TINT_OTHER : TINT
   g.uniform4f(u.tint!, tn[0]!, tn[1]!, tn[2]!, tn[3]!)
-  g.uniform1f(u.fade!, fadeStart < 0 ? 1 : Math.min(1, (ms - fadeStart) / FADE))
+  g.uniform1f(u.fade!, fadeStart < 0 ? 1 : Math.min(1, (ms - fadeStart) / (props.fadeMs ?? FADE)))
   const L = (sc.lights ?? []).slice(0, 4)
   const pos = new Float32Array(16), rgb = new Float32Array(12)
   L.forEach((l, i) => {
@@ -742,7 +743,7 @@ function frame(ms: number) {
     findSun(sharper.img)
     sharper = null
   }
-  if (fadeStart >= 0 && ms - fadeStart > FADE) fadeStart = -1
+  if (fadeStart >= 0 && ms - fadeStart > (props.fadeMs ?? FADE)) fadeStart = -1
   raf = requestAnimationFrame(frame)
 }
 

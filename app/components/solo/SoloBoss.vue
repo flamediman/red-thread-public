@@ -57,7 +57,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <i class="solo-tint" aria-hidden="true" />
     <SoloFog :density="0.9" other />
     <div class="solo-boss__arena"><SoloQte :prompts="boss.prompts" :now="now" @answer="onAnswer" /></div>
-    <Transition name="fade" mode="out-in">
+    <Transition name="quick-text" mode="out-in">
       <div :key="`${boss.round}-${boss.kind}`" class="solo-boss__call" :class="`solo-boss__call--${boss.kind}`">
         <b>{{ boss.kind === 'defend' ? 'Он бьёт — уходите' : boss.open ? 'Он открылся — бейте!' : 'Бейте' }}</b>
         <small v-if="mirror">всё наоборот: уходите в противоположную сторону</small>
@@ -70,7 +70,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <span class="solo-enc__hp"><i :style="{ transform: `scaleX(${boss.maxHp ? boss.hp / boss.maxHp : 0})` }" /></span>
         <b class="solo-boss__time tabnum">{{ secondsLeft }}</b>
       </div>
-      <Transition name="fade" mode="out-in">
+      <Transition name="quick-text" mode="out-in">
         <p :key="boss.round + boss.text" class="solo-enc__text">{{ boss.text }}</p>
       </Transition>
       <div class="solo-boss__series" :aria-label="`поймано ${caught} из ${boss.prompts.length}, нужно ${boss.need}`">
