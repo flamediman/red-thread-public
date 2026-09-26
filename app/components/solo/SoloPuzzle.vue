@@ -141,6 +141,9 @@ const gridN = computed(() => p.value.kind === 'grille' ? p.value.grid.length : 0
 const stencilHoles = computed(() => p.value.kind === 'grille' ? p.value.holes : [])
 const stencilPath = computed(() => `M0 0H${gridN.value}V${gridN.value}H0Z` + stencilHoles.value.map(([r, c]) => `M${c} ${r}h1v1h-1Z`).join(''))
 function turnGrille() { grilleSpin.value++; void audio.sfx('paper', 0.35) }
+/* наложенный трафарет всегда ложится в начальное положение: иначе после «снять — наложить» он оставался повёрнутым,
+   чтение начиналось с середины, и из тех же букв выходила бессмыслица */
+watch(grilleOn, on => { if (on) grilleSpin.value = 0 })
 
 function submit() {
   const v = p.value

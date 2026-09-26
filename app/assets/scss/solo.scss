@@ -672,7 +672,6 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     .m-pin__head { fill: #b5322a; stroke: #7e1f19; stroke-width: 0.25; }
     .m-pin__dot { fill: #efe6d4; }
     .m-pin__pulse { fill: none; stroke: #b5322a; stroke-width: 0.35; transform-box: fill-box; transform-origin: center; animation: m-pin-pulse 1.8s ease-out infinite; }
-    .m-pin__word { fill: #b5322a; font-family: 'Caveat', var(--font-story); font-size: 2.9px; font-weight: 600; paint-order: stroke; stroke: rgba(226, 220, 206, 0.8); stroke-width: 0.5px; }
     .m-cross path { fill: none; stroke: #b5322a; stroke-width: 0.6; stroke-linecap: round; }
     .m-hand__ring { fill: none; stroke: #b5322a; stroke-width: 0.45; stroke-linecap: round; }
     .m-hand__q { fill: #b5322a; font-family: 'Caveat', var(--font-story); font-size: 4px; font-weight: 500; }

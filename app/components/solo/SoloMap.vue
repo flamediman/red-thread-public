@@ -119,20 +119,80 @@ function nameLines(p: Place) {
 }
 /* подпись умещается в комнату — внутри; иначе под ней */
 const labelInside = (p: Place) => p.h >= 7 && p.w * A.value >= 9
+/** точка подписи места (центр первой строки): у улиц — вверху участка, у комнат — по центру, у мелких — под ними */
+const nameAt = (p: Place) => ({ x: cx(p), y: p.outdoor && labelInside(p) ? box(p).y + 3.4 : labelInside(p) ? cy(p) - (nameLines(p).length - 1) * 1.2 + 0.9 : box(p).y + box(p).h + 3.1 })
 /** булавка «вы здесь»: капля остриём вниз, остриё — в (0, 0) */
 const PIN = 'M0,0 C-0.9,-1.4 -2.1,-2.6 -2.1,-4.1 A2.1,2.1 0 1 1 2.1,-4.1 C2.1,-2.6 0.9,-1.4 0,0 Z'
-/* куда воткнуть булавку, чтобы она не легла на название: у улиц название вверху — остриё ниже него; у комнат название
-   по центру, а в правом верхнем углу бывает «?» — булавка внизу слева, подпись справа от неё ниже названия; у мелких
-   мест название под ними — булавка посередине */
-const pinAt = (p: Place) => {
-  const b = box(p), k = K.value, head = 6.4 * k
-  if (!labelInside(p)) return { x: cx(p), y: cy(p) + Math.min(head / 2, b.h / 2) }
-  if (p.outdoor) {
-    const nameBottom = b.y + 3.4 + (nameLines(p).length - 1) * 2.6 * k + 0.8
-    return { x: cx(p), y: Math.min(b.y + b.h - 1, Math.max(cy(p), nameBottom + head + 0.5)) }
+
+/* Где воткнуть булавку. Раньше место считалось «на глаз» (в комнате — внизу слева), и в невысоких комнатах головка
+   ложилась на название. Теперь названия после отрисовки меряются (getBBox), и булавка встаёт в первое свободное место:
+   слева от названия, справа, под ним, над ним, в любом углу места, а если внутри тесно — над местом снаружи (остриё на
+   кромке). Свободное — не задевает ни одно название на листе, ни пометки «?», телефон и крест этого места */
+interface Rect { x: number; y: number; w: number; h: number }
+const nameEls = new Map<string, SVGTextElement>()
+const nameBoxes = ref<Record<string, Rect>>({})
+/** название шире своей комнаты («Сортировочная» в узкой) — чуть мельче, чтобы не вылезало на стену и не касалось дверей в ней */
+const nameFit = ref<Record<string, number>>({})
+function measureNames() {
+  const out: Record<string, Rect> = {}, fit: Record<string, number> = {}
+  for (const p of places.value) {
+    const el = nameEls.get(p.id)
+    if (!el) continue
+    try {
+      const bb = el.getBBox(), at = nameAt(p), k = K.value
+      const f = labelInside(p) ? Math.min(1, Math.max(0.7, (box(p).w - 3) / Math.max(0.1, bb.width * k))) : 1
+      fit[p.id] = f
+      out[p.id] = { x: at.x + bb.x * k * f, y: at.y + bb.y * k * f, w: bb.width * k * f, h: bb.height * k * f }
+    } catch { /* ещё не в документе */ }
   }
-  return { x: b.x + Math.max(2.6 * k, b.w * 0.2), y: b.y + b.h - 1.2 }
+  nameFit.value = fit
+  nameBoxes.value = out
 }
+watch([tab, () => props.map], () => nextTick(measureNames), { immediate: true, flush: 'post' })
+onMounted(() => { nextTick(measureNames); document.fonts?.ready.then(measureNames).catch(() => {}) })
+const overlap = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
+/** что занимает булавка с остриём в (x, y): головка и заметная часть расходящегося круга */
+const pinRect = (x: number, y: number): Rect => { const k = K.value; return { x: x - 2.6 * k, y: y - 6.5 * k, w: 5.2 * k, h: 8.3 * k } }
+const pin = computed<{ x: number; y: number } | null>(() => {
+  const p = places.value.find(x => x.here)
+  if (!p) return null
+  const names = nameBoxes.value
+  const own = names[p.id]
+  if (!own) return null
+  const b = box(p), k = K.value, pad = 0.8
+  const hw = 2.6 * k, top = 6.5 * k, bottom = 1.8 * k
+  // пометки этого места (как они расставлены в шаблоне ниже)
+  const marks: Rect[] = []
+  if (p.puzzle) marks.push({ x: b.x + b.w - 3 - 3 * k, y: b.y + 3.6 - 3 * k, w: 6 * k, h: 6 * k })
+  if (p.save && p.visited) { const sy = b.y + (p.puzzle ? b.h - 2.2 : 2.2); marks.push({ x: b.x + b.w - 2.2 - 1.5 * k, y: sy - 1.5 * k, w: 3 * k, h: 3 * k }) }
+  if (p.locked && !p.visited) marks.push({ x: b.x, y: b.y, w: 16 * k, h: 5 * k })
+  const obstacles = [...Object.values(names).map(r => ({ x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 })), ...marks]
+  const ny = Math.min(own.y + own.h / 2 + 3.1 * k, b.y + b.h - 0.4)
+  const candidates = [
+    { x: own.x - pad - hw, y: ny, inside: true }, // слева от названия
+    { x: own.x + own.w + pad + hw, y: ny, inside: true }, // справа
+    { x: cx(p), y: own.y + own.h + pad + top, inside: true }, // под названием
+    { x: cx(p), y: own.y - pad - bottom, inside: true }, // над ним
+    { x: b.x + hw + 0.6, y: b.y + b.h - bottom - 0.4, inside: true }, // углы места
+    { x: b.x + b.w - hw - 0.6, y: b.y + b.h - bottom - 0.4, inside: true },
+    { x: b.x + hw + 0.6, y: b.y + top + 0.4, inside: true },
+    { x: b.x + b.w - hw - 0.6, y: b.y + top + 0.4, inside: true },
+    { x: cx(p), y: b.y + 1.2, inside: false }, // над местом снаружи, остриё на кромке
+    { x: b.x + hw, y: b.y + 1.2, inside: false }, // над левым или правым краем
+    { x: b.x + b.w - hw, y: b.y + 1.2, inside: false }
+  ]
+  // внутри места должна уместиться головка с остриём; расходящийся круг под остриём может выйти за стену
+  const fits = (c: { x: number; y: number }) => c.x - 2.2 * k >= b.x + 0.3 && c.x + 2.2 * k <= b.x + b.w - 0.3 && c.y - 6.3 * k >= b.y + 0.3 && c.y <= b.y + b.h - 0.3
+  const onSheet = (c: { x: number; y: number }) => { const r = pinRect(c.x, c.y); return r.x >= 0.5 && r.y >= 0.5 && r.x + r.w <= W.value - 0.5 && r.y + r.h <= 99.5 }
+  let best = candidates[candidates.length - 2]!, bestCost = Infinity
+  for (const [i, c] of candidates.entries()) {
+    if (!onSheet(c) || (c.inside && !fits(c))) continue
+    const cost = obstacles.reduce((s, o) => s + overlap(pinRect(c.x, c.y), o), 0)
+    if (cost === 0) return { x: c.x, y: c.y }
+    if (cost + i * 0.01 < bestCost) { best = c; bestCost = cost + i * 0.01 }
+  }
+  return { x: best.x, y: best.y }
+})
 
 /* значки-пометки: телефон (сохранение), крест (заперто) — в сетке 24×24 */
 const PHONE = 'M6.5 3.5h3l1.8 4.6-2.1 1.3a11 11 0 005.4 5.4l1.3-2.1 4.6 1.8v3a2 2 0 01-2 2A15.5 15.5 0 014.5 5.5a2 2 0 012-2z'
@@ -226,23 +286,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
           <!-- названия мест и пометки героя -->
           <g v-for="p in places" :key="`n-${p.id}`" class="m-name" :class="{ 'm-name--seen': p.visited, 'm-name--known': p.known, 'm-name--out': p.outdoor }">
-            <text text-anchor="middle" :transform="`translate(${cx(p)},${p.outdoor && labelInside(p) ? box(p).y + 3.4 : labelInside(p) ? cy(p) - (nameLines(p).length - 1) * 1.2 + 0.9 : box(p).y + box(p).h + 3.1}) scale(${K})`">
+            <text :ref="el => { if (el) nameEls.set(p.id, el as SVGTextElement); else nameEls.delete(p.id) }" text-anchor="middle" :transform="`translate(${nameAt(p).x},${nameAt(p).y}) scale(${K * (nameFit[p.id] ?? 1)})`">
               <tspan v-for="(t, i) in nameLines(p)" :key="i" x="0" :dy="i ? 2.6 : 0">{{ t }}</tspan>
             </text>
             <g v-if="p.save && p.visited" class="m-save" :transform="`translate(${box(p).x + box(p).w - 2.2},${box(p).y + (p.puzzle ? box(p).h - 2.2 : 2.2)}) scale(${K * 0.12})`">
               <path :d="PHONE" transform="translate(-12,-12)" />
             </g>
           </g>
-          <!-- «вы здесь»: булавка остриём в место (у верхнего края — не на названии), под остриём расходится круг,
-               рядом подпись от руки. Кружок вокруг места читался как обычная пометка, а не как «я тут» -->
-          <template v-for="p in places" :key="`here-${p.id}`">
-            <g v-if="p.here" class="m-pin" :transform="`translate(${pinAt(p).x},${pinAt(p).y}) scale(${K})`">
-              <circle class="m-pin__pulse" r="1.2" />
-              <path class="m-pin__head" :d="PIN" />
-              <circle class="m-pin__dot" cy="-4.1" r="0.8" />
-              <text class="m-pin__word" x="2.8" y="-4.2" transform="rotate(-6)">вы здесь</text>
-            </g>
-          </template>
+          <!-- «вы здесь»: булавка остриём в место, под остриём расходится круг; ставится туда, где не закрывает ни одного
+               названия и пометки (pin). Подпись от руки убрана — лишняя, значок объяснён в легенде -->
+          <g v-if="pin" class="m-pin" :transform="`translate(${pin.x},${pin.y}) scale(${K})`">
+            <circle class="m-pin__pulse" r="1.2" />
+            <path class="m-pin__head" :d="PIN" />
+            <circle class="m-pin__dot" cy="-4.1" r="0.8" />
+          </g>
           <!-- заперто, а двери на плане нет — крест у названия -->
           <g v-for="p in lockMarks" :key="`x-${p.id}`" class="m-cross" :transform="`translate(${box(p).x + 2.4},${box(p).y + 2.4}) scale(${K})`">
             <path d="M-1.3,-1.3 L1.3,1.3 M1.3,-1.3 L-1.3,1.3" />
