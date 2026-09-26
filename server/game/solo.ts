@@ -115,6 +115,10 @@ interface Run {
   met?: string[]
   /** игровое время последней встречи или подхода бродячего — после неё передышка */
   calmAt?: number
+  /** тайники: сколько раз обыскан (−1 — там уже нашли); когда была последняя находка по нужде; обысков «на сухую» подряд */
+  stash?: Record<string, number>
+  supplyAt?: number
+  dry?: number
 }
 
 interface Live {
@@ -352,6 +356,7 @@ export class SoloGame {
     }
     // патроны и ствол нашли вне боя — зарядить сразу, молча (звук находки и так есть)
     if (e.give?.length && !this.live.encounter && !this.live.boss) this.topUp(false)
+    if (e.supply) this.supplyDrop(null, true, true)
     for (const f of e.set ?? []) if (!r.flags.includes(f)) r.flags.push(f)
     if (e.unset) r.flags = r.flags.filter(f => !e.unset!.includes(f))
     if (e.melody) this.say(undefined, undefined, undefined, { melody: e.melody })
@@ -664,11 +669,69 @@ export class SoloGame {
       return this.changed()
     }
     if (!h.look) return
-    if (h.look.once && r.looked.includes(h.id)) { this.say(h.look.after ?? 'Больше здесь ничего нет.', undefined, undefined, { art: h.look.art }); return this.changed() }
-    if (!r.looked.includes(h.id)) r.looked.push(h.id)
+    if (h.look.once && r.looked.includes(h.id)) {
+      this.say(h.look.after ?? 'Больше здесь ничего нет.', undefined, undefined, { art: h.look.art })
+      if (h.stash) this.supplyDrop(h.id, false)
+      return this.changed()
+    }
+    const first = !r.looked.includes(h.id)
+    if (first) r.looked.push(h.id)
     this.apply(h.look)
+    if (h.stash) this.supplyDrop(h.id, first)
     this.actSpawn(h.id)
     this.changed()
+  }
+
+  /* ── запас по нужде (как в Resident Evil) ──────────────────── */
+
+  /** что сейчас нужнее всего и насколько (0…1): патроны к стволу, который есть, лекарство, батарейка */
+  private supplyNeed(): { item: string; need: number; ammo: boolean } | null {
+    const sp = this.S.supply, r = this.run!
+    if (!sp) return null
+    const list: { item: string; need: number; ammo: boolean }[] = []
+    for (const g of this.guns()) {
+      const item = sp.ammo[g.id]
+      if (!item) continue
+      const total = this.ammoOf(g), cap = this.capOf(g)
+      list.push({ item, ammo: true, need: total === 0 ? 1 : total < cap ? 0.6 : total <= cap ? 0.3 : 0 })
+    }
+    const count = (kind: SoloItem['kind']) => Object.entries(r.items).filter(([i, n]) => n > 0 && this.ITEM.get(i)?.kind === kind).reduce((a, [, n]) => a + n, 0)
+    const heals = count('heal')
+    const hn = r.health < 35 ? (heals ? 0.35 : 1) : r.health < 60 ? (heals ? 0.15 : 0.6) : 0
+    if (hn && sp.heal.length) list.push({ item: r.health < 35 ? sp.heal[0]! : sp.heal.at(-1)!, ammo: false, need: hn })
+    if (sp.battery && this.has('flashlight') && !count('battery')) {
+      const bn = r.battery < 20 ? 0.8 : r.battery < 40 ? 0.4 : 0
+      if (bn) list.push({ item: sp.battery, ammo: false, need: bn })
+    }
+    list.sort((a, b) => b.need - a.need || Number(b.ammo) - Number(a.ammo))
+    return list[0] && list[0].need > 0 ? list[0] : null
+  }
+
+  /** Обыскать тайник (hotspot) или найти по эффекту (sure — наверняка, если нужда есть). Первый осмотр — бросок по нужде
+      (нужда 1 → 80 %); повторный — только при острой нужде (≥ 0,6), не больше двух обысков на тайник. Между находками —
+      передышка игрового времени; без патронов совсем второй обыск подряд — находка наверняка и без передышки */
+  private supplyDrop(hotspot: string | null, first: boolean, sure = false) {
+    const sp = this.S.supply, r = this.run!
+    if (!sp) return
+    const st = { ...(r.stash ?? {}) }
+    const done = hotspot ? st[hotspot] ?? 0 : 0
+    if (hotspot && (done < 0 || done >= 2)) return
+    const n = this.supplyNeed()
+    if (hotspot && !first && (!n || n.need < 0.6)) return
+    if (hotspot) { st[hotspot] = done + 1; r.stash = st }
+    if (!n) return
+    const now = this.playNow()
+    const dryOut = n.ammo && n.need >= 1
+    const forced = dryOut && (r.dry ?? 0) >= 1
+    const rested = now - (r.supplyAt ?? -1e9) >= (sp.cooldownMs ?? 150_000)
+    const found = forced || (rested && (sure ? n.need >= 0.3 : this.random() < n.need * 0.8))
+    if (!found) { if (dryOut) r.dry = (r.dry ?? 0) + 1; return }
+    r.dry = 0
+    r.supplyAt = now
+    if (hotspot) { st[hotspot] = -1; r.stash = st }
+    const lines = sp.text[n.item]
+    if (lines?.length) this.say(lines[Math.floor(Math.random() * lines.length)], ['pocket'])
+    this.apply({ give: [n.item] })
   }
 
   private use(itemId: string, hotspotId?: string) {

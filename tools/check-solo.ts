@@ -177,6 +177,24 @@ for (const s of S.spawns) {
   if (s.boss && s.stays) warn(`${w}: босс с stays — будет возвращаться после каждого побега`)
   cond(s.when, w)
 }
+/* запас по нужде: предметы есть, у каждого — строка находки, тайники осматриваются */
+if (S.supply) {
+  const sp = S.supply
+  for (const [gun, ammo] of Object.entries(sp.ammo)) {
+    if (!S.items.find(i => i.id === gun)?.weapon?.usesAmmo) err(`запас: ${gun} — не ствол`)
+    if (S.items.find(i => i.id === ammo)?.kind !== 'ammo') err(`запас: ${ammo} — не патроны`)
+  }
+  for (const i of [...Object.values(sp.ammo), ...sp.heal, ...(sp.battery ? [sp.battery] : [])]) {
+    if (!has('item', i)) err(`запас: нет предмета ${i}`)
+    if (!sp.text[i]?.length) warn(`запас: у ${i} нет строки находки — найдётся молча`)
+  }
+  const stashes = S.hotspots.filter(h => h.stash)
+  for (const h of stashes) if (!h.look) err(`тайник ${h.id}: нет осмотра`)
+  const byArea = new Map<string, number>()
+  for (const h of stashes) { const a = S.places.find(p => p.id === h.place)?.area ?? '?'; byArea.set(a, (byArea.get(a) ?? 0) + 1) }
+  for (const a of S.areas) if (!byArea.get(a.id)) warn(`запас: в районе ${a.id} нет тайников`)
+} else if (S.hotspots.some(h => h.stash)) err('тайники есть, а запаса (supply) нет')
+
 /* бродячие: район, существа, места; тексты без привязки к месту — иначе выходит из тумана посреди комнаты */
 for (const [i, r] of (S.roam ?? []).entries()) {
   const w = `бродячие ${r.area}#${i + 1}`
