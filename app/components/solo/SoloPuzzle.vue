@@ -115,6 +115,13 @@ function press(id: string, note: string) {
   seq.value = [...seq.value, id]
 }
 
+/* ── последовательность: каждая кнопка — один раз, щелчок слышен ── */
+function pressSeq(id: string) {
+  if (seq.value.includes(id)) return
+  seq.value = [...seq.value, id]
+  void audio.sfx('qte-tick', 0.3)
+}
+
 /* ── раскладка: взять вещь, положить на место; щелчок по занятому месту возвращает вещь ── */
 function slotClick(i: number) {
   const next = [...placed.value]
@@ -204,9 +211,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
         </div>
       </div>
 
+      <!-- порядок: у нажатой кнопки — её номер, второй раз её не нажать; «Сначала» снимает все -->
       <div v-else-if="p.kind === 'sequence'" class="solo-seq">
-        <button v-for="b in p.buttons" :key="b.id" type="button" class="solo-seq__btn" @click="seq = [...seq, b.id]">{{ b.label }}</button>
-        <p class="solo-seq__trace tabnum">{{ seq.length ? seq.map(id => p.kind === 'sequence' ? p.buttons.find(b => b.id === id)?.label : '').join(' → ') : 'нажимайте по порядку' }}</p>
+        <div class="solo-seq__grid">
+          <button
+            v-for="b in p.buttons" :key="b.id" type="button" class="solo-seq__btn" :class="{ 'solo-seq__btn--on': seq.includes(b.id) }"
+            :disabled="seq.includes(b.id)" @click="pressSeq(b.id)"
+          ><i v-if="seq.includes(b.id)" class="solo-seq__num tabnum">{{ seq.indexOf(b.id) + 1 }}</i>{{ b.label }}</button>
+        </div>
+        <p class="solo-seq__trace">нажимайте по порядку</p>
       </div>
 
       <div v-else-if="p.kind === 'clock'" class="solo-clock">
@@ -262,7 +275,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
       <div class="solo-puzzle__actions">
         <button type="button" class="solo-btn solo-btn--ghost" @click="close">Отойти</button>
         <button type="button" class="solo-btn solo-btn--ghost" title="Записки (J)" @click="emit('notes')">Записки</button>
-        <button v-if="p.kind === 'sequence' || p.kind === 'keys'" type="button" class="solo-btn solo-btn--ghost" @click="seq = []">Сначала</button>
+        <button v-if="p.kind === 'sequence' || p.kind === 'keys'" type="button" class="solo-btn solo-btn--ghost" :disabled="!seq.length" @click="seq = []">Сначала</button>
         <button type="button" class="solo-btn" @click="submit">Попробовать</button>
       </div>
     </div>

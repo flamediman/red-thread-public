@@ -525,7 +525,9 @@ html, body { overscroll-behavior: none; }
   display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 4rem); align-content: center;
   &__intro { align-self: center; padding: clamp(1rem, 2.2vw, 1.8rem); border-radius: var(--radius-lg); background: linear-gradient(160deg, rgba(10, 12, 16, 0.9), rgba(10, 12, 16, 0.78)); box-shadow: inset 0 0 0 1px var(--glass-line); }
   &__top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-  &__back { padding: 0.35em 0; color: var(--paper-dim); font-size: var(--step--1); font-weight: 600; transition: color var(--dur-fast) ease; }
+  &__back { display: inline-flex; align-items: center; gap: 0.45em; padding: 0.35em 0; color: var(--paper-dim); font-size: var(--step--1); font-weight: 600; transition: color var(--dur-fast) ease; }
+  /* режим партии и правила к нему — две плашки одной высоты под верхней строкой */
+  &__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: clamp(0.8rem, 1.6vh, 1.2rem); }
   &__history { margin-bottom: min(1.2rem, 1.8vh); color: var(--paper-faint); font-size: var(--step--1); line-height: 1.5; b { color: var(--stamp-2); font-weight: 600; } }
   /* заголовок и QR подстраиваются под высоту окна: на ноутбуке 800px всё должно влезать без прокрутки */
   &__title { font-size: min(var(--step-4), 8vh); margin: 0.4em 0 0.35em; }
@@ -1136,7 +1138,8 @@ img.img-missing { visibility: hidden; }
   i { display: grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--stamp); color: #fff6f0; font-style: normal; font-weight: 700; font-size: 0.75rem; } }
 @media (hover: hover) { .lobby__rules:hover { background: rgba(241, 233, 216, 0.08); box-shadow: inset 0 0 0 1px rgba(241, 233, 216, 0.45); } }
 .pad-lobby__rules { align-self: center; }
-.lobby__nav { display: inline-flex; align-items: center; gap: 1rem; }
+/* в лобби экрана правила стоят рядом с плашкой режима — той же высоты и того же кегля */
+.lobby__rules { min-height: 2rem; padding: 0 0.85em 0 0.35em; font-size: 0.8rem; i { width: 1.35rem; height: 1.35rem; } }
 
 /* ── режим «на время»: большой экран ─────────────────────────────── */
 .stage__left { color: var(--paper); font-weight: 700; &--low { color: var(--stamp-2); } }
@@ -1287,4 +1290,4 @@ img.img-missing { visibility: hidden; }
   b { font-weight: 700; }
   small { font-size: 0.95em; font-weight: 500; opacity: 0.85; white-space: normal; &::before { content: '· '; } }
   &--rounds { --chip: #d9b25a; } &--realtime { --chip: #e0735f; } &--solo { --chip: #8fb8bf; } }
-.lobby__mode { margin-bottom: 0.6rem; font-size: 0.8rem; }
+.lobby__mode { min-height: 2rem; font-size: 0.8rem; }

@@ -492,10 +492,22 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
     &::after { content: ''; position: absolute; left: 50%; top: 0.35rem; width: 3px; height: 1rem; margin-left: -1.5px; border-radius: 2px; background: #e6e3da; } }
 }
 @media (hover: hover) { .solo-dial__row button:hover { background: rgba(230, 227, 218, 0.14); color: var(--paper); } }
-.solo-seq { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.45rem; width: 100%;
-  &__btn { min-height: 3rem; border-radius: 8px; font-family: var(--font-ui); font-weight: 700; color: var(--paper); background: #1b1f1f; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(230, 227, 218, 0.12);
-    &:active { transform: translateY(2px); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.12); } }
-  &__trace { grid-column: 1 / -1; text-align: center; font-family: var(--font-ui); font-size: 0.82rem; color: var(--paper-faint); } }
+/* последовательность: кнопки-карточки по рядам, неполный ряд — по центру; длинная подпись переносится внутри карточки,
+   у нажатой — номер в углу и красная кромка */
+.solo-seq { display: flex; flex-direction: column; align-items: center; gap: 0.6rem; width: 100%;
+  &__grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.7rem 0.5rem; width: 100%; padding-top: 0.4rem; }
+  &__btn { position: relative; display: grid; place-items: center; flex: 0 1 calc((100% - 1rem) / 3); min-width: 7.5rem; min-height: 4rem; padding: 0.6rem 0.9rem; border-radius: 9px;
+    font-family: var(--font-ui); font-size: 0.92rem; font-weight: 700; line-height: 1.25; text-align: center; text-wrap: balance; overflow-wrap: anywhere; color: var(--paper);
+    background: #1b1f1f; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(230, 227, 218, 0.12);
+    transition: background-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, color var(--dur-fast) ease;
+    &:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 0 0 1px rgba(230, 227, 218, 0.12); }
+    &--on, &--on:disabled { opacity: 1; color: var(--paper-dim); background: #221716; box-shadow: inset 0 0 0 1px rgba(224, 122, 107, 0.55); } }
+  /* номер — на углу карточки, поверх кромки: подпись он не закрывает при любой длине */
+  &__num { position: absolute; top: -0.5rem; left: -0.45rem; display: grid; place-items: center; width: 1.35rem; height: 1.35rem; border-radius: 50%;
+    font-family: var(--font-ui); font-size: 0.72rem; font-weight: 700; font-style: normal; color: #fff6f0; background: var(--stamp); box-shadow: 0 0 0 3px #121515; }
+  &__trace { text-align: center; font-family: var(--font-ui); font-size: 0.82rem; color: var(--paper-faint); } }
+@media (hover: hover) { .solo-seq__btn:not(:disabled):hover { background: #232828; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(230, 227, 218, 0.28); } }
+@media (max-width: 480px) { .solo-seq__btn { flex-basis: calc((100% - 0.5rem) / 2); } }
 /* часы: латунный циферблат, стрелки ходят вместе */
 .solo-clock { display: flex; flex-direction: column; align-items: center; gap: 0.7rem;
   &__face { width: min(15rem, 60vw); height: auto; touch-action: none; cursor: grab; }
@@ -670,10 +682,8 @@ $grain: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220
   transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease;
   &__top { display: flex; align-items: center; gap: 0.5rem; .solo-label { margin: 0; } b { margin-left: auto; color: var(--paper-faint); font-weight: 600; } }
   &__icons { display: flex; flex-wrap: wrap; gap: 0.45rem; color: var(--paper-faint); svg { width: 1.15rem; height: 1.15rem; } .equipped { color: #efe2b0; } }
-  &.on { border-color: rgba(239, 226, 176, 0.35); }
-  &__mode { margin: 0.5rem 0 0; font-size: 0.85rem; color: #efe2b0; .solo-link { margin-left: 0.3rem; } } }
+  &.on { border-color: rgba(239, 226, 176, 0.35); } }
 @media (hover: hover) { .solo-bagbtn:hover { background: rgba(230, 227, 218, 0.08); border-color: rgba(230, 227, 218, 0.16); } }
-.solo-link { background: none; border: 0; padding: 0; color: var(--paper); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; }
 
 /* окно вещей — постоянного размера: не прыгает, когда выбирают другую вещь; длинное описание прокручивается внутри */
 .solo-inv { position: relative; display: flex; flex-direction: column; gap: 0.9rem; width: min(56rem, 100%); height: min(38rem, calc(100dvh - 2rem)); padding: 1.1rem;

@@ -100,14 +100,15 @@ function tryStart() {
 <template>
   <div class="lobby">
     <div class="lobby__intro">
+      <!-- верх: назад и печать дела; под ними — как идёт партия и правила к ней, двумя плашками одной высоты -->
       <div class="lobby__top">
-        <span class="lobby__nav">
-          <button class="lobby__back" type="button" @click="emit('send', { type: 'toMenu' })">← Все дела</button>
-          <button class="lobby__rules" type="button" @click="rulesOpen = true"><i>?</i>Правила</button>
-        </span>
+        <button class="lobby__back" type="button" @click="emit('send', { type: 'toMenu' })"><span aria-hidden="true">←</span>Все дела</button>
         <span class="stamp">{{ state.setting.title }} · {{ state.caseInfo.stamp }}</span>
       </div>
-      <ModeChip class="lobby__mode" :mode="realtime ? 'realtime' : 'rounds'" explain />
+      <div class="lobby__meta">
+        <ModeChip class="lobby__mode" :mode="realtime ? 'realtime' : 'rounds'" explain />
+        <button class="lobby__rules" type="button" @click="rulesOpen = true"><i>?</i>Правила</button>
+      </div>
       <h1 class="display lobby__title">{{ state.caseInfo.title }}</h1>
       <p class="lobby__lede">{{ state.caseInfo.lede }}</p>
       <p class="lobby__history">

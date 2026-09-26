@@ -691,11 +691,11 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
               <SoloIcon v-for="it in v.inventory.slice(0, 8)" :key="it.id" :name="it.icon" :class="{ equipped: it.equipped }" />
             </span>
           </button>
-          <p v-if="mode?.kind === 'use'" class="solo-bagbtn__mode">Применить «{{ mode.name }}» — выберите, к чему. <button type="button" class="solo-link" @click="mode = null; picked = null">Отмена</button></p>
         </section>
 
+        <!-- одна подсказка на режим «применить / соединить»: карточка под вещами, выход — «отмена» -->
         <p v-if="mode" class="solo-mode">
-          {{ mode.kind === 'use' ? `Применить «${mode.name}» — к чему?` : `Соединить «${mode.name}» — с чем?` }}
+          <span>{{ mode.kind === 'use' ? `Применить «${mode.name}» — к чему?` : `Соединить «${mode.name}» — с чем?` }}</span>
           <button type="button" @click="mode = null; picked = null">отмена</button>
         </p>
 
