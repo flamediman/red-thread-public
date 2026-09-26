@@ -18,9 +18,10 @@ const clockMin = ref(0)
 /* раскладка: для каждого места — id вещи или '' */
 const placed = ref<string[]>([])
 const holding = ref<string | null>(null)
-/* решётка: наложена ли и на сколько четвертей повёрнута */
+/* решётка: наложена ли и сколько раз повёрнута (счётчик растёт всегда — пластина крутится по часовой, а не отматывает
+   три четверти назад, когда 3 → 0) */
 const grilleOn = ref(false)
-const turns = ref(0)
+const grilleSpin = ref(0)
 
 // колёсики сбрасываются только при другой головоломке: после неверной попытки набранное остаётся
 watch(() => props.data.hotspot, () => {
@@ -34,7 +35,7 @@ watch(() => props.data.hotspot, () => {
   if (v.kind === 'clock' && v.start) { const [h, m] = v.start.split(':').map(Number); clockMin.value = ((h ?? 0) % 12) * 60 + (m ?? 0) }
   holding.value = null
   grilleOn.value = false
-  turns.value = 0
+  grilleSpin.value = 0
 }, { immediate: true })
 
 function spin(i: number, dir: 1 | -1) {
@@ -132,14 +133,14 @@ function slotClick(i: number) {
 }
 const freePieces = computed(() => p.value.kind === 'arrange' ? p.value.pieces.filter(pc => !placed.value.includes(pc.id)) : [])
 
-/* ── решётка: прорези для положения 0, поворот по часовой (r, c) → (c, n − 1 − r) ── */
-const holeSet = computed(() => {
-  const v = p.value
-  if (v.kind !== 'grille') return new Set<string>()
-  const n = v.grid.length
-  const rot = ([r, c]: [number, number]): [number, number] => [c, n - 1 - r]
-  return new Set(v.holes.map(h => { let x = h; for (let k = 0; k < turns.value % 4; k++) x = rot(x); return `${x[0]},${x[1]}` }))
-})
+/* ── решётка: трафарет — отдельная пластина поверх бумаги с прорезями для положения 0; поворот — пластина целиком
+   поворачивается на четверть по часовой (прорезь (r, c) уходит в (c, n − 1 − r)). Раньше каждая клетка перекрашивалась
+   сама — буквы вспыхивали и гасли вразнобой, поворот мерцал ── */
+const gridN = computed(() => p.value.kind === 'grille' ? p.value.grid.length : 0)
+/* пластина — один контур с вырезанными прорезями (evenodd): сплошная, без швов между клетками */
+const stencilHoles = computed(() => p.value.kind === 'grille' ? p.value.holes : [])
+const stencilPath = computed(() => `M0 0H${gridN.value}V${gridN.value}H0Z` + stencilHoles.value.map(([r, c]) => `M${c} ${r}h1v1h-1Z`).join(''))
+function turnGrille() { grilleSpin.value++; void audio.sfx('paper', 0.35) }
 
 function submit() {
   const v = p.value
@@ -257,14 +258,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
       </div>
 
       <div v-else-if="p.kind === 'grille'" class="solo-grille">
-        <div class="solo-grille__grid" :style="{ gridTemplateColumns: `repeat(${p.grid.length}, 1fr)` }">
-          <template v-for="(row, r) in p.grid" :key="r">
-            <span v-for="(ch, c) in row.split('')" :key="c" class="solo-grille__cell" :class="{ 'solo-grille__cell--hole': grilleOn && holeSet.has(`${r},${c}`), 'solo-grille__cell--covered': grilleOn && !holeSet.has(`${r},${c}`) }">{{ ch }}</span>
-          </template>
+        <div class="solo-grille__paper">
+          <div class="solo-grille__grid" :style="{ gridTemplateColumns: `repeat(${gridN}, 1fr)` }">
+            <template v-for="(row, r) in p.grid" :key="r">
+              <span v-for="(ch, c) in row.split('')" :key="c" class="solo-grille__cell">{{ ch }}</span>
+            </template>
+          </div>
+          <Transition name="stencil">
+            <svg v-if="grilleOn" class="solo-grille__stencil" :viewBox="`0 0 ${gridN} ${gridN}`" preserveAspectRatio="none" :style="{ transform: `rotate(${grilleSpin * 90}deg)` }" aria-hidden="true">
+              <path :d="stencilPath" fill-rule="evenodd" class="solo-grille__plate" />
+              <rect v-for="([r, c], i) in stencilHoles" :key="i" :x="c + 0.03" :y="r + 0.03" width="0.94" height="0.94" class="solo-grille__slot" />
+            </svg>
+          </Transition>
         </div>
         <div class="solo-grille__row">
           <button type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="grilleOn = !grilleOn">{{ grilleOn ? 'Снять трафарет' : 'Наложить трафарет' }}</button>
-          <button v-if="grilleOn" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="turns = (turns + 1) % 4">Повернуть ↻</button>
+          <button v-if="grilleOn" type="button" class="solo-btn solo-btn--small solo-btn--ghost" @click="turnGrille">Повернуть ↻</button>
         </div>
         <input v-model="word" class="solo-word" type="text" autocomplete="off" placeholder="что прочитали">
       </div>

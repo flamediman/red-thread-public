@@ -310,6 +310,12 @@ const notesFocus = ref<string | null>(null)
 function readNote(id: string) { send({ type: 'noteRead', id }) }
 function openNote(id: string) { nextFound(); notesFocus.value = id; notesOpen.value = true }
 watch(notesOpen, on => { if (!on) notesFocus.value = null })
+/* записки открываются на той, что читали последней (в браузере, по истории): в загадке её открывают и закрывают
+   много раз — каждый раз искать нужную в списке неудобно */
+const lastNoteKey = computed(() => `rn:note:${story.value}`)
+const lastNote = ref<string | null>(null)
+watch(lastNoteKey, k => { try { lastNote.value = localStorage.getItem(k) } catch { lastNote.value = null } }, { immediate: true })
+function pickNote(id: string) { lastNote.value = id; try { localStorage.setItem(lastNoteKey.value, id) } catch { /* приватный режим */ } }
 const overlay = computed<'after' | 'scene' | 'ending-scene' | 'ending' | 'dead' | 'chase' | 'boss' | 'encounter' | 'dialogue' | 'puzzle' | 'found' | null>(() => {
   const s = v.value
   if (!s?.started || !entered.value) return null
@@ -782,7 +788,7 @@ const lastSave = computed<Saves[number] | null>(() => [...(v.value?.saves ?? [])
         @pick="pickInBag" @use="useSelf" @examine="id => { send({ type: 'examine', item: id }); bagOpen = false }"
         @apply="startMode('use'); bagOpen = false" @combine="startMode('combine')" @cancel="mode = null" @close="bagOpen = false; if (mode?.kind === 'combine') mode = null"
       />
-      <SoloNotes v-if="notesOpen" :notes="v.notes" :focus="notesFocus" @close="notesOpen = false" @read="readNote" />
+      <SoloNotes v-if="notesOpen" :notes="v.notes" :focus="notesFocus ?? lastNote" @close="notesOpen = false" @read="readNote" @pick="pickNote" />
 
       <div v-if="saveOpen" class="solo-veil" @click.self="saveOpen = false">
         <div class="solo-card" role="dialog" aria-modal="true">
