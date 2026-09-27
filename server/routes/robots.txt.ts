@@ -10,6 +10,7 @@ export default defineEventHandler((event) => {
     'Disallow: /api/',
     'Disallow: /_ws',
     'Disallow: /_solo',
+    'Disallow: /stats',
     '',
     `Sitemap: ${siteOrigin(event)}/sitemap.xml`,
     ''

@@ -30,6 +30,8 @@ function pageFor(event: H3Event): Page {
       path: '/play', image: IMAGE, index: false
     }
   }
+  // статистика владельца: не для поиска и не для превью
+  if (url.pathname === '/stats') return { title: `Статистика · ${SITE}`, description: 'Служебная страница.', path: '/stats', image: IMAGE, index: false }
   if (url.pathname === '/solo') {
     const id = url.searchParams.get('story') ?? ''
     const entry = SOLO_STORIES[id] ?? Object.values(SOLO_STORIES)[0]
