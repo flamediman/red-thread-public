@@ -435,7 +435,8 @@ export class Game {
     this.screen = 'prologue'
     this.beats = this.S.prologue
     this.phaseMs = null
-    this.deadline = Date.now() + estimateBeatsMs(this.beats)
+    // «Смена реплик: вручную» касается и пролога: без озвучки текст уходил раньше, чем его успевали прочитать
+    this.deadline = this.settings.stepping === 'manual' ? null : Date.now() + estimateBeatsMs(this.beats)
     this.emit()
   }
 
@@ -1100,7 +1101,8 @@ export class Game {
       this.beats = [...this.S.epilogue.truth, ...(found ? this.S.epilogue.branch.found : this.S.epilogue.branch.lost), this.S.epilogue.closing]
       this.screen = 'epilogue'
       this.phaseMs = null
-      this.deadline = Date.now() + estimateBeatsMs(this.beats)
+      // вручную — эпилог ждёт «Дальше» на экране, серверные часы его не обрывают
+      this.deadline = this.settings.stepping === 'manual' ? null : Date.now() + estimateBeatsMs(this.beats)
       this.emit()
       return
     }

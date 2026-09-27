@@ -103,7 +103,8 @@ async function playBeat(b: Beat, my: number) {
   const v = await audio.voice(b.id)
   if (my !== run) return
   const total = Math.max(1, wordCount.value)
-  const perWord = v.played && v.duration > 0 ? Math.max(90, (v.duration * 1000 * 0.9) / total) : 170
+  // без озвучки — темп чтения вслух для компании (≈ 230 слов в минуту), а не беглого взгляда
+  const perWord = v.played && v.duration > 0 ? Math.max(90, (v.duration * 1000 * 0.9) / total) : 260
 
   let cancelled = false
   skipCurrent = () => { cancelled = true }
@@ -134,6 +135,9 @@ async function playBeat(b: Beat, my: number) {
     await new Promise<void>(r => { resolveNext = r })
     awaiting.value = false
   } else if (!cancelled) {
+    // без озвучки текст целиком держится, пока его дочитывают те, кто отвлёкся: полсекунды реплике не хватало
+    const hold = v.played ? 0 : Math.min(9000, 1500 + total * 110)
+    for (let t = 0; t < hold; t += 100) { await sleep(100); if (my !== run) return; if (props.paused) t -= 100 }
     await sleep(b.pauseAfter ?? 500)
   }
 }

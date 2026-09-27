@@ -319,7 +319,7 @@ const crew = computed(() => (state.value?.players ?? []).map(p => ({
           :paused="state.paused"
           :intro="screen === 'prologue'"
           :case-info="state.caseInfo"
-          :manual="state.settings.stepping === 'manual' && screen !== 'prologue'"
+          :manual="state.settings.stepping === 'manual'"
           :start-at="state.beatIndex"
           :queue-label="screen === 'resolve' ? 'разбор раунда' : screen === 'prologue' ? 'пролог' : screen === 'verdict' ? 'вердикт' : 'как это было'"
           @done="hostSend({ type: 'beatsDone' })"
