@@ -11,12 +11,15 @@ const audio = useAudio()
 const { now } = useFieldClock(computed(() => props.state), 120)
 const field = computed(() => props.state.field)
 
-/* ── геометрия: этажи — полосы сверху вниз, комнаты — прямоугольники в полосе ── */
+/* ── геометрия: этажи — полосы сверху вниз, комнаты — прямоугольники в полосе. Город (map.kind === 'city'): места стоят
+   на общем плане в своих координатах, районы — области на нём, фигурка едет напрямую ── */
+const city = computed(() => props.state.map?.kind === 'city')
 const band = computed(() => 100 / Math.max(1, props.state.floors.length))
 const floorIndex = (floor: number) => Math.max(0, props.state.floors.findIndex(f => f.id === floor))
 const rect = (id: string) => {
   const l = props.state.locations.find(x => x.id === id)
   if (!l) return { left: 0, top: 0, width: 0, height: 0 }
+  if (city.value) return { left: l.x, top: l.y, width: l.w, height: l.h }
   // сверху полосы — место под подпись этажа, чтобы она не наезжала на названия комнат
   const label = band.value * 0.16
   const top = floorIndex(l.floor) * band.value + label
@@ -32,7 +35,8 @@ const rooms = computed(() => props.state.locations.map(l => ({
   faces: props.state.witnesses.filter(w => w.locationId === l.id),
   busy: field.value?.players.some(p => p.busy && props.state.players.find(x => x.id === p.id)?.locationId === l.id) ?? false
 })))
-const floorLabels = computed(() => props.state.floors.map((f, i) => ({ ...f, top: i * band.value })))
+const floorLabels = computed(() => city.value ? [] : props.state.floors.map((f, i) => ({ ...f, top: i * band.value })))
+const districts = computed(() => city.value ? props.state.floors.filter(f => f.w && f.h) : [])
 
 /* ── фигурки: цель — следующее место на пути, переход длится остаток шага ── */
 const tokens = computed(() => {
@@ -54,9 +58,11 @@ const tokens = computed(() => {
     const slot = byNode.get(node) ?? 0
     byNode.set(node, slot + 1)
     const c = center(node)
+    // в городе — пунктир от места, откуда выехал, до цели: видно, кто куда едет через город
+    const from = w && city.value ? center(w.from) : null
     return {
       ...p, color: INKS[p.ink] ?? INKS[0], x: c.x - 1.6 + slot * 2.6, y: c.y, ms: Math.max(0, Math.round(ms)),
-      walking: !!w, busy: fp?.busy?.label ?? null
+      walking: !!w, busy: fp?.busy?.label ?? null, trail: from && ms > 0 ? { x1: from.x, y1: from.y, x2: c.x, y2: c.y } : null
     }
   })
 })
@@ -127,7 +133,12 @@ watch(() => field.value?.feed.at(-1)?.seq ?? 0, seq => {
 <template>
   <div class="field">
     <section class="field__map">
-      <div class="field__canvas">
+      <div class="field__canvas" :class="{ 'field__canvas--city': city }">
+        <!-- город: районы — области на плане, подпись в углу -->
+        <div v-for="d in districts" :key="d.id" class="field__district" :style="{ left: `${d.x}%`, top: `${d.y}%`, width: `${d.w}%`, height: `${d.h}%` }"><i>{{ d.label }}</i></div>
+        <svg v-if="city" class="field__trails" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <line v-for="t in tokens.filter(x => x.trail)" :key="`tr-${t.id}`" :x1="t.trail!.x1" :y1="t.trail!.y1" :x2="t.trail!.x2" :y2="t.trail!.y2" :stroke="t.color" />
+        </svg>
         <span v-for="f in floorLabels" :key="f.id" class="field__floor" :style="{ top: `${f.top}%`, height: `${band}%` }"><i>{{ f.label }}</i></span>
         <div
           v-for="r in rooms" :key="r.id" class="field__room"

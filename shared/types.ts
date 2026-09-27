@@ -290,8 +290,11 @@ export interface Scenario {
   epilogue: Epilogue
   /** голоса ElevenLabs рассказчика и помощника (у свидетелей — свои voiceId) */
   voices: { narrator: string; inspector: string }
-  /** этажи/уровни карты: подписи */
-  floors: { id: number; label: string }[]
+  /** этажи/уровни карты (у города — районы): подписи */
+  floors: MapFloor[]
+  /** режим «на время»: карта — здание в разрезе (по умолчанию) или город, где места стоят на общем плане и дорога между
+      ними занимает время по расстоянию (см. shared/travel.ts) */
+  map?: CityMap
   /** предмет, которым любой может прочитать слой памяти */
   memoryItemId?: string
   /** события ночи: в раунд (из расчёта на 12 раундов, масштабируется; в режиме «на время» — доля времени round/12)
@@ -308,6 +311,19 @@ export interface Scenario {
 }
 
 /* ── Режим «на время» ───────────────────────────────────────── */
+
+/** этаж здания или район города; у района — ещё его область на общем плане города, в процентах */
+export interface MapFloor { id: number; label: string; x?: number; y?: number; w?: number; h?: number }
+
+/** Карта города: места (Location.x/y/w/h) — прямоугольники на общем плане в процентах, районы — floors с областью.
+    Дорога идёт напрямую (такси, маглев), время — по расстоянию между местами */
+export interface CityMap {
+  kind: 'city'
+  /** ширина плана к высоте (по умолчанию 16/10): расстояние считается в настоящих пропорциях */
+  aspect?: number
+  /** сколько секунд занимает дорога через весь город по ширине (по умолчанию 30) */
+  secondsAcross?: number
+}
 
 /** Вопрос доски дела: команда прикалывает к нему карточки; подходящий набор даёт вывод. */
 export interface BoardQuestion {
@@ -634,7 +650,9 @@ export interface PublicState {
   attemptsLeft: number
   hintsUsed: number
   /** подписи этажей/уровней карты (сверху вниз) */
-  floors: { id: number; label: string }[]
+  floors: MapFloor[]
+  /** карта «на время»: здание или город (у города — пропорции и время дороги) */
+  map: CityMap | null
   /** активное дело и его сеттинг */
   caseInfo: CaseInfo
   setting: SettingInfo

@@ -1169,6 +1169,15 @@ img.img-missing { visibility: hidden; }
     .avatar, .face { box-shadow: 0 0 0 2px var(--tok), 0 4px 12px rgba(0, 0, 0, 0.6); }
     &--busy::before { content: ''; position: absolute; top: 50%; left: 50%; width: 2.6rem; height: 2.6rem; margin: -1.55rem 0 0 -1.3rem; border-radius: 50%; border: 2px solid var(--tok); animation: token-busy 1.4s ease-out infinite; } }
   &__token-name { padding: 0.02em 0.4em; border-radius: 999px; background: rgba(6, 8, 11, 0.88); color: var(--paper); font-family: var(--font-ui); font-weight: 700; font-size: 0.62rem; white-space: nowrap; }
+  /* город: вода и улицы под районами; район — область с подписью; пунктир — кто куда едет */
+  &__canvas--city { background: radial-gradient(ellipse at 30% 110%, rgba(40, 120, 150, 0.22), transparent 60%), linear-gradient(180deg, #060a10, #04070b);
+    &::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.5;
+      background-image: linear-gradient(rgba(120, 200, 230, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 200, 230, 0.05) 1px, transparent 1px); background-size: 4% 6.4%; }
+    .field__room { border-width: 2px; border-radius: 8px; } }
+  &__district { position: absolute; border-radius: 14px; background: rgba(241, 233, 216, 0.025); box-shadow: inset 0 0 0 1px rgba(241, 233, 216, 0.08); pointer-events: none;
+    i { position: absolute; left: 0.7rem; top: 0.45rem; font-style: normal; font-family: var(--font-ui); font-weight: 700; font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--paper-faint); } }
+  &__trails { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible;
+    line { stroke-width: 2; stroke-dasharray: 5 6; vector-effect: non-scaling-stroke; opacity: 0.75; } }
 
   &__board { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0.6rem; min-height: 0; padding: 0.9rem 1rem; border-radius: 12px; background: rgba(12, 14, 19, 0.92); box-shadow: inset 0 0 0 1px var(--glass-line); }
   &__board-head { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0.3rem 0.6rem; }

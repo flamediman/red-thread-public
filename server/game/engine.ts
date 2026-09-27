@@ -7,6 +7,7 @@ import type { GameStore } from './store'
 import { INKS } from '../../shared/inks'
 import { TUTORIAL_STEPS } from '../../shared/tutorial'
 import { honestBeatId } from '../../shared/types'
+import { cityLegMs } from '../../shared/travel'
 import type {
   Beat, BoardCard, BoardLink, BoardQuestion, CaseInfo, ClientMessage, DetectiveRole, Fact, FieldBusy, FieldFeedEntry, FieldLogEntry, FieldMoment, FieldState, FieldWalk,
   GameRecord, HonestAnswer, Item, Location, LocationOptions, PlanAction, PlanSummary, Presentation, PublicState, Question, Scenario, Screen, Spot, Verdict, Witness, YouState
@@ -1201,6 +1202,7 @@ export class Game {
       attemptsLeft: this.attemptsLeft,
       hintsUsed: this.hintsUsed,
       floors: this.S.floors,
+      map: this.S.map ?? null,
       caseInfo: this.b.info,
       setting: SETTINGS[this.b.info.settingId]!,
       catalog: catalog(),
@@ -1353,10 +1355,12 @@ export class Game {
       this.openedLocs.add(dest.id)
       this.pushFeed({ kind: 'door', playerId: p.id, locationId: dest.id, text: `${p.name} вскрывает дверь: ${dest.name}` })
     }
-    const path = this.route(p.locationId, dest.id)
+    // город: напрямую, время — по расстоянию на плане (shared/travel.ts); здание — по соседям, этаж 5 с, лестница 8 с
+    const city = this.S.map?.kind === 'city' ? this.S.map : null
+    const path = city ? [dest.id] : this.route(p.locationId, dest.id)
     if (!path) return
     let prev = this.b.LOC.get(p.locationId)!
-    const legs = path.map(id => { const next = this.b.LOC.get(id)!; const ms = next.floor === prev.floor ? FIELD_STEP_MS : FIELD_FLOOR_MS; prev = next; return ms })
+    const legs = city ? [cityLegMs(city, prev, dest)] : path.map(id => { const next = this.b.LOC.get(id)!; const ms = next.floor === prev.floor ? FIELD_STEP_MS : FIELD_FLOOR_MS; prev = next; return ms })
     p.walk = { from: p.locationId, path, legs, startedAt: now }
     this.emit()
   }

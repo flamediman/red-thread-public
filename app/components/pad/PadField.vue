@@ -2,6 +2,7 @@
 /* Режим «на время» на телефоне: сыщик ходит по карте сам, действия занимают настоящие секунды,
    находки ложатся на общую доску, а вопросы доски команда закрывает, прикалывая к ним карточки. */
 import type { BoardCard, ClientMessage, FieldLogEntry, PlanAction, PublicState, YouState } from '#shared/types'
+import { cityLegMs } from '#shared/travel'
 import { INKS } from '#shared/inks'
 import { ART, cardPhoto } from '~/utils/art'
 import { KIND_LABEL } from '~/composables/useBoardFilter'
@@ -61,8 +62,13 @@ const droneTargets = computed(() => props.state.locations.map(l => ({
 const everyone = computed(() => props.you.options.flatMap(o => o.witnesses.map(w => ({ ...w, locationId: o.locationId }))))
 function useAbility(action: PlanAction) { act(action); ability.value = null }
 
-/* ── карта ── */
+/* ── карта: в здании — этажи, в городе — районы и сколько ехать до каждого места (shared/travel.ts) ── */
 const inkOf = (i: number) => INKS[i] ?? INKS[0]
+const cityMap = computed(() => props.state.map?.kind === 'city' ? props.state.map : null)
+function rideSeconds(to: { x: number; y: number; w: number; h: number }) {
+  const from = props.state.locations.find(l => l.id === props.you.locationId)
+  return cityMap.value && from ? Math.round(cityLegMs(cityMap.value, from, to) / 1000) : 0
+}
 const floors = computed(() => props.state.floors.map(fl => ({
   ...fl,
   rooms: props.state.locations.filter(l => l.floor === fl.id).map(l => {
@@ -73,7 +79,8 @@ const floors = computed(() => props.state.floors.map(fl => ({
       faces: props.state.witnesses.filter(w => w.locationId === l.id),
       team: props.state.players.filter(p => p.connected && p.locationId === l.id && p.id !== props.you.id),
       here: props.you.locationId === l.id,
-      target: walk.value?.target === l.id
+      target: walk.value?.target === l.id,
+      ride: props.you.locationId === l.id ? 0 : rideSeconds(l)
     }
   })
 })))
@@ -308,7 +315,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
 
     <!-- КАРТА -->
     <div v-else-if="tab === 'map'" class="plan__actions field-pad__page">
-      <p class="plan__hint">Нажмите на место — сыщик пойдёт туда. Переход занимает секунды, лестница — дольше.</p>
+      <p class="plan__hint">{{ cityMap ? 'Нажмите на место — сыщик поедет туда. Чем дальше, тем дольше дорога: по городу разделяйтесь.' : 'Нажмите на место — сыщик пойдёт туда. Переход занимает секунды, лестница — дольше.' }}</p>
       <template v-for="fl in floors" :key="fl.id">
         <p class="label plan__floor">{{ fl.label }}</p>
         <div class="field-map__row">
@@ -326,6 +333,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
               <template v-if="!l.open">заперто</template>
               <template v-else-if="l.todo">осмотреть: {{ l.todo }}</template>
               <template v-else>осмотрено</template>
+              <template v-if="l.ride"> · ехать {{ l.ride }} с</template>
             </small>
             <span class="field-map__team">
               <i v-for="p in l.team" :key="p.id" :style="{ background: inkOf(p.ink) }" :title="p.name" />
