@@ -753,7 +753,7 @@ export class Game {
       const scale = this.roundsTotal / 12
       const fresh = this.S.overheard.filter(o => !o.factId || !this.board.has(o.factId))
       const oh = [...fresh].reverse().find(o => this.round >= Math.round(o.rounds[0] * scale)) ?? fresh[0]
-      if (!oh) return [this.narrate(`oh_${p.id}_${this.round}`, `${p.name} слушает у дверей, но всё, о чём здесь шепчутся, бригада уже знает.`)]
+      if (!oh) return [this.narrate(`oh_${p.id}_${this.round}`, `${p.name} слушает у дверей, но всё, о чём здесь шепчутся, уже известно.`)]
       p.usesLeft!--
       this.addFact(oh.factId, p.id)
       return [oh.beat]
@@ -778,7 +778,7 @@ export class Game {
       if (!card || !this.board.has(a.factId)) return []
       const lead = this.leadFor(a.factId)
       const who = this.act(p, '{name} поднимает архив')
-      if (!lead) return [this.narrate(`arch_${p.id}_${this.round}`, `${who} по карточке «${card.title}». Всё, что с ней расходится, бригада уже нашла.`, ['drawer'])]
+      if (!lead) return [this.narrate(`arch_${p.id}_${this.round}`, `${who} по карточке «${card.title}». Всё, что с ней расходится, уже на доске.`, ['drawer'])]
       p.usesLeft!--
       return [this.narrate(`arch_${p.id}_${this.round}`, `${who} по карточке «${card.title}». С ней не сходится то, что даст ${lead}.`, ['drawer', 'suspense-01'], 900)]
     }

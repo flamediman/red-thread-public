@@ -9,6 +9,7 @@ export const NINETIES: SettingInfo = {
   subtitle: 'Девяносто пятый. Ларьки, пейджеры, ваучеры и малиновые пиджаки. Опергруппа угрозыска в городе, где всё продаётся.',
   theme: 'nineties',
   crew: 'опергруппа',
+  crewIn: 'в опергруппе',
   menu: { music: '/music/settings/nineties.mp3', ambience: { names: ['wind-haunted'], levels: { 'wind-haunted': 0.3 } } }
 }
 

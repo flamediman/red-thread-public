@@ -23,7 +23,7 @@ function pick(id: string) {
 
 <template>
   <div class="pad-lobby">
-    <p class="label" style="text-align:center">Вы в бригаде</p>
+    <p class="label" style="text-align:center">Вы {{ state.setting.crewIn ?? 'в команде' }}</p>
     <h1 class="display pad-lobby__name">{{ you.name }}</h1>
     <p class="pad-lobby__wait">Собрались: <b class="tabnum">{{ state.players.length }}</b> · готовы: <b class="tabnum">{{ readyCount }}</b></p>
     <button class="pad-lobby__rules" type="button" @click="rulesOpen = true"><i>?</i>Правила игры</button>

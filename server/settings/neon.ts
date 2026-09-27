@@ -9,6 +9,7 @@ export const NEON: SettingInfo = {
   subtitle: '2081-й. Новая Пальмира: башни корпораций над затопленным городом, дождь не кончается, память продаётся на вес.',
   theme: 'neon',
   crew: 'отдел',
+  crewIn: 'в отделе',
   menu: { music: '/music/settings/neon.mp3', ambience: { names: ['rain-soft'], levels: { 'rain-soft': 0.45 } } }
 }
 

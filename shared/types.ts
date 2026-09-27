@@ -378,6 +378,8 @@ export interface SettingInfo {
   theme: string
   /** как называется команда игроков: «бригада», «группа» */
   crew: string
+  /** где игрок, в предложном падеже: «в бригаде», «в отделе» (без него — «в команде») */
+  crewIn?: string
   /** главное меню, пока этот мир на экране: музыка и атмосфера */
   menu: { music: string; ambience: AmbienceCue }
 }

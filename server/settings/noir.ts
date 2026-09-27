@@ -8,6 +8,7 @@ export const NOIR: SettingInfo = {
   subtitle: 'Пятидесятые. Дождь, телефонные будки, чернила и сургуч. Бригада городского управления.',
   theme: 'noir',
   crew: 'бригада',
+  crewIn: 'в бригаде',
   menu: { music: '/music/settings/noir.mp3', ambience: { names: ['rain-soft'], levels: { 'rain-soft': 0.5 } } }
 }
 
