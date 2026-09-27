@@ -82,6 +82,39 @@
   --photo-filter: saturate(1.08) contrast(1.04);
 }
 
+/* девяностые: выпуск криминальной хроники — тёплая плёнка «мыльницы», жёлтый таймкод VHS, красный огонёк записи,
+   заголовки узким телевизионным гротеском, текст — газетной антиквой */
+[data-setting='nineties'] {
+  --desk: #0e0c0a;
+  --desk-2: #181512;
+  --desk-3: #221e1a;
+  --desk-4: #302a24;
+  --paper: #f2ead8;
+  --paper-2: #e2d7bf;
+  --paper-3: #cdbf9f;
+  --paper-dim: #beb39b;
+  --paper-faint: #9a9281;
+  --ink: #17130f;
+  --ink-2: #473f35;
+  --ink-3: #71675a;
+  --stamp: #cf3128;
+  --stamp-2: #ec5140;
+  --brass: #f0c02e;
+  --brass-2: #c4961a;
+  --sea: #3fa3b0;
+  --string: #cf3128;
+  --mint: #7dbb68;
+  --accent: #f0c02e;
+  --accent-ink: #17130f;
+  --glass: rgba(14, 12, 10, 0.84);
+  --glass-line: rgba(242, 234, 216, 0.12);
+  --font-display: 'Oswald', 'Manrope', Arial, sans-serif;
+  --font-story: 'PT Serif', Georgia, serif;
+  --font-mono: 'PT Mono', 'JetBrains Mono', monospace;
+  --photo-filter: saturate(0.9) contrast(1.08) sepia(0.08);
+}
+[data-setting='nineties'] .display { font-weight: 600; letter-spacing: 0; }
+
 :root {
   --step--1: clamp(0.8rem, 0.74rem + 0.22vw, 0.92rem);
   --step-0: clamp(0.95rem, 0.88rem + 0.3vw, 1.1rem);

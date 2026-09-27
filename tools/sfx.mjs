@@ -61,7 +61,37 @@ const PACKS = {
     'typewriter': ['Fast typing on a mechanical cyberdeck keyboard with soft synthetic confirmation beeps', 3],
     'match': ['Electronic cigarette lighter click and plasma coil hiss', 1.5],
     'door-knock': ['Knocking on a metal sliding door, then pneumatic hiss', 2],
-    'door-squeak': ['Automatic sliding door opening with pneumatic hiss and servo motor', 2]
+    'door-squeak': ['Automatic sliding door opening with pneumatic hiss and servo motor', 2],
+    // доска дела (режим «на время») и «Финал сезона»
+    'board-pin': ['A holographic evidence card snapping onto a glass case board: soft magnetic click and a short glassy synth blip, close, no music', 1.5],
+    'board-solve': ['Short cyberpunk revelation sting: warm analog synth chord blooming with a soft glassy shimmer on top, then silence, no drums', 3],
+    'board-wrong': ['Cyberpunk interface error: a dull low synth thud and two short descending detuned beeps, dry, no music after', 1.5],
+    'water-drip': ['Water dripping into a still flooded hall: slow echoing drops on black water, faint distant hum of dead neon, close, no music', 4],
+    'fire-crackle': ['A building burning at night seen from the street: roaring fire, crackling, glass bursting from heat, distant drone sirens, rain hissing on flames, no music', 6],
+    'crowd-murmur': ['Crowd of people gathering at night outside a cheap hotel in heavy rain: agitated murmur, a few angry shouts far away, phones buzzing, no music', 6]
+  },
+  // девяностые: выпуск криминальной хроники — синтезаторные заставки, кнопочный телефон, пейджер, советские двери
+  nineties: {
+    'phone-ring': ['A 1990s beige push-button office telephone ringing twice with an electronic warble ring, small room, realistic, no music', 3],
+    'static': ['A pager beeping three times, then an old phone line picked up with a plastic click and faint analog crackle, no music', 2.5],
+    'drawer': ['An old wooden desk drawer pulled open with a rattle of pens and papers, close, no music', 1.5],
+    'door-knob': ['A heavy Soviet door lock that will not open: key rattling and the door handle jerked twice, no music', 1.5],
+    'door-knock': ['Hard knocking on a thin wooden office door, three knocks, empty corridor echo, no music', 2],
+    'door-squeak': ['An old heavy wooden door of a Soviet building creaking open slowly, echoing hall, no music', 2.5],
+    'clock-tick': ['A cheap plastic wall clock ticking loudly in a quiet office, one tick per second, no music', 4, true],
+    'clock-tick-slow': ['Slow low analog synth pulse like a heartbeat with a faint clock tick, tense 1990s TV crime documentary underscore', 5, true],
+    'clock-bell': ['A 1990s TV news jingle end: short bright analog synth chord with a soft chime, no voice', 2.5],
+    'suspense-01': ['Short dark 1990s TV crime documentary sting: low analog synth pad hit with a gated reverb snare, then silence', 3],
+    'suspense-04': ['1990s Russian crime chronicle stinger: descending detuned synth strings with a deep drum hit, uneasy', 3],
+    'suspense-06': ['Shock sting from a 1990s crime TV show: sharp orchestral synth hit with a reverb tail and a low boom', 3],
+    'suspense-07': ['Dramatic reveal from a 1990s crime documentary: swelling analog synth choir pad with a big timpani hit', 4],
+    'rumble': ['Deep ominous analog synth drone swell with a distant low drum, 1990s TV thriller', 3],
+    'typewriter': ['Typing on an old mechanical typewriter in a quiet office with a carriage return bell, no music', 3],
+    'match': ['A cheap disposable plastic lighter clicking twice and catching flame, close, no music', 1.5],
+    'glassware': ['Two glasses of vodka clinking in a noisy restaurant, close, no music', 1.5],
+    'steps-wood': ['Footsteps on a creaky wooden parquet floor in an empty Soviet building, slow, no music', 3],
+    'switch': ['An old bakelite light switch clicked and a fluorescent lamp flickering on with a hum, no music', 2],
+    'heartbeat': ['Slow tense heartbeat, muffled, close, no music', 3]
   },
   // «Туман»: одиночная игра. Никакой музыки в звуках — только тишина, сырость, далёкий горн и то, что в тумане
   tuman: {

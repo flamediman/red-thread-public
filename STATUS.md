@@ -47,7 +47,10 @@
   Экран `menu` → `selectCase` → `lobby`. Настройки партии: `hints`, `stepping`, `timers`, `roles`.
   Баланс по составу: `roundsFor`, `discussMsFor`, `SMALL_BRIGADE`. План 90 с.
 - Способности: forensic, psychologist, investigator, coroner, reporter, inspector, intern, archivist, burglar, patrol
-  (Нуар) и netrunner, braindance, drone, tracker, fixer (Неон). Каждая — понятная кнопка с пользой:
+  (Нуар) и netrunner, braindance, drone, tracker, fixer (Неон). «Девяностые» (27.09.2026) собирают свою опергруппу из
+  тех же способностей: forensic, psychologist, investigator, coroner, reporter, inspector (РУБОП), intern, burglar,
+  fixer (решала с рынка), tracker (распечатки АТС и пейджеров); записи памяти там — кассеты VHS, читаются с видика
+  (`memoryItemId`). Тема `[data-setting='nineties']`: Oswald + PT Serif, жёлтый таймкод, красный REC. Каждая — понятная кнопка с пользой:
   архивариус — где искать противоречие (`leadFor`), патрульный — вызвать на допрос (`remote`), аналитик — проверить
   показание (`verify`), психолог — пометки «правда/ложь» на общей доске (`BoardCard.verdict`), судмедэксперт — заключение
   из любого места.

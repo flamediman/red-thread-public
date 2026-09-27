@@ -5,15 +5,16 @@
 import type { CaseInfo, CaseScenario, DetectiveRole, Scenario, SettingInfo, SoloInfo, SoloStory } from '../../shared/types'
 import { NOIR, DETECTIVES as NOIR_BRIGADE } from '../settings/noir'
 import { NEON, DETECTIVES as NEON_BRIGADE } from '../settings/neon'
+import { NINETIES, DETECTIVES as NINETIES_BRIGADE } from '../settings/nineties'
 import { TUMAN } from '../settings/tuman'
 import { CASE_MODULES } from './cases.gen'
 import { PLACEHOLDER } from './placeholder'
 
 export interface CaseEntry { info: CaseInfo; scenario: Scenario }
 
-export const SETTINGS: Record<string, SettingInfo> = { noir: NOIR, neon: NEON }
+export const SETTINGS: Record<string, SettingInfo> = { noir: NOIR, neon: NEON, nineties: NINETIES }
 /** бригада сыщиков у каждого мира своя, дела её не задают */
-const BRIGADES: Record<string, DetectiveRole[]> = { noir: NOIR_BRIGADE, neon: NEON_BRIGADE }
+const BRIGADES: Record<string, DetectiveRole[]> = { noir: NOIR_BRIGADE, neon: NEON_BRIGADE, nineties: NINETIES_BRIGADE }
 
 const withBrigade = (info: CaseInfo, s: CaseScenario): Scenario => ({ ...s, detectives: BRIGADES[info.settingId]! })
 
