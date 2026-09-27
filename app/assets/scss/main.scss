@@ -153,7 +153,8 @@ body {
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.6s ease, color 0.6s ease;
 }
-#__nuxt { min-height: 100vh; }
+/* 100dvh — видимая часть экрана: в Safari на телефоне 100vh выше неё, и страница прокручивалась под панелью браузера */
+#__nuxt { min-height: 100vh; min-height: 100dvh; }
 h1, h2, h3, p, ul, ol { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; touch-action: manipulation; }
@@ -316,6 +317,11 @@ img { max-width: 100%; display: block; }
 .board__cards, .pad-board__list { transition: opacity 0.12s ease; }
 .board__cards--pending, .pad-board__list--pending { opacity: 0.45; }
 .pad-board__proceed--on { background: var(--brass); color: var(--ink); box-shadow: 0 0 0 2px rgba(201, 168, 76, 0.35); }
+/* «к обвинению» на телефоне: отдельное решение, а не следующий шаг — красная кромка без заливки */
+.btn.pad-accuse, .veil__card .btn.pad-accuse { color: var(--stamp-2); background: transparent; box-shadow: inset 0 0 0 1.5px var(--stamp); }
+/* на бумажной карточке окна (нуар) красный текст темнее — читается на светлом */
+:root:not([data-setting='neon']) .veil__card .btn.pad-accuse { color: var(--stamp); }
+@media (hover: hover) { .btn.pad-accuse:not(:disabled):hover, .veil__card .btn.pad-accuse:not(:disabled):hover { color: #fff6f0; background: var(--stamp); box-shadow: none; } }
 .plans__bonus { font-style: normal; color: var(--brass); }
 
 /* ── фон-фотография и шторм (экран) ── */
@@ -360,7 +366,7 @@ img { max-width: 100%; display: block; }
 }
 
 /* ── заставка и ворота ведущего (тема brand) ── */
-.gate { position: relative; z-index: 2; display: grid; place-items: center; min-height: 100vh; text-align: center; padding: var(--pad);
+.gate { position: relative; z-index: 2; display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; text-align: center; padding: var(--pad);
   &__inner { position: relative; display: flex; flex-direction: column; align-items: center; gap: clamp(0.8rem, 2vh, 1.4rem); max-width: 46rem; }
   &__title { font-family: var(--font-display); font-weight: 700; font-size: var(--step-3); line-height: 1.05; }
   &--cover &__title { font-size: min(var(--step-5), 13vh); letter-spacing: -0.015em; }
@@ -403,7 +409,7 @@ html, body { overscroll-behavior: none; }
 /* ═══════════ ЭКРАН ═══════════ */
 .stage {
   position: relative; z-index: 2;
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; overflow: hidden;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; height: 100dvh; overflow: hidden;
   &__bar { display: flex; align-items: center; gap: var(--gap); padding: clamp(0.55rem, 1.1vw, 0.9rem) var(--pad); border-bottom: 1px solid var(--glass-line); background: linear-gradient(180deg, rgba(10, 12, 16, 0.82), rgba(10, 12, 16, 0.45)); backdrop-filter: blur(8px); }
   &__title { font-family: var(--font-ui); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.8rem; color: var(--paper-dim); }
   &__round { font-family: var(--font-ui); font-weight: 500; letter-spacing: 0.04em; font-size: var(--step--1); color: var(--paper-faint); }
@@ -542,6 +548,16 @@ html, body { overscroll-behavior: none; }
   .world__sub { font-size: 0.92rem; line-height: 1.45; }
 }
 @media (max-height: 770px) { .world__sub { display: none; } }
+/* телефон лёжа: высоты хватает на одно дело. Вложенные прокрутки (страница, тело экрана, колонка дел) спорили друг
+   с другом — список отпрыгивал наверх, а переключатель миров уезжал за край. Здесь прокручивается только тело экрана,
+   колонка дел растёт сама, переключатель миров прилипает к низу */
+@media (max-height: 520px) {
+  .menu { grid-template-rows: auto auto auto; gap: 0.6rem; }
+  .world { overflow: visible; min-height: auto; justify-content: flex-start; }
+  .world__title { font-size: min(var(--step-4), 16vh); }
+  /* прилипание считается от внутреннего отступа тела экрана — без минуса в конце списка полоса наезжала на последнее дело */
+  .menu__nav { position: sticky; bottom: calc(0.4rem - var(--pad)); z-index: 3; box-shadow: inset 0 0 0 1px rgba(241, 233, 216, 0.1), 0 6px 20px rgba(0, 0, 0, 0.55); background: rgba(10, 11, 14, 0.92); }
+}
 /* смена мира: текст уезжает в сторону листания, арт перетекает */
 .world-next-enter-active, .world-prev-enter-active { transition: opacity 0.38s ease, transform 0.42s var(--ease-out); }
 .world-next-leave-active, .world-prev-leave-active { transition: opacity 0.18s ease, transform 0.2s ease-in; }
@@ -1013,18 +1029,18 @@ html, body { overscroll-behavior: none; }
 .pad-board__reset { color: var(--brass); text-decoration: underline; text-underline-offset: 0.2em; }
 .mcard { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; background: var(--paper); color: var(--ink); border-radius: var(--radius-lg); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); overflow: hidden;
   &__main { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.55rem; row-gap: 0.15rem; padding: 0.6rem 0.2rem 0.6rem 0.7rem; text-align: left; color: inherit; min-height: 3rem; }
-  &__kind { grid-row: 1 / span 2; align-self: start; margin-top: 0.4rem; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--ink-3); }
+  &__kind { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin-top: 0.4rem; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--ink-3); }
   &--physical &__kind { background: var(--brass); }
   &--testimony &__kind { background: var(--sea); }
   &--timeline &__kind { background: var(--string); }
   /* снимок вместо точки: вещь, лицо свидетеля или комната; вид улики — цветом рамки, как у точки */
-  &__thumb { grid-row: 1 / span 2; align-self: start; width: 2.4rem; height: 2.4rem; object-fit: cover; border-radius: 4px; filter: var(--photo-filter); background: var(--paper-3); box-shadow: 0 0 0 2px var(--ink-3);
+  &__thumb { grid-column: 1; grid-row: 1 / span 2; align-self: start; width: 2.4rem; height: 2.4rem; object-fit: cover; border-radius: 4px; filter: var(--photo-filter); background: var(--paper-3); box-shadow: 0 0 0 2px var(--ink-3);
     &--face { border-radius: 50%; object-position: top; } }
   &--physical &__thumb { box-shadow: 0 0 0 2px var(--brass); }
   &--testimony &__thumb { box-shadow: 0 0 0 2px var(--sea); }
   &--timeline &__thumb { box-shadow: 0 0 0 2px var(--string); }
   &__photo { grid-column: 2; width: 100%; aspect-ratio: 4 / 3; margin-top: 0.4rem; object-fit: cover; border-radius: 6px; filter: var(--photo-filter); background: var(--paper-3); }
-  &__title { font-weight: 700; font-size: 0.98rem; line-height: 1.25; }
+  &__title { grid-column: 2; font-weight: 700; font-size: 0.98rem; line-height: 1.25; }
   &__meta { grid-column: 2; font-family: var(--font-ui); font-weight: 600; font-size: 0.72rem; color: var(--ink-3); letter-spacing: 0.02em; }
   &__lie { color: var(--stamp); }
   &__truth { color: #2e6b4f; }

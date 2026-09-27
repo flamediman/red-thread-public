@@ -918,7 +918,7 @@ export class Game {
       this.searched.add(spot.id)
       applyFind(spot.primary, `s_${p.id}_${this.round}_1`, whereFor(spot.primary.text))
       if (spot.hidden && kind === 'forensic') { this.hiddenDone.add(spot.id); applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, 'Криминалист смотрит глубже.') }
-      else if (spot.hidden && this.smallBrigade) { this.hiddenDone.add(spot.id); applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, 'Рук мало — смотрят сразу внимательно.') }
+      else if (spot.hidden && this.smallBrigade) { this.hiddenDone.add(spot.id); applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, 'Сыщиков мало — каждый смотрит за двоих.') }
     } else if (spot.hidden && !this.hiddenDone.has(spot.id)) {
       this.hiddenDone.add(spot.id)
       applyFind(spot.hidden, `s_${p.id}_${this.round}_2`, `${where} Второй осмотр, внимательнее.`)

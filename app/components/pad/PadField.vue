@@ -179,6 +179,8 @@ watch(() => field.value?.feed.at(-1)?.seq, () => {
 onBeforeUnmount(() => { if (toastTimer) clearTimeout(toastTimer) })
 
 const confirmAccuse = ref(false)
+/* миниатюра карточки не загрузилась — вместо неё точка вида улики, сетка карточки не съезжает */
+const brokenThumb = reactive(new Set<string>())
 const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
 </script>
 
@@ -376,7 +378,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
       <template v-else-if="boardView === 'cards'">
         <div v-for="c in [...state.board.cards].reverse()" :key="c.id" class="mcard" :class="`mcard--${c.kind}`">
           <div class="mcard__main">
-            <img v-if="cardPhoto(c)" class="mcard__thumb" :class="`mcard__thumb--${cardPhoto(c)!.kind}`" :src="cardPhoto(c)!.src" :title="KIND_LABEL[c.kind]" alt="" loading="lazy" @error="($event.target as HTMLImageElement).hidden = true">
+            <img v-if="cardPhoto(c) && !brokenThumb.has(c.id)" class="mcard__thumb" :class="`mcard__thumb--${cardPhoto(c)!.kind}`" :src="cardPhoto(c)!.src" :title="KIND_LABEL[c.kind]" alt="" loading="lazy" @error="brokenThumb.add(c.id)">
             <i v-else class="mcard__kind" :title="KIND_LABEL[c.kind]" />
             <span class="mcard__title">{{ c.title }}</span>
             <span class="mcard__meta">{{ c.by }}<template v-if="c.time"> · {{ c.time }}</template></span>
@@ -396,7 +398,7 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
         </div>
       </div>
 
-      <button class="btn btn--stamp field-pad__accuse" type="button" @click="confirmAccuse = true">Собрать всех и обвинить</button>
+      <button class="btn btn--ghost field-pad__accuse pad-accuse" type="button" @click="confirmAccuse = true">Собрать всех и обвинить</button>
     </div>
 
     <!-- ЖУРНАЛ -->
@@ -480,11 +482,12 @@ const secs = (ms: number) => `${Math.ceil(ms / 1000)} с`
 
     <div v-if="confirmAccuse" class="veil" @click.self="confirmAccuse = false">
       <div class="veil__card" role="dialog" aria-modal="true">
-        <h2 class="veil__title">Обвинить сейчас?</h2>
-        <p class="veil__text">Поиск остановится, все проголосуют: кто, чем и почему. Ошибка отнимет пять минут. Осталось попыток: {{ state.attemptsLeft }}.</p>
+        <h2 class="veil__title">Остановить поиск и обвинить?</h2>
+        <p class="veil__text">Это не пауза. Поиск остановится у всех, и вернуться к нему можно будет только после голосования: каждый выберет, кто это сделал, чем и почему. Ошибка отнимет пять минут.</p>
+        <p class="veil__text">Осталось попыток: <b>{{ state.attemptsLeft }}</b>.</p>
         <div class="veil__actions">
-          <button class="btn btn--ghost" type="button" @click="confirmAccuse = false">Ещё рано</button>
-          <button class="btn btn--stamp" type="button" @click="confirmAccuse = false; send({ type: 'callAccuse' })">Обвинить</button>
+          <button class="btn" type="button" @click="confirmAccuse = false">Искать дальше</button>
+          <button class="btn btn--ghost pad-accuse" type="button" @click="confirmAccuse = false; send({ type: 'callAccuse' })">Да, обвинить</button>
         </div>
       </div>
     </div>

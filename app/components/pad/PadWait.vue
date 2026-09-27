@@ -4,6 +4,8 @@ import { ART, cardPhoto, tilt } from '~/utils/art'
 import { KIND_LABEL } from '~/composables/useBoardFilter'
 
 const hideImg = (e: Event) => { (e.target as HTMLImageElement).hidden = true }
+/* миниатюра не загрузилась — на её месте точка вида улики: пустая колонка сетки сдвигала заголовок, карточка выглядела криво свёрнутой */
+const brokenThumb = reactive(new Set<string>())
 
 const props = defineProps<{ you: YouState; state: PublicState; secondsLeft: number | null }>()
 const emit = defineEmits<{ send: [ClientMessage] }>()
@@ -40,10 +42,11 @@ const confirmAccuse = ref(false)
     <template v-else>
       <p class="wait__text" style="text-align:center">{{ text }}<template v-if="state.settings.timers === 'on' && secondsLeft != null"> · {{ secondsLeft }} с</template></p>
       <div class="pad-board__actions">
-        <button class="btn btn--small pad-board__proceed" :class="you.proceeded ? 'pad-board__proceed--on' : 'btn--ghost'" style="flex:1" type="button" :aria-pressed="you.proceeded" @click="emit('send', { type: 'proceed' })">
+        <button class="btn btn--small pad-board__proceed" :class="{ 'pad-board__proceed--on': you.proceeded }" style="flex:1" type="button" :aria-pressed="you.proceeded" @click="emit('send', { type: 'proceed' })">
           {{ you.proceeded ? '✓ Вы за «дальше»' : 'Дальше' }} · {{ state.proceedVotes }} из {{ state.players.filter(p => p.connected).length }}
         </button>
-        <button class="btn btn--stamp btn--small" style="flex:1" type="button" @click="confirmAccuse = true">Собрать всех</button>
+        <!-- обвинение — не следующий шаг, а отдельное решение: кнопка тише «Дальше», чтобы её не нажимали, не зная, что делать -->
+        <button class="btn btn--ghost btn--small pad-accuse" style="flex:1" type="button" @click="confirmAccuse = true">К обвинению</button>
       </div>
     </template>
 
@@ -82,7 +85,7 @@ const confirmAccuse = ref(false)
           :class="[`mcard--${c.kind}`, { 'mcard--open': open.has(c.id), 'mcard--linked': f.linked.value.has(c.id), 'mcard--new': c.round === f.lastRound.value }]"
         >
           <button type="button" class="mcard__main" @click="toggle(c.id)">
-            <img v-if="cardPhoto(c)" class="mcard__thumb" :class="`mcard__thumb--${cardPhoto(c)!.kind}`" :src="cardPhoto(c)!.src" :title="KIND_LABEL[c.kind]" alt="" loading="lazy" @error="hideImg">
+            <img v-if="cardPhoto(c) && !brokenThumb.has(c.id)" class="mcard__thumb" :class="`mcard__thumb--${cardPhoto(c)!.kind}`" :src="cardPhoto(c)!.src" :title="KIND_LABEL[c.kind]" alt="" loading="lazy" @error="brokenThumb.add(c.id)">
             <i v-else class="mcard__kind" :title="KIND_LABEL[c.kind]" />
             <span class="mcard__title">{{ c.title }}</span>
             <span class="mcard__meta">
@@ -108,11 +111,12 @@ const confirmAccuse = ref(false)
 
     <div v-if="confirmAccuse" class="veil" @click.self="confirmAccuse = false">
       <div class="veil__card" role="dialog" aria-modal="true">
-        <h2 class="veil__title">Собрать всех для обвинения?</h2>
-        <p class="veil__text">Все проголосуют: кто, чем и почему. Попыток всего две — после второй ошибки дело закроют без вас. Осталось попыток: {{ state.attemptsLeft }}.</p>
+        <h2 class="veil__title">Перейти к обвинению?</h2>
+        <p class="veil__text">Это не «Дальше». Расследование остановится у всех, и вернуться к нему можно будет только после голосования: каждый выберет, кто это сделал, чем и почему.</p>
+        <p class="veil__text">Попыток всего две, после второй ошибки дело закроют без вас. Осталось попыток: <b>{{ state.attemptsLeft }}</b>.</p>
         <div class="veil__actions">
-          <button class="btn btn--ghost" @click="confirmAccuse = false">Ещё рано</button>
-          <button class="btn btn--stamp" @click="confirmAccuse = false; emit('send', { type: 'callAccuse' })">Собрать</button>
+          <button class="btn" type="button" @click="confirmAccuse = false">Продолжить расследование</button>
+          <button class="btn btn--ghost pad-accuse" type="button" @click="confirmAccuse = false; emit('send', { type: 'callAccuse' })">Да, к обвинению</button>
         </div>
       </div>
     </div>
