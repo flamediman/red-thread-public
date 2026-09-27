@@ -56,7 +56,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <div class="solo-talk__body">
         <span class="solo-talk__name">{{ data.name }}</span>
         <TransitionGroup name="fade" tag="div" class="solo-talk__lines">
-          <p v-for="(l, i) in data.lines.slice(0, shown)" :key="`${data.id}-${i}-${l.text.slice(0, 12)}`" class="solo-talk__line" :class="{ 'solo-talk__line--hero': l.speaker === 'hero', 'solo-talk__line--narrator': l.speaker === 'narrator' }">
+          <p v-for="(l, i) in data.lines.slice(0, shown)" :key="`${data.id}-${i}-${l.text.slice(0, 12)}`" class="solo-talk__line" :class="{ 'solo-talk__line--hero': l.speaker === 'hero', 'solo-talk__line--narrator': l.speaker === 'narrator', 'solo-talk__line--echo': l.echo }">
             <b v-if="who(l.speaker) && l.speaker === 'hero'">{{ who(l.speaker) }}: </b>{{ l.text }}
           </p>
         </TransitionGroup>

@@ -115,6 +115,8 @@ interface Run {
   met?: string[]
   /** игровое время последней встречи или подхода бродячего — после неё передышка */
   calmAt?: number
+  /** когда (игровое время) говорили с каждым персонажем — вернулись к нему сразу: без повторного приветствия */
+  talkedAt?: Record<string, number>
   /** тайники: сколько раз обыскан (−1 — там уже нашли); когда была последняя находка по нужде; обысков «на сухую» подряд */
   stash?: Record<string, number>
   supplyAt?: number
@@ -132,7 +134,8 @@ interface Live {
   /** развязка последней встречи или погони — для страницы */
   after?: After | null
   puzzle: string | null
-  dialogue: { id: string; node: string } | null
+  /** quiet — вернулись к вопросам: хаб не повторяет свои реплики; echo — последняя строка прошлого ответа, для связности */
+  dialogue: { id: string; node: string; quiet?: boolean; echo?: SoloLine | null } | null
   scene: { seq: number; lines: SoloLine[]; music?: string } | null
   dead: boolean
 }
@@ -827,7 +830,11 @@ export class SoloGame {
     const met = `met:${d.id}`
     const start = d.again && this.flag(met) && d.nodes[d.again] ? d.again : d.start
     if (!this.flag(met)) this.run!.flags.push(met)
-    this.live.dialogue = { id: d.id, node: start }
+    // вернулись к тому же человеку через пару минут — сразу к вопросам, без «Спрашивай, чего хотел» в который раз
+    const r = this.run!, last = r.talkedAt?.[d.id]
+    const quiet = start === d.again && last != null && this.playNow() - last < 180_000
+    r.talkedAt = { ...(r.talkedAt ?? {}), [d.id]: this.playNow() }
+    this.live.dialogue = { id: d.id, node: start, quiet }
     const node = d.nodes[start]
     if (node?.effect) this.apply(node.effect)
   }
@@ -844,7 +851,12 @@ export class SoloGame {
     if (!c) return
     if (c.effect) this.apply(c.effect)
     if (!c.to || !d.nodes[c.to] || this.live.dead) { this.live.dialogue = null; return this.changed() }
-    this.live.dialogue = { id: d.id, node: c.to }
+    // Назад к вопросам (узел again или тот же хаб) — без повтора его реплик, как в старых квестах: видна последняя строка
+    // ответа, и сразу варианты. Остальные узлы звучат как обычно
+    const hub = c.to === d.again || (c.to === dl.node && !!node?.choices?.length)
+    const echo = hub ? (node?.lines ?? []).filter(l => this.ok(l.when)).at(-1) ?? null : null
+    this.live.dialogue = { id: d.id, node: c.to, quiet: hub && c.to !== d.start, echo: hub && echo ? { ...echo, id: undefined, echo: true } : null }
+    this.run!.talkedAt = { ...(this.run!.talkedAt ?? {}), [d.id]: this.playNow() }
     const next = d.nodes[c.to]!
     if (next.effect) this.apply(next.effect)
     this.changed()
@@ -1751,7 +1763,7 @@ export class SoloGame {
       } : null,
       dialogue: dl && dNode ? {
         id: dl.id, npc: this.DIALOG.get(dl.id)!.npc, name: this.S.npcs.find(n => n.id === this.DIALOG.get(dl.id)!.npc)?.name ?? '',
-        lines: dNode.lines, choices: (dNode.choices ?? []).filter(c => this.ok(c.when)).map((c, index) => ({ index, text: c.text })), music: this.DIALOG.get(dl.id)!.music
+        lines: dl.quiet ? (dl.echo ? [dl.echo] : []) : dNode.lines, choices: (dNode.choices ?? []).filter(c => this.ok(c.when)).map((c, index) => ({ index, text: c.text })), music: this.DIALOG.get(dl.id)!.music
       } : null,
       chase: this.chaseView(now),
       dead: this.live.dead,
